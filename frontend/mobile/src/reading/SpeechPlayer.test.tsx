@@ -66,6 +66,8 @@ vi.mock("../components/ReaderEnvironment", () => ({ ReaderEnvironment: () => nul
 vi.mock("../components/ReaderNavigationSheet", () => ({ ReaderNavigationSheet: () => null }));
 vi.mock("../components/ReaderSelectionToolbar", () => ({ ReaderSelectionToolbar: () => null }));
 vi.mock("../components/BookThoughtComposer", () => ({ BookThoughtComposer: () => null }));
+// Listening integration does not initialize native offline storage.
+vi.mock("../offline/books", () => ({ useMobileOfflineBooksStore: (select: (state: { identityVersion: number }) => unknown) => select({ identityVersion: 0 }) }));
 vi.mock("../lib/bookAgent", () => ({ askMobileBookAgent: vi.fn() }));
 vi.mock("../lib/bookDocument", () => ({ createBookDocument: () => "<p>正文</p>" }));
 vi.mock("../lib/books", () => ({

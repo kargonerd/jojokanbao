@@ -2,7 +2,7 @@ import { EMAIL_MESSAGE_LIMIT, type EmailObservation, type EmailStatus } from "./
 import { nextDeadline, type DispatchObservation } from "./monitor-policy";
 import type { HealthcheckDefinition } from "./types";
 
-export const EMAIL_POLICY = { delayedSeconds: 600, bounceWindowSeconds: 1800, bounceThreshold: 3, transportMaxAgeSeconds: 4 * 3600 + 1800, dispatchFailureSeconds: 300 };
+export const EMAIL_POLICY = { delayedSeconds: 600, failureWindowSeconds: 1800, failureThreshold: 3, transportMaxAgeSeconds: 4 * 3600 + 1800, dispatchFailureSeconds: 300 };
 export interface EmailIncident { at: number; reason: string }
 export interface StoredEmail { id: string; createdAt: number; status: EmailStatus; statuses: EmailStatus[]; observedAt: number; delayAlerted: boolean; confirmedDelivery: boolean }
 export interface EmailMonitorState {
@@ -18,23 +18,27 @@ export interface EmailMonitorState {
   collector: { lastSuccessAt: number; incident?: EmailIncident };
   transport: { lastSuccessAt: number; seen: string[]; incident?: EmailIncident };
   delivery: { lastSuccessAt: number; incident?: EmailIncident };
-  dispatch: { at: number; failure?: EmailIncident; permanent?: boolean };
+  dispatch: { at: number; expectedAt?: number; failure?: EmailIncident; permanent?: boolean };
   down: boolean;
   status: "unknown" | "up" | "down";
   pending?: { signal: "success" | "fail"; reason: string; at: number; run?: string };
 }
 const delivered = (status: EmailStatus) => ["delivered", "opened", "clicked"].includes(status);
 const waiting = (status: EmailStatus) => ["queued", "scheduled", "sent", "delivery_delayed"].includes(status);
+const terminalFailure = (status: EmailStatus) => ["failed", "suppressed", "canceled", "complained", "bounced"].includes(status);
 const unresolvedDelay = (message: StoredEmail) => message.delayAlerted && (waiting(message.status) || (delivered(message.status) && !message.confirmedDelivery));
+
+/** One provider message is one anomaly, even across retries or status changes. */
+export function countEmailAnomalies(state: EmailMonitorState, now: number): number {
+  return state.messages.filter((message) => unresolvedDelay(message)
+    || (message.createdAt >= now - EMAIL_POLICY.failureWindowSeconds * 1000
+      && terminalFailure(message.status))).length;
+}
 
 export function initialEmailState(check: HealthcheckDefinition, checkUuid: string, now: number): EmailMonitorState {
   return { version: 1, kind: "email-delivery", checkUuid, cursor: 0, createdAt: now, lastObservationAt: 0,
     deadlineAt: nextDeadline(check, now), seen: [], messages: [], collector: { lastSuccessAt: 0 }, transport: { lastSuccessAt: 0, seen: [] },
     delivery: { lastSuccessAt: 0 }, dispatch: { at: 0 }, down: false, status: "unknown" };
-}
-
-function incident(state: EmailMonitorState, at: number, reason: string): void {
-  if (!state.delivery.incident || at >= state.delivery.incident.at) state.delivery.incident = { at, reason };
 }
 
 export function applyEmailObservation(state: EmailMonitorState, check: HealthcheckDefinition, observation: EmailObservation): void {
@@ -44,13 +48,14 @@ export function applyEmailObservation(state: EmailMonitorState, check: Healthche
   state.seen = [...state.seen.slice(-255), runId];
   state.lastObservationAt = at;
   state.deadlineAt = nextDeadline(check, at);
-  // A newer workflow result proves the earlier dispatch reached its consumer.
-  // A later dispatch failure is applied after this observation and stays active.
-  if (state.dispatch.failure && at >= state.dispatch.failure.at) {
+  // An observation for the affected slot proves dispatch reached its consumer,
+  // even if it arrives after a later reconciliation error. Older slots cannot
+  // clear a newer slot's fault. Legacy state falls back to the error timestamp.
+  if (state.dispatch.failure && at >= (state.dispatch.expectedAt ?? state.dispatch.failure.at)) {
     delete state.dispatch.failure;
     delete state.dispatch.permanent;
+    delete state.dispatch.expectedAt;
   }
-  let freshDeliveryAt = 0;
   if (!observation.scanComplete) {
     state.collector.incident = { at, reason: observation.scanError! };
   }
@@ -71,31 +76,33 @@ export function applyEmailObservation(state: EmailMonitorState, check: Healthche
         delete state.collector.incident;
         state.collector.lastSuccessAt = at;
       }
-      let freshBounce = false;
       for (const observed of observedMessages) {
         const old = previous.get(observed.id);
         const createdAt = Date.parse(observed.createdAt);
-        const isNewStatus = !old?.statuses.includes(observed.status);
         const evidenceIsNew = delivered(observed.status) && !old?.confirmedDelivery;
-        // Terminal delivery incidents require a genuinely new business email.
-        // An unrelated old email becoming opened/delivered is not recovery.
-        if (observation.scanComplete && evidenceIsNew && (!state.delivery.incident || createdAt > state.delivery.incident.at)) freshDeliveryAt = at;
+        if (observation.scanComplete && evidenceIsNew) state.delivery.lastSuccessAt = at;
         // Provider snapshots may lag; an old sent state cannot undo an already
         // confirmed delivery and invent a new delayed-delivery incident.
-        const status = old?.confirmedDelivery && waiting(observed.status) ? old.status : observed.status;
+        const preservePrevious = old && ((old.confirmedDelivery && waiting(observed.status))
+          || (terminalFailure(old.status) && (waiting(observed.status) || (!observation.scanComplete && delivered(observed.status)))));
+        const status = preservePrevious ? old.status : observed.status;
         const stored: StoredEmail = { id: observed.id, createdAt, status,
           statuses: [...new Set([...(old?.statuses ?? []), observed.status])], observedAt: at, delayAlerted: old?.delayAlerted ?? false,
           confirmedDelivery: old?.confirmedDelivery || (observation.scanComplete && delivered(observed.status)) };
-        if (isNewStatus && ["failed", "suppressed", "canceled", "complained"].includes(observed.status)) incident(state, at, `email_${observed.status}`);
-        if (isNewStatus && observed.status === "bounced") freshBounce = true;
         if (waiting(status) && !stored.delayAlerted && at - createdAt > EMAIL_POLICY.delayedSeconds * 1000) {
           stored.delayAlerted = true;
         }
         previous.set(observed.id, stored);
       }
       state.messages = [...previous.values()].sort((a, b) => b.createdAt - a.createdAt || a.id.localeCompare(b.id));
-      const recentBounces = state.messages.filter((message) => message.status === "bounced" && message.createdAt >= at - EMAIL_POLICY.bounceWindowSeconds * 1000).length;
-      if (freshBounce && recentBounces >= EMAIL_POLICY.bounceThreshold) incident(state, at, "email_bounce_threshold");
+      if (countEmailAnomalies(state, at) >= EMAIL_POLICY.failureThreshold) {
+        state.delivery.incident ??= { at, reason: "email_failure_threshold" };
+        state.delivery.incident.reason = "email_failure_threshold";
+      } else if (observation.scanComplete) {
+        // Re-evaluate legacy single-message incidents under the new policy only
+        // on a complete observation. Keep individual message evidence intact.
+        delete state.delivery.incident;
+      }
     }
   }
 
@@ -113,20 +120,19 @@ export function applyEmailObservation(state: EmailMonitorState, check: Healthche
       }
     }
   }
-  const recoveryAt = freshDeliveryAt;
-  if (recoveryAt > 0) {
-    // New failures in the same scan take precedence over mixed successes.
-    if (!state.delivery.incident || state.delivery.incident.at < recoveryAt) {
-      delete state.delivery.incident;
-      state.delivery.lastSuccessAt = at;
-    }
-  }
   evaluateEmailState(state, at, observation.scanComplete && !state.collector.incident, observation.run);
 }
 
-export function applyEmailDispatch(state: EmailMonitorState, dispatch: DispatchObservation, now: number): void {
+export function applyEmailDispatch(state: EmailMonitorState, dispatch: DispatchObservation, now: number, expectedAt?: number): void {
   if (now < state.dispatch.at) return;
   state.dispatch.at = now;
+  // A state/API read can fail while reconciling an already observed slot.
+  // That does not invalidate its collector, delivery or SMTP evidence.
+  if (expectedAt !== undefined && state.lastObservationAt >= expectedAt) return;
+  if (dispatch.kind === "failed" || dispatch.kind === "exhausted") {
+    if (expectedAt !== undefined) state.dispatch.expectedAt = expectedAt;
+    else delete state.dispatch.expectedAt;
+  }
   if (dispatch.kind === "failed") {
     state.dispatch.failure ??= { at: now, reason: "email_dispatch_failed" };
     state.dispatch.permanent = dispatch.permanent;
@@ -136,6 +142,7 @@ export function applyEmailDispatch(state: EmailMonitorState, dispatch: DispatchO
   } else if (dispatch.kind === "accepted") {
     delete state.dispatch.failure;
     delete state.dispatch.permanent;
+    delete state.dispatch.expectedAt;
   }
 }
 
@@ -143,9 +150,7 @@ export function evaluateEmailState(state: EmailMonitorState, now: number, heartb
   const dispatchFailure = state.dispatch.failure && (state.dispatch.permanent || now - state.dispatch.failure.at >= EMAIL_POLICY.dispatchFailureSeconds * 1000) ? state.dispatch.failure : undefined;
   const missingObservation = now >= state.deadlineAt ? { at: now, reason: "email_observation_overdue" } : undefined;
   const missingTransport = now - (state.transport.lastSuccessAt || state.createdAt) >= EMAIL_POLICY.transportMaxAgeSeconds * 1000 ? { at: now, reason: "email_transport_overdue" } : undefined;
-  const activeDelay = state.messages.find(unresolvedDelay);
-  const delayed = activeDelay ? { at: activeDelay.observedAt, reason: "email_delivery_delayed" } : undefined;
-  const failure = state.transport.incident ?? delayed ?? state.delivery.incident ?? state.collector.incident ?? dispatchFailure ?? missingObservation ?? missingTransport;
+  const failure = state.transport.incident ?? state.delivery.incident ?? state.collector.incident ?? dispatchFailure ?? missingObservation ?? missingTransport;
   if (failure) {
     if (!state.down || state.pending) state.pending = { signal: "fail", reason: failure.reason, at: failure.at, ...(run ? { run } : {}) };
     state.down = true;

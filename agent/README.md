@@ -28,6 +28,9 @@ applications.ts / rag-tools.ts
 切换 provider 时清空旧的 model 覆盖，或指定该 provider 的模型；错误组合会直接报错。
 本地 `pnpm dev:agent` 从仓库根目录 `.env`、`.env.local` 读取配置，进程环境变量优先级最高；
 修改后重启服务。部署端在国际 Agent 的 EdgeOne Makers 项目环境变量中修改，再重新部署。
+Git worktree 没有自己的环境文件时，本地服务复用主工作区的环境文件；此时若也没有本地
+`agent/auth.json`，则直接使用主工作区的 Agent 登录文件。显式配置的凭据路径和 worktree
+已有的登录文件优先，不复制 OAuth 凭据。
 管理台的 provider 下拉框只决定上传哪套凭据，不切换运行模型。
 
 ```dotenv
@@ -147,6 +150,22 @@ const result = await runPlatformAgent({
 返回值包含聚合后的 token、Pi 成本估算、执行时间、轮次和工具调用数。
 
 ## 馆藏 RAG 工具
+
+请求通过 `scope.contentType` 选择 `book`（默认，兼容已有请求）或 `periodical`。
+Web 和原生移动端 AI 页面可切换书籍与报刊，历史对话保存该选择。报刊目前只开放《人民日报》
+（`datasetIds: ["rmrb"]`），由 `JOJO_AI_PERIODICAL_IDS` 维护；不依赖书籍目录的 AI 标记。
+两种范围提供各自的工具，报刊不下载书籍索引或报纸的整期 Manifest。
+
+- `search_periodicals`：调用现有 Reader Search 的 `POST /content/search` ES 接口，
+  固定限定已开放报刊与 `newspaper` 类型，支持日期范围、时间排序和分页，每次最多 8 篇。
+- `read_periodical_article`：按需读取本轮搜索命中的文章正文，默认每次 6000 字，
+  上限 12000 字，长文章按 `nextOffset` 继续读取。引用保留文章标识、日期及版次，
+  Web 跳转至对应 Archive 页面并定位文章标题。
+
+报刊复用 `@jojo/content` 的 `CONTENT_SEARCH_API`，无需在 Agent 中配置 ES 账号或新增服务。
+搜索服务失败会返回工具错误，不回退到书籍检索。
+
+书籍继续使用以下工具：
 
 - `list_library_books`：读取小型 `catalog.jox`，列出支持 AI 的书籍，不下载正文。
 - `list_book_items`：读取候选书的 Dataset Index，列出分卷与 Manifest 路径。

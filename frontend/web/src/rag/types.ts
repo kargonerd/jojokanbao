@@ -1,6 +1,9 @@
 import type { JojoContentAccess } from "@jojo/content";
 
 export interface RagReference {
+  type?: "newspaper";
+  date?: string;
+  page?: number;
   citationId?: string;
   datasetId?: string;
   itemId?: string;
@@ -67,6 +70,7 @@ export interface RagAnswerMetadata {
 }
 
 export interface RagConversationScope {
+  contentType?: "all" | "book" | "periodical";
   mode?: "all" | "selected";
   datasetIds?: string[];
   itemIds?: string[];

@@ -184,7 +184,7 @@ export function createBookDocument({ fragment, assetUrls, textScale, lineHeight,
   figure img, article > img { display: block; max-width: 100%; height: auto; margin: 0 auto; ${eInk ? "filter: grayscale(1) contrast(1.15);" : ""} }
   span[data-asset-id] img { display: inline-block; max-width: 100%; height: auto; vertical-align: middle; }
   figcaption { margin-top: .65rem; color: ${muted}; font-family: sans-serif; font-size: .75rem; text-align: center; }
-  a { color: ${accent}; }
+  a[href], a[data-target-id], a[data-anchor-id] { color: ${accent}; }
   hr { margin: 2rem 0; border: 0; border-top: 1px solid #aaa; }
   .notes { margin-top: 4rem; padding-top: 1.5rem; border-top: 1px solid #aaa; font-size: .84rem; }
   .notes h2 { margin-top: 0; color: ${ink}; font-family: sans-serif; font-size: .9rem; letter-spacing: .12em; }

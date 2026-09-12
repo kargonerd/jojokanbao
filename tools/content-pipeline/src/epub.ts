@@ -29,66 +29,95 @@ function chapterXhtml(
   chapterNames: Map<string, string>,
   language: string,
 ): string {
-  let body = chapter.body.value;
   // Parse as HTML here so semantic empty containers such as span/figure are
   // expanded instead of serialized as XML self-closing elements.
-  const $links = cheerio.load(`<html><body>${body}</body></html>`);
-  $links("a[data-target-id]").each((_index, element) => {
-    const current = $links(element);
+  const $body = cheerio.load(`<html><body>${chapter.body.value}</body></html>`);
+  $body("a[data-target-id]").each((_index, element) => {
+    const current = $body(element);
     const targetId = current.attr("data-target-id") ?? "";
     const targetFile = chapterNames.get(targetId);
     if (!targetFile) return;
-    const anchorId = current.attr("data-anchor-id");
+    const originalAnchor = current.attr("data-anchor-id");
+    const anchorId = annotations.some((note) => note.id === originalAnchor && note.targetId === targetId)
+      ? safeId(originalAnchor!) : originalAnchor;
     const fragment = anchorId ? `#${encodeURIComponent(anchorId)}` : "";
     const href = targetId === chapter.id
       ? (fragment || "#")
       : `${path.posix.basename(targetFile)}${fragment}`;
     current.attr("href", href).removeAttr("data-target-id").removeAttr("data-anchor-id");
   });
-  body = $links("body").html() ?? body;
-  for (const assetId of chapter.assetRefs) {
-    const asset = assets.get(assetId);
+  const assetRefs = new Set(chapter.assetRefs);
+  // Older canonical HTML can put prose and further figures inside an image
+  // placeholder. Work from the inside out; replacing its inner HTML loses text
+  // and a regex cannot match the closing tag of a nested figure reliably.
+  for (const element of $body("figure[data-asset-id], span[data-asset-id]").toArray().reverse()) {
+    const current = $body(element);
+    const assetId = current.attr("data-asset-id")!;
+    const asset = assetRefs.has(assetId) ? assets.get(assetId) : undefined;
     if (!asset?.path || asset.type !== "image") continue;
-    const expression = new RegExp(
-      `<figure([^>]*\\bdata-asset-id=["']${assetId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["'][^>]*)>([\\s\\S]*?)<\\/figure>`,
-      "gi",
-    );
-    body = body.replace(expression, (_whole, attributes: string, inner: string) => {
-      const caption = inner.match(/<figcaption>([\s\S]*?)<\/figcaption>/i)?.[1] ?? "";
-      const width = attributes.match(/\bdata-width=["'](\d{1,3})["']/i)?.[1];
-      const role = attributes.match(/\bdata-role=["'](signature|cover|full-width|table-image)["']/i)?.[1];
-      const alt = asset.alt ?? (role === "cover" ? "封面" : role === "table-image" ? "表格" : "");
-      return `<figure${width ? ` data-width="${width}"` : ""}${role ? ` data-role="${role}"` : ""}><img src="../${escapeXml(asset.path)}" alt="${escapeXml(alt)}"/>${caption ? `<figcaption>${caption}</figcaption>` : ""}</figure>`;
-    });
-    const inlineExpression = new RegExp(
-      `<span[^>]*\\bdata-asset-id=["']${assetId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["'][^>]*><\\/span>`,
-      "gi",
-    );
-    body = body.replace(
-      inlineExpression,
-      `<img class="jojo-inline-image" src="../${escapeXml(asset.path)}" alt="${escapeXml(asset.alt ?? "")}"/>`,
-    );
+    const role = current.attr("data-role");
+    const image = $body("<img>").attr("src", `../${asset.path}`)
+      .attr("alt", asset.alt ?? (role === "cover" ? "封面" : role === "table-image" ? "表格" : ""));
+    if (element.name === "span") {
+      image.addClass("jojo-inline-image");
+      if (current.contents().length === 0) {
+        if (current.attr("id")) image.attr("id", current.attr("id")!);
+        current.replaceWith(image);
+      } else {
+        current.prepend(image);
+      }
+      continue;
+    }
+    const children = current.contents().toArray();
+    const proseStart = children.findIndex((node) => (
+      !(node.type === "text" && !node.data.trim()) &&
+      !(node.type === "tag" && node.name === "figcaption")
+    ));
+    if (proseStart !== -1) {
+      const following = children.slice(proseStart);
+      for (const node of following) {
+        // A caption after prose must stay in that position, outside the figure.
+        if (node.type === "tag" && node.name === "figcaption") {
+          node.name = "p";
+          $body(node).attr("data-role", "caption");
+        }
+      }
+      current.after(following);
+    }
+    current.prepend(image);
   }
   const chapterAnnotations = annotations.filter((annotation) => annotation.targetId === chapter.id);
+  const annotationIds = new Set(chapterAnnotations.map((annotation) => annotation.id));
+  $body('a[href^="#"]').each((_index, element) => {
+    const current = $body(element);
+    let anchor: string;
+    try { anchor = decodeURIComponent(current.attr("href")!.slice(1)); }
+    catch { return; }
+    if (annotationIds.has(anchor)) current.attr("href", `#${safeId(anchor)}`);
+  });
   if (chapterAnnotations.length > 0) {
-    body += `<hr/><section>${chapterAnnotations.map((annotation) => (
+    $body("body").append(`<hr/><section>${chapterAnnotations.map((annotation) => (
       `<aside epub:type="footnote" id="${safeId(annotation.id)}"><p>${escapeXml(annotation.body.value)}</p></aside>`
-    )).join("")}</section>`;
+    )).join("")}</section>`);
   }
   // Canonical bodies are HTML, while EPUB requires well-formed XHTML (including
   // closed br/hr/img elements and XML-safe entities).
-  const $body = cheerio.load(`<html><body>${body}</body></html>`);
   const annotationMap = new Map(chapterAnnotations.map((annotation) => [annotation.id, annotation]));
   $body("sup[data-annotation-id]").each((_index, element) => {
     const current = $body(element);
     const annotation = annotationMap.get(current.attr("data-annotation-id")!);
     if (!annotation) return;
+    current.parents("a").each((_parentIndex, parent) => {
+      parent.name = "span";
+      $body(parent).removeAttr("href").removeAttr("data-target-id").removeAttr("data-anchor-id");
+    });
     const link = $body("<a></a>").attr("epub:type", "noteref")
       .attr("href", `#${safeId(annotation.id)}`).text(`[${annotation.label ?? "注"}]`);
     if (current.attr("id")) link.attr("id", current.attr("id")!);
+    current.after(current.contents().toArray());
     current.replaceWith(link);
   });
-  body = $body.html($body("body").contents().toArray(), { xml: true });
+  const body = $body.html($body("body").contents().toArray(), { xml: true });
   return `<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="${escapeXml(language)}">

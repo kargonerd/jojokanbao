@@ -8,6 +8,16 @@ const event = (id: string, minute: number, outcome: ExecutionEvent["outcome"] = 
   ({ id, at: start + minute * 60_000, outcome, permanent, run: `https://github.com/kargonerd/jojokanbao/actions/runs/${id.split(":")[0]}` });
 
 describe("shared alert policy", () => {
+  it("does not clear a later slot's dispatch failure with an earlier slot's delayed success", () => {
+    const state = initialState(check, "test", start);
+    applyDispatch(state, { kind: "failed", permanent: false, reason: "HTTP 504" }, start + 60_000, start);
+    applyDispatch(state, { kind: "failed", permanent: false, reason: "HTTP 504" }, start + 5 * 60_000, start + 5 * 60_000);
+    applyExecution(state, check, policy, event("1:1", 2, "success"));
+    expect(state.dispatchFailedAt).toBe(start + 60_000);
+    evaluateDeadline(state, policy, start + 6 * 60_000);
+    expect(state.down).toBe(true);
+    expect(state.pending?.reason).toBe("dispatch-failure-duration");
+  });
   it("ignores stale overlapping dispatch ticks after reconciliation", () => {
     const state = initialState(check, "test", start);
     applyDispatch(state, { kind: "accepted" }, start + 2 * 60_000);

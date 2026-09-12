@@ -47,6 +47,8 @@ jobs:
       B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
       B2_BUCKET: ${{ secrets.B2_BUCKET || 'jojo-newspaper' }}
       B2_REMOTE: jojo-b2
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      RMRB_REVIEW_HF_REPO: ${{ vars.RMRB_REVIEW_HF_REPO || 'luoxiaozhuang/marxism-dataset' }}
       TENCENTCLOUD_SECRET_ID: ${{ secrets.COS_SECRET_ID }}
       TENCENTCLOUD_SECRET_KEY: ${{ secrets.COS_SECRET_KEY }}
       HEALTHCHECKS_PING_KEY: ${{ secrets.HEALTHCHECKS_PING_KEY }}
@@ -95,7 +97,7 @@ jobs:
           sudo apt-get install -y qpdf rclone
 
       - name: Install Python dependencies
-        run: pip install requests PyPDF2
+        run: pip install -r tools/archive-pdf/requirements.txt
 
       - name: Sync RMRB PDF
         run: |
@@ -105,43 +107,27 @@ jobs:
           fi
           if [ "${{ inputs.force }}" = "true" ]; then
             args+=(--force)
+          else
+            args+=(--catch-up --reuse-legacy)
           fi
           python tools/archive-pdf/sync_rmrb.py "${args[@]}"
 
-      - name: Purge overwritten PDF from EdgeOne and verify
-        if: ${{ inputs.force }}
+      - name: Purge Delivery metadata and verify published Jox ranges
+        if: ${{ !cancelled() }}
         run: |
-          sync_date="${{ inputs.date }}"
-          if [ -z "$sync_date" ]; then
-            sync_date="$(date +%Y%m%d)"
-          fi
-          year="$sync_date"
-          year="${year:0:4}"
-          url="https://blacknews.jojokanbao.cn/RMRB/${year}/${sync_date}.pdf"
-          node tools/archive-pdf/purge-cache.mjs "$url"
-
-          for attempt in {1..18}; do
-            rm -f /tmp/rmrb-probe.pdf /tmp/rmrb-probe.decoded.pdf /tmp/rmrb-headers
-            if curl --silent --show-error --fail \
-              --header "Cache-Control: no-cache" \
-              --header "Range: bytes=0-65535" \
-              --dump-header /tmp/rmrb-headers \
-              --output /tmp/rmrb-probe.pdf \
-              "$url" \
-              && grep -Eq '^HTTP/[^ ]+ 206' /tmp/rmrb-headers; then
-              if [ "$(head -c 5 /tmp/rmrb-probe.pdf)" != "%PDF-" ] \
-                && node tools/archive-pdf/protect.mjs decode /tmp/rmrb-probe.pdf /tmp/rmrb-probe.decoded.pdf \
-                && [ "$(head -c 5 /tmp/rmrb-probe.decoded.pdf)" = "%PDF-" ]; then
-                echo "Public URL serves protected byte ranges."
-                exit 0
-              fi
-            fi
-            echo "Attempt ${attempt}: EdgeOne still serves stale or invalid bytes; retrying..."
-            sleep 10
-          done
-
-          echo "Public URL did not switch to the protected PDF in time." >&2
-          exit 1
+          report=".rmrb-sync-work/publication.json"
+          if [ ! -f "$report" ]; then exit 0; fi
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          import { spawnSync } from 'node:child_process';
+          const rows = JSON.parse(readFileSync('.rmrb-sync-work/publication.json', 'utf8')).filter(row => row.published);
+          const keys = [...new Set(rows.flatMap(row => [row.manifest, row.index]))];
+          if (keys.length) {
+            const result = spawnSync(process.execPath, ['tools/archive-pdf/purge-cache.mjs', ...keys.map(key => `https://blacknews.jojokanbao.cn/${key}`)], { stdio: 'inherit' });
+            if (result.status !== 0) process.exit(result.status || 1);
+          }
+          NODE
+          python tools/archive-pdf/verify_delivery.py "$report"
 
       - name: Report automatic RMRB sync outcome
         if: ${{ always() && inputs.automatic }}

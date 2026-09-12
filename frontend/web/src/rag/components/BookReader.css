@@ -157,6 +157,11 @@
   text-align: left;
 }
 
+.prose-editorial a:not([href]):not([data-target-id]):not([data-anchor-id]) {
+  color: inherit;
+  text-decoration: inherit;
+}
+
 .prose-editorial [data-align="center"] {
   text-align: center;
   text-indent: 0;
@@ -550,17 +555,6 @@ mark[data-book-search-target] {
 .book-reader ::selection { background: #e6c5c5; color: #202020; }
 .book-reader-dark ::selection { background: #765252; color: #ffffff; }
 
-.book-selection-tools { position: fixed; z-index: 65; display: flex; flex-direction: column; width: 272px; font-family: var(--font-sans), sans-serif; filter: drop-shadow(0 4px 10px rgba(0, 0, 0, .18)); }
-.book-selection-actions { display: flex; flex-shrink: 0; height: 64px; padding: 4px; background: #333333; color: #ffffff; }
-.book-selection-actions .reader-selection-action { display: flex; flex: 1; min-width: 0; height: auto; flex-direction: column; align-items: center; justify-content: center; gap: 5px; border: 0; padding: 4px; color: #ffffff; background: transparent; font-size: 12px; font-weight: 500; line-height: 16px; white-space: nowrap; }
-.book-selection-actions svg { width: 22px; height: 22px; }
-.book-selection-underline { height: 22px; font-family: Georgia, serif; font-size: 22px; line-height: 24px; text-decoration: underline; }
-.book-selection-actions .reader-selection-action:hover, .book-selection-actions .reader-selection-action:focus-visible { color: #ffffff; background: #555555; transform: none; box-shadow: none; }
-.book-selection-actions .reader-selection-action:focus-visible { outline: 1px solid #ffffff; outline-offset: -3px; }
-.book-selection-actions .reader-selection-action:disabled { opacity: .45; cursor: wait; }
-.book-selection-arrow { position: absolute; width: 0; height: 0; margin-left: -7px; border-left: 7px solid transparent; border-right: 7px solid transparent; }
-.book-selection-tools[data-side="above"] .book-selection-arrow { top: 100%; border-top: 7px solid #333333; }
-.book-selection-tools[data-side="below"] .book-selection-arrow { bottom: 100%; border-bottom: 7px solid #333333; }
 .book-thought-dialog { position: fixed; inset: 0; width: 100%; max-width: none; max-height: none; margin: 0; border: 0; padding: 24px; background: transparent; color: inherit; box-sizing: border-box; }
 .book-thought-dialog[open] { display: flex; align-items: center; justify-content: center; }
 .book-thought-dialog::backdrop { background: rgb(0 0 0 / 24%); }

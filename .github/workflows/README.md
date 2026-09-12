@@ -94,8 +94,9 @@ Scheduled and manually operated data tasks remain independent workflows:
 
 - `maintenance-purge-archive-pdf-cache.yml`
 - `maintenance-sync-rmrb.yml` — accepts the external daily Cloudflare trigger,
-  receives an explicit Shanghai business date, and safely skips an object that
-  already exists
+  receives an explicit Shanghai business date, catches up missing daily PDFs,
+  and publishes HF Canonical followed by B2 Jox media/manifests/index. It verifies
+  CDN ranges and skips issues whose Canonical and Delivery PDF are complete.
 - `maintenance-times-capture.yml` — accepts the external five-minute Cloudflare trigger, checks a three-hour discovery lookback for late URLs, captures the primary one-hour window plus unseen/retry pages and images, and publishes an immutable Raw job to the private HF Runtime Bucket
 - `maintenance-times-process.yml` — after an automatic Capture succeeds, stages an immutable Process generation, publishes B2 Delivery, then advances the committed Runtime pointer and job status
 - `maintenance-times-runtime-cleanup.yml` — applies the 14/30-day Runtime job retention policy with an exact-path deletion cap
@@ -114,7 +115,10 @@ Capture, Process, and Cleanup save a prepared runtime cache immediately, so a
 later business failure does not discard it. Browser and Mihomo binary caches
 are likewise saved before capture; proxy secrets/configuration are never cached.
 Browser OS dependencies are not covered by those caches: apt has bounded network
-retries and its install steps have five-minute deadlines. Empty Process runs skip
+retries and its install steps have five-minute deadlines. Times scopes apt to the
+hosted Ubuntu runner's `ubuntu.sources`, retaining official mirror failover and
+integrity checks while excluding unrelated Chrome/Microsoft repositories. The
+runner's source files remain unchanged. Empty Process runs skip
 rclone installation. Workflow contracts run explicitly in CI because YAML and
 shared shell helpers are outside Times' normal package-level Turbo cache key.
 

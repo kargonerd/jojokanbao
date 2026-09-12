@@ -199,10 +199,13 @@ describe("app homepage", () => {
     expect(shelfMocks.loadBookshelf).not.toHaveBeenCalled();
   });
 
-  it("opens the personal bookshelf as a separate page", () => {
+  it("opens the personal bookshelf as a separate page", async () => {
     renderAt("/bookshelf");
+    await act(async () => {
+      await vi.dynamicImportSettled();
+    });
 
-    expect(screen.getByRole("heading", { name: "书架" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "书架" })).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "我的书架" })).toBeNull();
     expect(screen.getByText("登录后查看你的书架")).toBeTruthy();
     expect(screen.getByRole("link", { name: /^登录\s*→$/ }).getAttribute("href")).toBe("/account?returnTo=%2Fbookshelf");

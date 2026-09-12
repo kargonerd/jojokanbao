@@ -61,6 +61,7 @@ export interface EdgeOneAgentContext {
 
 export interface AuthorizedAgentUser {
   id: string;
+  isAvailabilityMonitor?: boolean;
 }
 
 export interface AgentUsageLease {
@@ -99,6 +100,7 @@ export interface AgentRequestBody {
     content: string;
   }>;
   scope?: {
+    contentType?: "all" | "book" | "periodical";
     mode?: "all" | "selected";
     datasetIds?: string[];
     itemIds?: string[];

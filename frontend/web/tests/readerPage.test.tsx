@@ -1,9 +1,24 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ReaderPage } from "../src/archive/pages/ReaderPage";
 import type { PublicationName } from "../src/archive/publications";
 import { useRecentReadingStore } from "../src/library/recentReadingStore";
+
+function deliveredPdf(name: string, issue: string) {
+  if (!issue) return { url: "", protectedPdf: true, joxObjectKey: undefined };
+  const day = issue.replace(/^(\d{4})(\d{2})(\d{2})$/, "$1-$2-$3");
+  const path = issue.length === 8 ? `${issue.slice(0, 4)}/${issue.slice(4, 6)}/${day}` : `${issue.slice(0, 4)}/${issue}`;
+  const joxObjectKey = `content/newspapers/${name}/items/${path}/assets/issue.pdf.jox`;
+  return { url: `https://blacknews.jojokanbao.cn/${joxObjectKey}?v=hash`, protectedPdf: true, joxObjectKey };
+}
+
+vi.mock("../src/archive/useArchivePdf", () => ({
+  useArchivePdf: (name: string, issue: string) => {
+    const pdf = deliveredPdf(name, issue);
+    return { source: issue ? { url: pdf.url, objectKey: pdf.joxObjectKey } : null, loading: false, error: null };
+  },
+}));
 
 const pdfMocks = vi.hoisted(() => ({
   fetchPdfDownloadBytes: vi.fn(),
@@ -11,7 +26,8 @@ const pdfMocks = vi.hoisted(() => ({
   viewerProps: [] as Array<Record<string, unknown>>,
 }));
 
-vi.mock("@jojo/pdf-viewer", () => ({
+vi.mock("@jojo/pdf-viewer", async () => ({
+  ...await import("../../packages/pdf-viewer/src/outline"),
   fetchPdfDownloadBytes: pdfMocks.fetchPdfDownloadBytes,
   usePdfDocument: pdfMocks.usePdfDocument,
   PdfViewer: (props: Record<string, unknown>) => {
@@ -115,8 +131,10 @@ beforeEach(() => {
   readyDocument.getPageIndex.mockReset().mockResolvedValue(0);
   readyDocument.getPage.mockReset().mockResolvedValue({
     getViewport: () => ({
+      width: 1_000,
       height: 1_000,
-      convertToViewportPoint: (_x: number, y: number) => [0, 1_000 - y],
+      rotation: 0,
+      convertToViewportPoint: (x: number, y: number) => [x, 1_000 - y],
     }),
   });
   vi.stubGlobal("alert", vi.fn());
@@ -156,10 +174,7 @@ describe("ReaderPage document states", () => {
   it("derives a newspaper URL from the route and renders document metadata", () => {
     renderReader("/rmrb/19761009");
 
-    expect(pdfMocks.usePdfDocument).toHaveBeenCalledWith({
-      url: "https://blacknews.jojokanbao.cn/RMRB/1976/19761009.pdf",
-      protectedPdf: "auto",
-    });
+    expect(pdfMocks.usePdfDocument).toHaveBeenCalledWith(deliveredPdf("rmrb", "19761009"));
     expect(document.querySelector<HTMLElement>("[data-reader-scroll-container]")!.style.scrollPaddingTop).toBe("77px");
     expect(screen.getByText("人民日报 - 19761009")).toBeTruthy();
     expect(screen.getByRole("button", { name: "1976年10月09日" })).toBeTruthy();
@@ -186,7 +201,7 @@ describe("ReaderPage document states", () => {
     setPdfState({ document: null, numPages: 0 });
     renderReader("/rmrb/not-a-date");
 
-    expect(pdfMocks.usePdfDocument).toHaveBeenCalledWith({ url: "", protectedPdf: "auto" });
+    expect(pdfMocks.usePdfDocument).toHaveBeenCalledWith(deliveredPdf("rmrb", ""));
     expect(screen.queryByTestId("pdf-viewer")).toBeNull();
     expect(screen.queryByRole("button", { name: "下载 PDF" })).toBeNull();
     expect(screen.getByRole("button", { name: "选择日期" })).toBeTruthy();
@@ -197,12 +212,12 @@ describe("ReaderPage document states", () => {
   it("rejects impossible dates and unavailable magazine issues without a PDF request", () => {
     setPdfState({ document: null, numPages: 0 });
     const invalidDate = renderReader("/rmrb/19760231");
-    expect(pdfMocks.usePdfDocument).toHaveBeenLastCalledWith({ url: "", protectedPdf: "auto" });
+    expect(pdfMocks.usePdfDocument).toHaveBeenLastCalledWith(deliveredPdf("rmrb", ""));
     expect(screen.getByText("链接中的日期不是有效日期。")).toBeTruthy();
     invalidDate.unmount();
 
     renderReader("/hq/196499", { type: "magazine", name: "hq" });
-    expect(pdfMocks.usePdfDocument).toHaveBeenLastCalledWith({ url: "", protectedPdf: "auto" });
+    expect(pdfMocks.usePdfDocument).toHaveBeenLastCalledWith(deliveredPdf("rmrb", ""));
     expect(screen.getByText("该年份没有对应的杂志期数。")).toBeTruthy();
   });
 
@@ -272,10 +287,7 @@ describe("ReaderPage newspaper navigation", () => {
     fireEvent.click(screen.getByRole("button", { name: "8" }));
 
     await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("/archive/rmrb/19761008"));
-    expect(pdfMocks.usePdfDocument).toHaveBeenLastCalledWith({
-      url: "https://blacknews.jojokanbao.cn/RMRB/1976/19761008.pdf",
-      protectedPdf: "auto",
-    });
+    expect(pdfMocks.usePdfDocument).toHaveBeenLastCalledWith(deliveredPdf("rmrb", "19761008"));
   });
 
   it("returns to the page before the reader after changing dates", async () => {
@@ -319,10 +331,7 @@ describe("ReaderPage magazine navigation", () => {
 
     fireEvent.click(screen.getByRole("option", { name: "增刊1" }));
     await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("/archive/hq/196491"));
-    expect(pdfMocks.usePdfDocument).toHaveBeenLastCalledWith({
-      url: "https://blacknews.jojokanbao.cn/HQ/1964/196491.pdf",
-      protectedPdf: "auto",
-    });
+    expect(pdfMocks.usePdfDocument).toHaveBeenLastCalledWith(deliveredPdf("hq", "196491"));
   });
 
   it("closes the issue list with Escape and an outside click", () => {
@@ -515,7 +524,7 @@ describe("ReaderPage toolbar interactions", () => {
     fireEvent.click(screen.getByRole("button", { name: "设置" }));
     const pageInput = screen.getByRole("spinbutton") as HTMLInputElement;
     const reader = document.querySelector<HTMLElement>("[data-reader-scroll-container]")!;
-    const toolbar = reader.querySelector<HTMLElement>("[data-reader-toolbar]")!;
+    const toolbar = reader.querySelector<HTMLElement>("[data-reader-controls]")!;
     const page = document.querySelector<HTMLElement>("#page-4")!;
     Object.defineProperty(reader, "scrollTop", { configurable: true, writable: true, value: 100 });
     vi.spyOn(reader, "getBoundingClientRect").mockReturnValue({ top: 56 } as DOMRect);
@@ -539,7 +548,7 @@ describe("ReaderPage toolbar interactions", () => {
   it("realigns a deep-linked page after its final PDF dimensions are known", async () => {
     renderReader("/rmrb/19761009#page-5");
     const reader = document.querySelector<HTMLElement>("[data-reader-scroll-container]")!;
-    const toolbar = reader.querySelector<HTMLElement>("[data-reader-toolbar]")!;
+    const toolbar = reader.querySelector<HTMLElement>("[data-reader-controls]")!;
     const page = document.querySelector<HTMLElement>("#page-5")!;
     Object.defineProperty(reader, "scrollTop", { configurable: true, writable: true, value: 7200 });
     vi.spyOn(reader, "getBoundingClientRect").mockReturnValue({ top: 56 } as DOMRect);
@@ -599,8 +608,8 @@ describe("ReaderPage toolbar interactions", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "下载 PDF" }));
     await waitFor(() => expect(pdfMocks.fetchPdfDownloadBytes).toHaveBeenCalledWith(
-      "https://blacknews.jojokanbao.cn/RMRB/1976/19761009.pdf",
-      "auto",
+      deliveredPdf("rmrb", "19761009").url,
+      true,
       expect.objectContaining({ onDownloadProgress: expect.any(Function) }),
     ));
     expect(URL.createObjectURL).toHaveBeenCalledWith(expect.objectContaining({ type: "application/pdf" }));
@@ -654,5 +663,84 @@ describe("ReaderPage toolbar interactions", () => {
     container.scrollTop = 200;
     fireEvent.scroll(container);
     expect(screen.queryByRole("button", { name: "回到顶部" })).toBeNull();
+  });
+});
+
+
+describe("search result location", () => {
+  it("waits for a matching article bookmark before enabling text location", async () => {
+    let resolveDestination!: (dest: unknown[]) => void;
+    readyDocument.getOutline.mockResolvedValue([{ title: "第二版", dest: null, items: [
+      { title: "教 育者\n要先受教育", dest: "article", items: [] },
+    ] }]);
+    readyDocument.getDestination.mockReturnValue(new Promise((resolve) => { resolveDestination = resolve; }));
+    renderReader("/archive/rmrb/19651212?query=教育&title=教育者要先受教育&searchPage=2#page-1");
+    await waitFor(() => expect(readyDocument.getDestination).toHaveBeenCalledWith("article"));
+    expect(latestViewerProps().initialPage).toBe(2);
+    expect(latestViewerProps().searchTarget).toBeUndefined();
+    expect(screen.getByRole("status", { name: "正在定位" })).toBeTruthy();
+    await act(async () => resolveDestination([1, { name: "XYZ" }, 100, 700, null]));
+    expect(latestViewerProps().searchTarget).toEqual({ page: 2, query: "", quote: "教育者要先受教育", outline: { top: .3, left: .1 } });
+    expect(readyDocument.getOutline).toHaveBeenCalledTimes(1);
+    act(() => (latestViewerProps().onSearchResult as (value: unknown) => void)({ status: "outline", matches: 0 }));
+    expect(screen.queryByRole("status", { name: "正在定位" })).toBeNull();
+    const scrollContainer = document.querySelector<HTMLElement>("[data-reader-scroll-container]")!;
+    vi.mocked(scrollContainer.scrollTo).mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "模拟初始页渲染完成" }));
+    expect(scrollContainer.scrollTo).not.toHaveBeenCalled();
+  });
+
+  it.each(["missing", "failed", "page-only"])("falls back to complete-title text when the outline is %s", async (kind) => {
+    if (kind === "failed") readyDocument.getOutline.mockRejectedValue(new Error("outline unavailable"));
+    if (kind === "page-only") readyDocument.getOutline.mockResolvedValue([{ title: "第二版", dest: null, items: [
+      { title: "教育者要先受教育", dest: [1, { name: "Fit" }], items: [] },
+    ] }]);
+    renderReader("/archive/rmrb/19651212?query=教育&title=教育者要先受教育&searchPage=2#page-2");
+    await waitFor(() => expect(latestViewerProps().searchTarget).toEqual({ page: 2, query: "", quote: "教育者要先受教育" }));
+  });
+
+  it("shows only a temporary locating indicator and preserves highlighting after it disappears", async () => {
+    renderReader("/archive/rmrb/19660701?query=铁路&quote=铁路通车&searchPage=3&returnTo=%2Fsearch%3Fkeyword%3D铁路%26page%3D2#page-3");
+    const target = { page: 3, query: "", quote: "铁路通车" };
+    await waitFor(() => expect(latestViewerProps().searchTarget).toEqual(target));
+    expect(screen.getByRole("status", { name: "正在定位" }).textContent).toBe("正在定位…");
+    expect(screen.queryByRole("link", { name: "返回搜索结果" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "模拟看到第5页" }));
+    expect(latestViewerProps().searchTarget).toEqual(target);
+    act(() => (latestViewerProps().onSearchResult as (value: unknown) => void)({ status: "found", matches: 2 }));
+    expect(screen.queryByRole("status", { name: "正在定位" })).toBeNull();
+    expect(screen.queryByText(/已定位/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "下一处" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "上一处" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "关闭原文定位" })).toBeNull();
+    expect(latestViewerProps().searchTarget).toEqual(target);
+  });
+  it.each(["outline", "no-text", "not-found", "unavailable"])("ends the loading indicator on %s without leaving a persistent banner", async (status) => {
+    renderReader("/archive/rmrb/19660701?query=铁路&title=铁路通车&searchPage=3#page-3");
+    await waitFor(() => expect(latestViewerProps().searchTarget).toBeTruthy());
+    expect(screen.getByRole("status", { name: "正在定位" })).toBeTruthy();
+    act(() => (latestViewerProps().onSearchResult as (value: unknown) => void)({ status, matches: 0 }));
+    expect(screen.queryByRole("status", { name: "正在定位" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "下一处" })).toBeNull();
+    expect(screen.queryByRole("complementary", { name: "原文定位" })).toBeNull();
+  });
+  it("ends locating when the target page fails to render", () => {
+    renderReader("/archive/rmrb/19660701?query=铁路&title=铁路通车&searchPage=3#page-3");
+    act(() => (latestViewerProps().onPageError as (page: number, error: Error) => void)(3, new Error("render failed")));
+    expect(screen.queryByRole("status", { name: "正在定位" })).toBeNull();
+  });
+  it("keeps the complete title without keyword navigation", async () => {
+    const title = `${"铁路".repeat(100)}建设的新进展`;
+    renderReader(`/archive/rmrb/19660701?query=铁路&title=${encodeURIComponent(title)}&searchPage=3#page-3`);
+    await waitFor(() => expect(latestViewerProps().searchTarget).toMatchObject({ page: 3, query: "", quote: title }));
+    act(() => (latestViewerProps().onSearchResult as (value: unknown) => void)({ status: "not-found", matches: 0 }));
+    expect(screen.queryByRole("status", { name: "正在定位" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "下一处" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "回到命中位置" })).toBeNull();
+  });
+  it("does not use a search keyword as a title when the title is missing", () => {
+    renderReader("/archive/rmrb/19660701?query=铁路&title=&searchPage=3#page-3");
+    expect(latestViewerProps().searchTarget).toBeUndefined();
+    expect(screen.queryByRole("status", { name: "正在定位" })).toBeNull();
   });
 });

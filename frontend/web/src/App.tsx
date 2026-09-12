@@ -8,7 +8,6 @@ import { PUBLICATIONS, PUBLICATION_NAMES } from "./archive/publications";
 import { NotFoundPage } from "./NotFoundPage";
 import { AppLayout } from "./shell/AppLayout";
 import { HomePage } from "./home/HomePage";
-import { BookshelfPage } from "./library/BookshelfPage";
 import { LibraryPage } from "./library/LibraryPage";
 import { NotificationsPage } from "./notifications/NotificationsPage";
 import { PERIODICALS } from "./library/catalog";
@@ -20,6 +19,10 @@ import { TimesSourceSettingsPage } from "./account/pages/TimesSourceSettingsPage
 import { startAccountSessionSync, useAccountSessionStore } from "./account/session";
 
 const AccountConfirmation = lazy(() => import("./account/AccountConfirmation"));
+// Keep the client download adapter out of the Web entry bundle.
+const BookshelfPage = lazy(() =>
+  import("./library/BookshelfPage").then(({ BookshelfPage }) => ({ default: BookshelfPage })),
+);
 const LaunchCommemoration = lazy(() =>
   import("./home/LaunchCommemoration").then(({ LaunchCommemoration }) => ({ default: LaunchCommemoration })),
 );
@@ -140,7 +143,7 @@ function RedesignedRoutes() {
 
         <Route element={<AppLayout />}>
           <Route index element={<><HomePage periodicals={PERIODICALS} /><LazyRoute><LaunchCommemoration /></LazyRoute></>} />
-          <Route path="bookshelf" element={<BookshelfPage />} />
+          <Route path="bookshelf" element={<LazyRoute><BookshelfPage /></LazyRoute>} />
           <Route path="library" element={<LibraryPage periodicals={PERIODICALS} />} />
           <Route path="library/:datasetId" element={<LibraryPage periodicals={PERIODICALS} />} />
           <Route path="search" element={<div className="h-[calc(100vh-64px)] overflow-hidden"><SearchPage platformRedesign /></div>} />

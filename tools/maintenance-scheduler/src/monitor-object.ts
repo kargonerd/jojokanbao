@@ -98,7 +98,7 @@ export class TaskMonitor {
     }
 
     if (tick.expectedAt !== undefined) observeExpectedSlot(state, check, tick.expectedAt, tick.now);
-    if (tick.dispatch) applyDispatch(state, tick.dispatch, tick.now);
+    if (tick.dispatch) applyDispatch(state, tick.dispatch, tick.now, tick.expectedAt);
     // Catch up before emitting transitions: a buffered success may have already
     // resolved an earlier failure while this monitor was unavailable.
     if (selected.length < unseen.length) {

@@ -15,6 +15,7 @@ import { ReaderNavigationSheet } from "../components/ReaderNavigationSheet";
 import { ReaderSelectionToolbar } from "../components/ReaderSelectionToolbar";
 import { BookThoughtComposer } from "../components/BookThoughtComposer";
 import { BookshelfButton } from "../components/BookshelfButton";
+import { useMobileOfflineBooksStore } from "../offline/books";
 import { NativeSpeechPlayer } from "../reading/SpeechPlayer";
 import { mobileSpeechSegments } from "../reading/speech";
 import { useReadingProgress } from "../reading/useReadingProgress";
@@ -105,6 +106,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
   const setBookFirstLineIndent = useMobileStore((state) => state.setBookFirstLineIndent);
   const hapticsEnabled = useMobileStore((state) => state.hapticsEnabled);
   const user = useMobileAuthStore((state) => state.user);
+  const offlineIdentityVersion = useMobileOfflineBooksStore((state) => state.identityVersion);
   const leftTapNext = useMobileStore((state) => state.leftTapNext);
   const rememberBook = useMobileStore((state) => state.rememberBook);
   const readingProgress = useReadingProgress(rememberBook);
@@ -271,7 +273,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
       .catch((reason: unknown) => { if (active) setError(reason instanceof Error ? reason.message : "无法打开书籍"); })
       .finally(() => { if (active) setItemLoading(false); });
     return () => { active = false; controller.abort(); };
-  }, [datasetId, initialAnchorId, initialChapterId, initialText, itemKey, retryToken]);
+  }, [datasetId, initialAnchorId, initialChapterId, initialText, itemKey, retryToken, user?.id, offlineIdentityVersion]);
 
   useEffect(() => {
     if (!loaded || !activeChapterId) { setChapterLoading(false); return; }

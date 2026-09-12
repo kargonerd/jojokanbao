@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "id": "repair-07901475659315921af44b1f197e4d43d9906640",
+  "createdAt": "2026-09-12T04:38:12.223264+00:00",
+  "index": "jojo-1tk2lxru",
+  "operation": "repair",
+  "replacedDocumentId": "jojo-book-44dd4f6985b78d95b856147eb64dde7813e03117",
+  "document": {
+    "type": "book",
+    "datasetId": "ma-ke-si-en-ge-si-quan-ji",
+    "itemId": "ma-ke-si-en-ge-si-quan-ji:volume-3",
+    "title": "*《德法年鉴》停刊起因",
+    "content": "*《德法年鉴》停刊起因\n*《德法年鉴》停刊起因\n*4月4日寄自莱茵。我们刚刚从可靠来源获悉：由卢格博士和马克思博士出版的《德法年鉴》停止出版。这样的出版物在巴黎的惊人费用和许多外部困难，使那家已为第1、2两期合刊预付了资金的企业决定退出。第1、2两期合刊的印数为3 000册，不久可望售出。约有300册在缴税时被巴伐利亚税卡默默扣留，人们对收回它们已不抱希望。在巴黎当地售出300多册，几乎每一个来此的德国人都人手一册。\n写于1844年4月4日\n原文是德文\n中文根据《马克思恩格斯全集》1982年历史考证版第1部分第2卷翻译\n载于1844年4月7日《曼海姆晚报》第83号",
+    "date": "2002-10-01",
+    "source": "马克思恩格斯全集",
+    "metadata": {
+      "itemTitle": "马克思恩格斯全集（第三卷）",
+      "chapterId": "chapter:67",
+      "chapterOrder": 67,
+      "authors": [
+        "中共中央马克思恩格斯列宁斯大林著作编译局编译"
+      ],
+      "publisher": "人民出版社",
+      "language": "zh-CN",
+      "canonicalObject": "books/collections/马克思恩格斯全集/items/volume-3.json.gz"
+    }
+  },
+  "reason": "源 JSON 核对后将误作星号注释的正文恢复原位；追加搜索修订，保留旧版本审计",
+  "state": "applied",
+  "appliedAt": "2026-09-12T04:39:36.211822+00:00",
+  "result": {
+    "documentId": "repair-07901475659315921af44b1f197e4d43d9906640",
+    "verified": true,
+    "bulkAppendOnly": true
+  }
+}

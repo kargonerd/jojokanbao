@@ -1,5 +1,8 @@
 export * from "./archive";
+export * from "./support";
+export * from "./archive-delivery";
 export * from "./book-search";
+export * from "./search-location";
 export * from "./jox";
 export * from "./resource-cache";
 export * from "./browser-content-cache";
@@ -10,4 +13,7 @@ export * from "./capabilities";
 export * from "./daily-quote";
 export * from "./validation";
 export * from "./speech";
+export * from "./offline-books";
+export * from "./book-assets";
+export * from "./offline-identity";
 export * from "./speech-position";

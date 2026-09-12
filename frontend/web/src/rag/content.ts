@@ -16,8 +16,11 @@ import {
   type JojoDatasetItemSummary,
   type JojoFragment,
   type JojoItemManifest,
+  bookFragmentAssetRefs,
 } from "@jojo/content";
 import type { RagSearchHit } from "./types";
+import { useAccountSessionStore } from "../account/session";
+import { browserOfflineBookIdentity } from "../offline/identity";
 
 const CONTENT_CDN = import.meta.env.VITE_CONTENT_CDN_BASE || "https://blacknews.jojokanbao.cn/";
 const client = new JoxClient(CONTENT_CDN, fetch, new ResourceCache(browserContentCache()));
@@ -36,6 +39,8 @@ export interface LoadedItem extends LoadedDataset {
   item: JojoDatasetItemSummary;
   manifest: JojoItemManifest;
   manifestObject: string;
+  offline?: boolean;
+  ownerId?: string;
 }
 
 export function loadCatalog(): Promise<JojoCatalog> {
@@ -58,6 +63,8 @@ export async function loadDataset(datasetId: string): Promise<LoadedDataset> {
 }
 
 export async function loadItem(datasetId: string, itemKey: string): Promise<LoadedItem> {
+  const offline = await import("../offline/books").then(({ openOfflineBook }) => openOfflineBook(datasetId, itemKey)).catch(() => undefined);
+  if (offline) return { entry: offline.entry, index: offline.index, item: offline.item, manifest: offline.manifest, manifestObject: offline.manifestObject, client: offline.client, offline: true, ownerId: offline.scope.startsWith("user:") ? offline.scope.slice(5) : undefined };
   const dataset = await loadDataset(datasetId);
   const item = dataset.index.items.find((candidate) => candidate.itemKey === itemKey || candidate.itemId === itemKey);
   if (!item) throw new Error("找不到对应的书籍");
@@ -66,18 +73,34 @@ export async function loadItem(datasetId: string, itemKey: string): Promise<Load
     await dataset.client.fetchJson<JojoItemManifest>(manifestObject),
   );
   if (manifest.itemId !== item.itemId) throw new Error("书籍暂时无法读取");
-  return { ...dataset, item, manifest, manifestObject };
+  const access = manifest.access ?? item.access ?? dataset.index.access ?? dataset.entry.access ?? "public";
+  const ownerId = access === "authenticated" ? useAccountSessionStore.getState().userId ?? undefined : undefined;
+  const itemClient = access === "authenticated" ? new JoxClient(CONTENT_CDN, async (input, init) => {
+    if (!ownerId || useAccountSessionStore.getState().userId !== ownerId) throw new Error("请先登录，再阅读这本书");
+    const response = await fetch(input, { ...init, cache: "no-store" });
+    if (useAccountSessionStore.getState().userId !== ownerId) throw new Error("登录状态已改变，请重新打开书籍");
+    return response;
+  }) : dataset.client;
+  return { ...dataset, client: itemClient, item, manifest, manifestObject, ownerId };
+}
+
+function assertLoadedAccess(loaded: LoadedItem) {
+  const access = loaded.manifest.access ?? loaded.item.access ?? loaded.index.access ?? loaded.entry.access ?? "public";
+  const userId = loaded.offline ? browserOfflineBookIdentity().userId : useAccountSessionStore.getState().userId;
+  if (access === "authenticated" && (!loaded.ownerId || loaded.ownerId !== userId)) throw new Error("请先登录，再阅读这本书");
 }
 
 export async function loadFragment(loaded: LoadedItem, chapterId: string, signal?: AbortSignal): Promise<JojoFragment> {
+  assertLoadedAccess(loaded);
   const chapter = loaded.manifest.content.chapters?.find((candidate) => candidate.id === chapterId);
   if (!chapter) throw new Error("章节不存在");
   const fragment = asJojoFragment(await loaded.client.fetchJson<JojoFragment>(resolveJoxObject(loaded.manifestObject, chapter.object), signal, "default", chapter.sha256));
   if (fragment.itemId !== loaded.manifest.itemId || fragment.fragmentId !== chapter.id) throw new Error("章节内容不匹配");
-  return fragment;
+  return { ...fragment, assetRefs: bookFragmentAssetRefs(fragment) };
 }
 
 export async function loadAssetUrl(loaded: LoadedItem, assetId: string, signal?: AbortSignal): Promise<string> {
+  assertLoadedAccess(loaded);
   const asset = loaded.manifest.assets.find((candidate) => candidate.id === assetId);
   if (!asset) throw new Error(`资源不存在：${assetId}`);
   const bytes = await loaded.client.fetchDecodedBytes(resolveJoxObject(loaded.manifestObject, asset.object), signal, asset.sha256);
@@ -103,24 +126,20 @@ export async function prefetchBookChapters(loaded: LoadedItem, chapterId: string
 }
 
 export function loadBookCoverUrl(datasetId: string, itemKey?: string): Promise<string | undefined> {
-  const cacheKey = `${datasetId}:${itemKey ?? ""}`;
+  const cacheKey = `${useAccountSessionStore.getState().userId ?? "public"}:${datasetId}:${itemKey ?? ""}`;
   const cached = bookCoverPromises.get(cacheKey);
   if (cached) return cached;
 
   const promise = (async () => {
-    const dataset = await loadDataset(datasetId);
-    const summary = itemKey
-      ? dataset.index.items.find((item) => item.itemKey === itemKey || item.itemId === itemKey)
-      : dataset.index.items.find((item) => item.publicationStatus !== "draft");
-    if (!summary) return undefined;
-    const manifestObject = resolveJoxObject(dataset.entry.indexObject, summary.manifestObject);
-    const manifest = asJojoItemManifest(
-      await dataset.client.fetchJson<JojoItemManifest>(manifestObject),
-    );
-    const cover = manifest.assets.find((asset) => asset.type === "image" && asset.role === "cover");
-    if (!cover) return undefined;
-    const bytes = await dataset.client.fetchDecodedBytes(resolveJoxObject(manifestObject, cover.object), undefined, cover.sha256);
-    return URL.createObjectURL(new Blob([bytes.slice().buffer], { type: cover.mediaType }));
+    let key = itemKey;
+    if (!key) {
+      const dataset = await loadDataset(datasetId);
+      key = dataset.index.items.find((item) => item.publicationStatus !== "draft")?.itemKey;
+    }
+    if (!key) return undefined;
+    const loaded = await loadItem(datasetId, key);
+    const cover = loaded.manifest.assets.find((asset) => asset.type === "image" && asset.role === "cover");
+    return cover ? loadAssetUrl(loaded, cover.id) : undefined;
   })().catch((error: unknown) => {
     bookCoverPromises.delete(cacheKey);
     throw error;
@@ -130,10 +149,23 @@ export function loadBookCoverUrl(datasetId: string, itemKey?: string): Promise<s
 }
 
 export async function downloadExport(loaded: LoadedItem, exportId: string): Promise<void> {
+  assertLoadedAccess(loaded);
   const descriptor = loaded.manifest.exports.find((candidate) => candidate.id === exportId);
   if (!descriptor) throw new Error("导出文件不存在");
   // A full-book export can be much larger than an interactive chapter or cover.
-  const bytes = await loaded.client.fetchDecodedBytes(resolveJoxObject(loaded.manifestObject, descriptor.object), undefined, descriptor.sha256, 120_000);
+  let exportClient = loaded.client;
+  if (loaded.offline) {
+    const access = loaded.manifest.access ?? loaded.item.access ?? loaded.index.access ?? loaded.entry.access ?? "public";
+    const owner = useAccountSessionStore.getState().userId;
+    if (access === "authenticated" && (!owner || owner !== loaded.ownerId)) throw new Error("请联网登录后下载 EPUB，已保存的正文仍可离线阅读");
+    exportClient = new JoxClient(CONTENT_CDN, async (input, init) => {
+      if (access === "authenticated" && useAccountSessionStore.getState().userId !== owner) throw new Error("登录状态已改变，请重新下载");
+      const response = await fetch(input, { ...init, cache: "no-store" });
+      if (access === "authenticated" && useAccountSessionStore.getState().userId !== owner) throw new Error("登录状态已改变，请重新下载");
+      return response;
+    });
+  }
+  const bytes = await exportClient.fetchDecodedBytes(resolveJoxObject(loaded.manifestObject, descriptor.object), undefined, descriptor.sha256, 120_000);
   const url = URL.createObjectURL(new Blob([bytes.slice().buffer], { type: descriptor.mediaType }));
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -183,7 +215,7 @@ async function loadBookSearchIndex(loaded: LoadedItem): Promise<JojoBookSearchIn
   const descriptor = loaded.manifest.search;
   if (!descriptor) return undefined;
   const object = resolveJoxObject(loaded.manifestObject, descriptor.object);
-  const key = `${loaded.manifest.itemId}\0${object}\0${descriptor.sha256}`;
+  const key = `${loaded.ownerId ?? "public"}\0${loaded.offline ? "offline" : "online"}\0${loaded.manifest.itemId}\0${object}\0${descriptor.sha256}`;
   let promise = bookSearchPromises.get(key);
   if (!promise) {
     promise = loaded.client.fetchJson<JojoBookSearchIndex>(object, undefined, "default", descriptor.sha256).then(asJojoBookSearchIndex)
@@ -196,6 +228,7 @@ async function loadBookSearchIndex(loaded: LoadedItem): Promise<JojoBookSearchIn
 }
 
 export async function searchLoadedBook(loaded: LoadedItem, query: string, size = 30): Promise<RagSearchHit[]> {
+  assertLoadedAccess(loaded);
   const needle = query.normalize("NFKC").toLocaleLowerCase().replace(/\s+/g, " ").trim();
   if (!needle) return [];
   const staticIndex = await loadBookSearchIndex(loaded);

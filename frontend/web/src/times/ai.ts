@@ -1,4 +1,5 @@
 import type { JojoAssetDescriptor } from "@jojo/content";
+import { readerExplanationRequest, type ExplanationRequest } from "@jojo/ui/reader-explanation";
 import type { TextAnchor } from "../annotations/types";
 import { agentGatewayUrl } from "../api/agentGateway";
 import { timesApi, type TimesNewsItem } from "./api";
@@ -150,6 +151,7 @@ export function explainTimesSelection(
     onDone(metadata: TimesExplanationMetadata, answer: string): void;
     onError(message: string): void;
   },
+  request: ExplanationRequest = {},
 ): () => void {
   const controller = new AbortController();
   void (async () => {
@@ -158,16 +160,18 @@ export function explainTimesSelection(
       accessToken(),
       prepareTimesAgentImages(news, controller.signal),
     ]);
+    if (controller.signal.aborted) return;
     callbacks.onStatus("正在结合文章上下文理解选中文字…");
     const response = await fetch(AGENT_URL, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
-        "Makers-Conversation-Id": `times_${crypto.randomUUID().replaceAll("-", "").slice(0, 24)}`,
+        Accept: "text/event-stream",
+        "Makers-Conversation-Id": request.conversationId || `times_${crypto.randomUUID().replaceAll("-", "").slice(0, 24)}`,
       },
       body: JSON.stringify({
-        message: promptFor(news, anchor, prepared.assets),
+        ...readerExplanationRequest(promptFor(news, anchor, prepared.assets), request),
         ...(prepared.images.length ? { images: prepared.images } : {}),
       }),
       signal: controller.signal,
@@ -185,6 +189,7 @@ export function explainTimesSelection(
     let answerText = "";
     let receivedDone = false;
     const processFrame = (frame: string): void => {
+      if (controller.signal.aborted || receivedDone) return;
       const lines = frame.split("\n");
       const eventName = lines.find((line) => line.startsWith("event:"))?.slice(6).trim() || "message";
       const payloadText = lines.filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trim()).join("\n");
@@ -210,25 +215,31 @@ export function explainTimesSelection(
         receivedDone = true;
       }
     };
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
+    try {
+      while (!receivedDone && !controller.signal.aborted) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        buffer = buffer.replaceAll("\r\n", "\n");
+        const frames = buffer.split("\n\n");
+        buffer = frames.pop() || "";
+        for (const frame of frames) processFrame(frame);
+        if (receivedDone) break;
+      }
+      buffer += decoder.decode();
       buffer = buffer.replaceAll("\r\n", "\n");
-      const frames = buffer.split("\n\n");
-      buffer = frames.pop() || "";
-      for (const frame of frames) processFrame(frame);
-      if (receivedDone) break;
+      for (const frame of buffer.split("\n\n")) {
+        if (frame.trim()) processFrame(frame);
+        if (receivedDone) break;
+      }
+      if (!receivedDone) throw new Error("AI 解释连接意外中断，请重试");
+      if (!controller.signal.aborted) callbacks.onDone(metadata, completedAnswer(answerText)!);
+    } finally {
+      await reader.cancel().catch(() => undefined);
+      reader.releaseLock();
     }
-    buffer += decoder.decode();
-    buffer = buffer.replaceAll("\r\n", "\n");
-    for (const frame of buffer.split("\n\n")) {
-      if (frame.trim()) processFrame(frame);
-      if (receivedDone) break;
-    }
-    if (!receivedDone) throw new Error("AI 解释连接意外中断，请重试");
-    callbacks.onDone(metadata, completedAnswer(answerText)!);
   })().catch((error: unknown) => {
+    if (controller.signal.aborted) return;
     if (error instanceof DOMException && error.name === "AbortError") return;
     const message = error instanceof Error ? error.message : String(error);
     callbacks.onError(message === "Failed to fetch"

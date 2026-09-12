@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { runHealthcheck } from '../../ai-healthcheck/probe.mjs';
 import { parseExecution } from '../src/monitor-events';
 import { TaskMonitor } from '../src/monitor-object';
 
@@ -8,31 +7,10 @@ const uuid = '11111111-1111-4111-8111-111111111111';
 const pingUrl = `https://hc-ping.com/${uuid}`;
 const base = Date.parse('2026-09-08T04:00:00Z');
 const legacyResult = { ok: true, conversationId: 'jojo-ai-health-0123456789abcdef0123', durationMs: 123, tokens: 2 };
-const frame = (event, data) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-
-async function realDirectSuccess() {
-  let body;
-  // Exercise the real pre-rollout direct reporter with a local SSE fixture.
-  const result = await runHealthcheck({
-    VITE_SUPABASE_URL: 'https://auth.example', VITE_SUPABASE_PUBLISHABLE_KEY: 'public-test',
-    JOJO_AI_MONITOR_EMAIL: 'monitor@example.invalid', JOJO_AI_MONITOR_PASSWORD: 'test-password',
-    JOJO_AI_HEALTHCHECK_PING_URL: pingUrl,
-  }, async (input, options) => {
-    const url = String(input);
-    if (url.endsWith('/rag/health')) return Response.json({ ok: true, configured: true });
-    if (url.includes('/token?')) return Response.json({ access_token: 'session-test' });
-    if (url.endsWith('/rag')) return new Response(
-      frame('text_delta', { delta: 'OK' }) + frame('done', { stopReason: 'stop', usage: { totalTokens: 2 } }),
-      { headers: { 'content-type': 'text/event-stream' } },
-    );
-    if (url.endsWith('/logout?scope=local')) return new Response(null, { status: 204 });
-    expect(url).toBe(pingUrl);
-    body = options.body;
-    return new Response('OK');
-  });
-  expect(JSON.parse(body)).toEqual(result);
-  expect(Object.keys(result).sort()).toEqual(['conversationId', 'durationMs', 'ok', 'tokens']);
-  return { body, result };
+function historicalDirectSuccess() {
+  // Freeze the four-field pre-rollout wire format. The current producer adds
+  // cleanup diagnostics and cannot serve as a historical migration fixture.
+  return { body: JSON.stringify(legacyResult), result: { ...legacyResult } };
 }
 
 let fixtureId = 0;
@@ -85,8 +63,8 @@ function monitorFixture() {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('legacy AI direct-success handoff', () => {
-  it('consumes the real direct producer format using only its probe ID and inbox date', async () => {
-    const { body, result } = await realDirectSuccess();
+  it('consumes the historical direct producer format using only its probe ID and inbox date', () => {
+    const { body, result } = historicalDirectSuccess();
     expect(parseExecution(body, slug, base, true)).toEqual({
       id: `legacy:ai:${result.conversationId}`, at: base, outcome: 'success', permanent: false,
     });
@@ -121,7 +99,7 @@ describe('legacy AI direct-success handoff', () => {
   });
 
   it('recovers internally without echo, persists deduplication, and can alert on the next v1 failure', async () => {
-    const { body, result } = await realDirectSuccess();
+    const { body, result } = historicalDirectSuccess();
     const f = monitorFixture();
     f.fail(1, 1);
     await f.tick(2);

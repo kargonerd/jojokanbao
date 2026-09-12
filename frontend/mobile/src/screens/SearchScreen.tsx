@@ -1,3 +1,4 @@
+import { searchResultTitle } from "@jojo/content";
 import { useNavigation, type NavigationProp } from "@react-navigation/native";
 import { memo, useEffect, useRef, useState } from "react";
 import {
@@ -25,37 +26,48 @@ const SearchResultRow = memo(function SearchResultRow({
   item,
   index,
   theme,
+  expanded,
+  onToggleExpanded,
   onPress,
 }: {
   item: ArchiveSearchResult;
   index: number;
   theme: MobileTheme;
+  expanded: boolean;
+  onToggleExpanded: () => void;
   onPress: () => void;
 }) {
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`${item.title}，${item.date}，第${item.page}版`}
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.result,
-        { borderBottomColor: theme.rule },
-        pressed && { backgroundColor: theme.paperSoft },
-      ]}
-    >
+    <View style={[styles.result, { borderBottomColor: theme.rule }]}>
       <Text style={[styles.resultIndex, { color: theme.red, borderBottomColor: theme.red, fontFamily: theme.sans }]}>
         {String(index + 1).padStart(2, "0")}
       </Text>
       <View style={styles.resultCopy}>
-        <Text style={[styles.resultTitle, { color: theme.ink, fontFamily: theme.serif }]}>{item.title || "未命名文章"}</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel={`查看原版 PDF：${item.title || "未命名文章"}`} onPress={onPress}>
+          <Text style={[styles.resultTitle, { color: theme.ink, fontFamily: theme.serif }]}>{item.title || "未命名文章"}</Text>
+        </Pressable>
         <View style={styles.tags}>
           <Text style={[styles.tag, { color: theme.red, borderColor: theme.rule, fontFamily: theme.sans }]}>人民日报</Text>
           <Text style={[styles.tag, { color: theme.muted, borderColor: theme.rule, fontFamily: theme.sans }]}>{item.date}</Text>
           {item.page > 0 ? <Text style={[styles.tag, { color: theme.muted, borderColor: theme.rule, fontFamily: theme.sans }]}>第 {item.page} 版</Text> : null}
         </View>
-        <Text style={[styles.resultText, { color: theme.muted, fontFamily: theme.serif }]} numberOfLines={3}>{item.content}</Text>
+        <Text
+          selectable={expanded}
+          style={[styles.resultText, { color: expanded ? theme.ink : theme.muted, fontFamily: theme.serif }]}
+          numberOfLines={expanded ? undefined : 3}
+        >{item.content.trim() ? item.content : "暂无文字内容，可查看原版 PDF。"}</Text>
+        <View style={styles.resultActions}>
+          {item.content.trim() ? (
+            <Pressable accessibilityRole="button" accessibilityState={{ expanded }} onPress={onToggleExpanded} style={styles.resultAction}>
+              <Text style={[styles.resultActionText, { color: theme.red, fontFamily: theme.sans }]}>{expanded ? "收起全文" : "显示全文"}</Text>
+            </Pressable>
+          ) : null}
+          <Pressable accessibilityRole="button" onPress={onPress} style={styles.resultAction}>
+            <Text style={[styles.resultActionText, { color: theme.red, fontFamily: theme.sans }]}>查看原版 PDF</Text>
+          </Pressable>
+        </View>
       </View>
-    </Pressable>
+    </View>
   );
 });
 
@@ -66,6 +78,7 @@ export function SearchScreen() {
   const [query, setQuery] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState("");
   const [results, setResults] = useState<ArchiveSearchResult[]>([]);
+  const [expandedResults, setExpandedResults] = useState<Set<number>>(() => new Set());
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -89,6 +102,7 @@ export function SearchScreen() {
       if (controller.signal.aborted) return;
       setSubmittedQuery(keyword);
       setResults(response.results);
+      setExpandedResults(new Set());
       setTotal(response.total);
       setPage(nextPage);
       requestAnimationFrame(() => {
@@ -153,16 +167,26 @@ export function SearchScreen() {
         <FlatList
           ref={listRef}
           data={results}
+          extraData={expandedResults}
           keyExtractor={(item, index) => `${item.date}:${item.page}:${index}`}
           renderItem={({ item, index }) => (
             <SearchResultRow
               item={item}
               index={(page - 1) * PAGE_SIZE + index}
               theme={theme}
+              expanded={expandedResults.has(index)}
+              onToggleExpanded={() => setExpandedResults((previous) => {
+                const next = new Set(previous);
+                if (next.has(index)) next.delete(index);
+                else next.add(index);
+                return next;
+              })}
               onPress={() => navigation.navigate("Reader", {
                 publication: "rmrb",
                 issueId: item.date.replaceAll("-", ""),
                 page: item.page || undefined,
+                searchQuery: submittedQuery,
+                searchTitle: searchResultTitle(item.title),
               })}
             />
           )}
@@ -226,7 +250,10 @@ const styles = StyleSheet.create({
   resultTitle: { fontSize: 18, lineHeight: 25, fontWeight: "900" },
   tags: { marginTop: 8, flexDirection: "row", flexWrap: "wrap", gap: 5 },
   tag: { borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 6, paddingVertical: 3, fontSize: 9, fontWeight: "700" },
-  resultText: { marginTop: 8, fontSize: 12, lineHeight: 20 },
+  resultText: { marginTop: 8, fontSize: 14, lineHeight: 24 },
+  resultActions: { flexDirection: "row", flexWrap: "wrap", columnGap: 24 },
+  resultAction: { minHeight: 44, justifyContent: "center" },
+  resultActionText: { fontSize: 12, fontWeight: "800" },
   pagination: { paddingTop: 22, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   pageButton: { minWidth: 92, height: 40, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   pageText: { fontSize: 11, fontWeight: "800" },

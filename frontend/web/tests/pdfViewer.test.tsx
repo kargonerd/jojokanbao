@@ -678,3 +678,48 @@ describe("PdfViewer demand loading", () => {
     scrollContainer.remove();
   });
 });
+
+
+describe("PDF search on touch devices", () => {
+  it("keeps the pending search page resident when other pages enter the viewport", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(pointer: coarse)" }));
+    const { document } = createDocument(100);
+    const host = window.document.createElement("div");
+    window.document.body.append(host);
+    const root = createRoot(host);
+    const onPageChange = vi.fn();
+    await act(async () => root.render(<PdfViewer document={document} initialPage={1} onPageChange={onPageChange} searchTarget={{ page: 80, query: "", quote: "完整标题" }} />));
+    const loadingObserver = observers.find((observer) => observer.options?.rootMargin === "5% 0px")!;
+    const entries = [1, 2, 3].map((page) => ({
+      target: host.querySelector(`#page-${page}`)!, isIntersecting: true,
+      boundingClientRect: { top: 100, bottom: 900 },
+    } as IntersectionObserverEntry));
+    await act(async () => loadingObserver.callback(entries, {} as IntersectionObserver));
+    expect(host.querySelector("#page-80")?.getAttribute("data-page-state")).toBe("loaded");
+    expect(host.querySelectorAll('[data-page-state="loaded"]').length).toBeLessThanOrEqual(3);
+    const visibleObserver = observers.find((observer) => Array.isArray(observer.options?.threshold))!;
+    await act(async () => visibleObserver.callback([entries[1]!], {} as IntersectionObserver));
+    expect(onPageChange).toHaveBeenCalledWith(2);
+    expect(host.querySelector("#page-80")?.getAttribute("data-page-state")).toBe("loaded");
+    await act(async () => root.render(<PdfViewer document={document} initialPage={1} />));
+    await act(async () => loadingObserver.callback(entries, {} as IntersectionObserver));
+    expect(host.querySelector("#page-80")?.getAttribute("data-page-state")).toBe("placeholder");
+    await act(async () => root.unmount());
+    host.remove();
+  });
+
+  it("enables text only for the requested search page even when normal text layers are disabled", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(pointer: coarse)" }));
+    const { document } = createDocument(3);
+    const host = window.document.createElement("div");
+    window.document.body.append(host);
+    const root = createRoot(host);
+    await act(async () => root.render(<PdfViewer document={document} initialPage={2} enableTextLayer={false} searchTarget={{ page: 2, query: "铁路" }} />));
+    expect(host.querySelector('[data-page="2"] [data-pdf-text-layer]')).not.toBeNull();
+    expect(host.querySelector('[data-page="1"] [data-pdf-text-layer]')).toBeNull();
+    await act(async () => root.render(<PdfViewer document={document} initialPage={3} enableTextLayer={false} searchTarget={{ page: 2, query: "铁路" }} />));
+    expect(host.querySelector('[data-page="2"] [data-pdf-text-layer]')).not.toBeNull();
+    await act(async () => root.unmount());
+    host.remove();
+  });
+});

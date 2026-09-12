@@ -14,6 +14,7 @@ vi.mock("../src/annotations/api", () => annotationApi);
 
 describe("SelectableAnnotationArticle", () => {
   beforeEach(() => {
+    vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
     useFeatureFlagStore.setState({ initialized: true, revision: "test", flags: { "reader.speech": false, "library.bookshelf": false, "reader.annotations": true } });
     useAccountSessionStore.setState({ initialized: true, userId: "user-1", displayName: "报刊读者-ABC" });
     annotationApi.loadAnnotationThreads.mockResolvedValue([]);
@@ -22,11 +23,12 @@ describe("SelectableAnnotationArticle", () => {
       authorId: "user-1", authorName: "报刊读者-ABC", quote: "报刊正文", prefix: "", suffix: "", startOffset: 0, endOffset: 4,
       createdAt: "2026-08-18T10:00:00Z", comments: [],
     });
-    Object.defineProperty(Range.prototype, "getBoundingClientRect", { configurable: true, value: () => ({ left: 100, top: 100, bottom: 120, width: 100 }) });
+    Object.defineProperty(Range.prototype, "getBoundingClientRect", { configurable: true, value: () => ({ left: 100, right: 200, top: 150, bottom: 170, width: 100, height: 20 }) });
   });
   afterEach(() => {
     window.getSelection()?.removeAllRanges();
     cleanup();
+    vi.unstubAllGlobals();
   });
 
   it("uses the same annotation contract for a newspaper body", async () => {

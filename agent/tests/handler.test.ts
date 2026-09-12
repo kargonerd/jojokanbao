@@ -20,6 +20,44 @@ const createEdgeOneAgentHandler = (options: Parameters<typeof createHandler>[0])
 });
 
 describe("createEdgeOneAgentHandler", () => {
+  it.each(["all", "book", "periodical"])("preserves the %s source type when creating tools", async (contentType) => {
+    const faux = fauxProvider({ provider: "openai-codex", tokensPerSecond: 100_000 });
+    faux.setResponses([fauxAssistantMessage("报刊回答")]);
+    const models = createModels();
+    models.setProvider(faux.provider);
+    const model = faux.getModel();
+    const tools = vi.fn(async () => []);
+    const handle = createEdgeOneAgentHandler({
+      authorize: async () => ({ id: "user-1" }), tools,
+      createModelRuntime: async () => ({
+        config: { provider: "openai-codex", model: model.id }, models, model, configured: true,
+      }),
+    });
+    const scope = { contentType, mode: "all", datasetIds: contentType === "all" ? ["rmrb", "book-a"] : [contentType === "book" ? "book-a" : "rmrb"] };
+    const response = await handle({ request: { body: { message: "黄河报道", scope } } });
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("event: done");
+    expect(tools).toHaveBeenCalledWith(expect.any(Object), { id: "user-1" }, expect.objectContaining({ scope }));
+  });
+
+  it("rejects unknown content types before initializing a model", async () => {
+    const createModelRuntime = vi.fn();
+    const handle = createEdgeOneAgentHandler({ authorize: async () => ({ id: "user-1" }), createModelRuntime });
+    const response = await handle({ request: { body: { message: "test", scope: { contentType: "unknown" } } } });
+    expect(response.status).toBe(400);
+    expect(createModelRuntime).not.toHaveBeenCalled();
+  });
+
+  it.each([{ itemIds: ["book-a:item-a"] }, { manifestObjects: ["content/book-a/manifest.jox"] }])(
+    "rejects granular restrictions on a combined scope: %j", async (restriction) => {
+      const createModelRuntime = vi.fn();
+      const handle = createEdgeOneAgentHandler({ authorize: async () => ({ id: "user-1" }), createModelRuntime });
+      const response = await handle({ request: { body: { message: "test", scope: { contentType: "all", ...restriction } } } });
+      expect(response.status).toBe(400);
+      expect(createModelRuntime).not.toHaveBeenCalled();
+    },
+  );
+
   it("streams a real Pi Agent run", async () => {
     const faux = fauxProvider({
       provider: "openai-codex",

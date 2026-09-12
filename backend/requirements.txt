@@ -5,3 +5,4 @@ edge-tts==7.2.8
 boto3==1.43.89
 lameenc==1.8.4
 mutagen==1.48.1
+cryptography==50.0.1

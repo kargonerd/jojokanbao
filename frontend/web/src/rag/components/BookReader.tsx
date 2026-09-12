@@ -31,7 +31,7 @@ import type { RagAnswerMetadata, RagFocusContext, RagReference, RagSearchHit } f
 import { BookAiPanel } from "./BookAiPanel";
 import { BookSearchPanel } from "./BookSearchPanel";
 import { BookNavigationSheet } from "./BookNavigationSheet";
-import { BookSelectionPopover } from "./BookSelectionPopover";
+import { ReaderSelectionPopover } from "../../reading/ReaderSelectionPopover";
 import { BookThoughtComposer } from "./BookThoughtComposer";
 import "./BookReader.css";
 import {
@@ -1073,14 +1073,14 @@ export function BookReader({
       </section>
     </>}
 
-    {textSelection && <BookSelectionPopover rect={textSelection.rect} width={annotationAccess ? 272 : 144}>
+    {textSelection && <ReaderSelectionPopover rect={textSelection.rect} width={annotationAccess ? 288 : 144}>
       <div className="book-selection-actions" role="toolbar" aria-label="选中文字工具">
         <button type="button" onClick={() => void copySelection()} className="reader-selection-action"><IoCopyOutline aria-hidden="true" /><span>复制</span></button>
         {annotationAccess && <><button type="button" disabled={annotationSaving} onClick={() => void underlineSelection()} className="reader-selection-action"><span aria-hidden="true" className="book-selection-underline">A</span><span>划线</span></button>
         <button type="button" disabled={annotationSaving} onClick={composeThought} className="reader-selection-action"><IoCreateOutline aria-hidden="true" /><span>写想法</span></button></>}
         <button type="button" onClick={() => agentAccess ? void explainSelection() : openBookAi()} className="reader-selection-action" aria-label="AI 解释"><IoSparklesOutline aria-hidden="true" /><span>AI 解释</span></button>
       </div>
-    </BookSelectionPopover>}
+    </ReaderSelectionPopover>}
 
     {thoughtSelection && <BookThoughtComposer quote={thoughtSelection.text} value={thought} visibility={thoughtVisibility}
       saving={annotationSaving} error={thoughtError} panelClass={panelClass} onChange={setThought} onVisibilityChange={setThoughtVisibility}

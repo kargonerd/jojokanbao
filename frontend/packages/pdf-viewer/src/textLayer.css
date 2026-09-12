@@ -76,3 +76,16 @@
 .textLayer.selecting .endOfContent {
   top: 0;
 }
+
+.pdf-search-highlights {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+  /* Match text selection: composite once so overlapping OCR boxes stay light. */
+  opacity: 0.25;
+}
+.pdf-search-highlight {
+  position: absolute;
+  background: var(--color-red, #8b1a1a);
+}

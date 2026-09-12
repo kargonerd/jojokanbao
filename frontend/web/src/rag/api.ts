@@ -51,6 +51,10 @@ function toolActivity(name: unknown, args: unknown, isError?: boolean): RagStrea
       return { phase: "searching", message: `正在当前书籍中检索原文${suffix}` };
     case "search_content":
       return { phase: "searching", message: `正在候选书籍中检索原文${suffix}` };
+    case "search_periodicals":
+      return { phase: "searching", message: `正在人民日报中检索原文${suffix}` };
+    case "read_periodical_article":
+      return { phase: "reading", message: "正在读取报刊文章原文…" };
     case "inspect_item":
       return { phase: "reading", message: "正在读取书籍概况…" };
     case "list_item_toc":
@@ -95,6 +99,7 @@ async function accessToken(): Promise<string> {
 export const notebookApi = {
   list: async (): Promise<RagNotebook[]> => (await loadCatalog()).datasets.filter((dataset) => (
     dataset.publicationStatus !== "draft" && supportsJojoDatasetAi(dataset)
+    && (dataset.type === "book" || dataset.type === "book-series")
   )).map((dataset) => ({
     id: dataset.datasetId,
     title: dataset.title,
@@ -120,7 +125,7 @@ export const notebookApi = {
 };
 
 // Chat (streaming)
-export function askStream(params: { datasetIds: string[]; scopeMode: "all" | "selected"; question: string; conversationId?: string; itemIds?: string[]; manifestObjects?: string[]; history?: RagMessage[]; focus?: RagFocusContext }, onChunk: (text: string) => void, onDone: (refs?: RagReference[], conversationId?: string, metadata?: RagAnswerMetadata) => void, onError: (err: string) => void, onActivity?: (activity: RagStreamActivity) => void) {
+export function askStream(params: { contentType?: "all" | "book" | "periodical"; datasetIds: string[]; scopeMode: "all" | "selected"; question: string; conversationId?: string; itemIds?: string[]; manifestObjects?: string[]; history?: RagMessage[]; focus?: RagFocusContext }, onChunk: (text: string) => void, onDone: (refs?: RagReference[], conversationId?: string, metadata?: RagAnswerMetadata) => void, onError: (err: string) => void, onActivity?: (activity: RagStreamActivity) => void) {
   const ctrl = new AbortController();
   let settled = false;
   const conversationId = params.conversationId || `conv_${crypto.randomUUID().replaceAll("-", "").slice(0, 24)}`;
@@ -170,6 +175,7 @@ export function askStream(params: { datasetIds: string[]; scopeMode: "all" | "se
         message: params.question,
         history: agentHistory(params.history ?? []),
         scope: {
+          ...(params.contentType ? { contentType: params.contentType } : {}),
           mode: params.scopeMode,
           datasetIds: params.datasetIds,
           itemIds: params.itemIds ?? [],

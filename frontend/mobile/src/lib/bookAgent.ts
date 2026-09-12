@@ -1,3 +1,5 @@
+import { fetch } from "expo/fetch";
+
 const AGENT_URL = process.env.EXPO_PUBLIC_AGENT_API_URL?.trim()
   || "https://agent-global.jojokanbao.cn/rag";
 
@@ -11,6 +13,9 @@ export interface MobileBookAgentRequest {
 }
 
 export interface MobileBookAgentReference {
+  type?: "newspaper";
+  date?: string;
+  page?: number;
   citationId?: string;
   datasetId?: string;
   itemId?: string;
@@ -83,6 +88,7 @@ export function askMobileBookAgent(
       headers: {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
+        Accept: "text/event-stream",
         "Makers-Conversation-Id": activeConversationId,
       },
       body: JSON.stringify({

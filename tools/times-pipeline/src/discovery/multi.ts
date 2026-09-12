@@ -74,6 +74,8 @@ export async function discoverSource(source: SourceConfig, fetchedAt: string, cu
   if (source.discovery.kind !== "multi") {
     const result = await discoverEndpoint(source, source.discovery, fetchedAt, cutoff, runtime);
     result.source = source;
+    const fetchPolicy = result.fetchPolicy ?? sourceFetchPolicy(source.id);
+    if (fetchPolicy) result.fetchPolicy = fetchPolicy;
     result.candidates = result.candidates
       .filter((candidate) => !isUnsupportedMedia(candidate) && acceptSourceCandidate(source.id, candidate))
       .map((candidate) => annotate(source, candidate, []));

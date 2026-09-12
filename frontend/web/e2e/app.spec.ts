@@ -111,6 +111,51 @@ test.describe("JOJO Web", () => {
     await expect(page.getByRole("link", { name: "打开旧版 JOJO 看报" })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "GitHub 查看源码" })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "版权说明" })).toBeVisible();
+
+    const quarkLinks = page.getByRole("link", { name: "夸克网盘下载", exact: true });
+    await expect(quarkLinks).toHaveCount(5);
+    for (const link of [page.getByRole("link", { name: "JOJO看报账号", exact: true }), quarkLinks.first()]) {
+      await expect(link).toHaveCSS("color", "rgb(139, 26, 26)");
+      await expect(link).toHaveCSS("text-decoration-line", "underline");
+    }
+    const license = page.getByRole("link", { name: /开源软件许可/ });
+    await expect(license).toHaveCSS("color", "rgb(139, 26, 26)");
+    await expect(license.locator("strong")).toHaveCSS("text-decoration-line", "underline");
+    await license.focus();
+    await license.press("Shift+Tab");
+    await page.keyboard.press("Tab");
+    await expect(license).toBeFocused();
+    await expect(license).toHaveCSS("outline-style", "solid");
+    await expect(license).toHaveCSS("outline-width", "2px");
+  });
+
+  for (const viewport of [{ width: 1280, height: 720 }, { width: 390, height: 844 }]) {
+    test(`support section links scroll into view at ${viewport.width}px`, async ({ page }) => {
+      await page.setViewportSize(viewport);
+      for (const path of ["/support", "/archive/support"]) {
+        const copyrightUrl = `${path}#${encodeURIComponent("版权说明")}`;
+        const copyright = page.getByRole("heading", { name: "版权说明", exact: true });
+
+        await page.goto(copyrightUrl);
+        await expect(copyright).toBeInViewport({ ratio: 1 });
+        expect((await copyright.boundingBox())!.y).toBeGreaterThanOrEqual(64);
+
+        await page.reload();
+        await expect(copyright).toBeInViewport({ ratio: 1 });
+
+        await page.goto(`${path}#${encodeURIComponent("纪念缅怀")}`);
+        await expect(page.getByRole("heading", { name: "纪念缅怀", exact: true })).toBeInViewport({ ratio: 1 });
+        await page.goBack();
+        await expect(copyright).toBeInViewport({ ratio: 1 });
+      }
+    });
+  }
+
+  test("support page tolerates unknown and malformed fragments", async ({ page }) => {
+    for (const hash of ["#unknown-section", "#%E0%A4%A"]) {
+      await page.goto(`/support${hash}`);
+      await expect(page.getByRole("heading", { name: "关于 JOJO 看报", exact: true })).toBeVisible();
+    }
   });
 
   test("legacy publication links redirect without losing the page hash", async ({ page }) => {

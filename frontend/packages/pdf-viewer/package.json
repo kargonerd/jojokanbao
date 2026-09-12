@@ -16,6 +16,7 @@
     "react-dom": "^19.0.0"
   },
   "dependencies": {
+    "@jojo/content": "workspace:*",
     "pdfjs-dist": "^5.7.0"
   },
   "devDependencies": {

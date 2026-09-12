@@ -14,6 +14,8 @@ import type { RootStackParamList } from "../navigation/types";
 import { useMobileStore } from "../store/mobileStore";
 import { mobileTheme } from "../theme/tokens";
 import { useRetryOnFailure } from "../lib/useRetryOnFailure";
+import { MobileOfflineBookControl } from "../offline/MobileOfflineBookControl";
+import { startMobileOfflineAccountSync, useMobileOfflineBooksStore } from "../offline/books";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Bookshelf">;
 
@@ -24,12 +26,17 @@ export function BookshelfScreen({ navigation }: Props) {
   const { width } = useWindowDimensions();
   const recentBooks = useMobileStore((state) => state.recentBooks);
   const { entries, loading, error, busyKey, toggle, reload } = useBookshelf();
+  const offlineRecords = useMobileOfflineBooksStore((state) => state.books);
+  const offlineLoading = useMobileOfflineBooksStore((state) => state.loading);
+  const offlineError = useMobileOfflineBooksStore((state) => state.error);
   const [books, setBooks] = useState<MobileBook[]>([]);
   const [booksFailed, setBooksFailed] = useState(false);
   const [retryToken, setRetryToken] = useState(0);
   useRetryOnFailure(booksFailed, () => setRetryToken((value) => value + 1));
   const columnCount = getLibraryColumnCount(width);
   const cellWidth = getLibraryCellWidth(width, columnCount);
+
+  useEffect(startMobileOfflineAccountSync, []);
 
   useEffect(() => {
     let active = true;
@@ -39,17 +46,22 @@ export function BookshelfScreen({ navigation }: Props) {
     return () => { active = false; };
   }, [retryToken]);
 
-  const items = useMemo<ShelfItem[]>(() => entries.map((entry) => ({
-    ...entry,
-    book: books.find((book) => book.datasetId === entry.datasetId),
-  })), [books, entries]);
+  const items = useMemo<ShelfItem[]>(() => {
+    const visible = [...entries];
+    for (const record of offlineRecords) {
+      if (!visible.some((entry) => entry.datasetId === record.entry.datasetId && (entry.itemId === record.item.itemId || entry.itemId === record.item.itemKey))) {
+        visible.push({ datasetId: record.entry.datasetId, itemId: record.item.itemKey, title: record.item.title });
+      }
+    }
+    return visible.map((entry) => ({ ...entry, book: books.find((book) => book.datasetId === entry.datasetId) }));
+  }, [books, entries, offlineRecords]);
 
   const remove = (item: MobileBookshelfEntry) => toggle(`${item.datasetId}:${item.itemId}`, async () => item);
 
   return (
     <SafeAreaView edges={["top"]} style={[styles.safe, { backgroundColor: theme.canvas }]}>
       <ScreenHeader title="我的书架" onBack={() => navigation.goBack()} />
-      {loading && !entries.length ? (
+      {(loading || offlineLoading) && !items.length ? (
         <View style={styles.center}>
           {!IS_EINK_RELEASE ? <ActivityIndicator color={theme.red} /> : null}
           <Text style={[styles.centerText, { color: theme.muted, fontFamily: theme.sans }]}>正在整理书架…</Text>
@@ -81,13 +93,16 @@ export function BookshelfScreen({ navigation }: Props) {
                     bookTitle: item.book?.title ?? item.title,
                   })}
                 />
-                <Pressable disabled={busyKey === key} onPress={() => void remove(item)} style={styles.removeButton}>
+                <View style={styles.actions}>
+                <MobileOfflineBookControl datasetId={item.datasetId} itemKey={item.itemId} title={item.title} />
+                {entries.some((entry) => entry.datasetId === item.datasetId && entry.itemId === item.itemId) && <Pressable accessibilityRole="button" accessibilityLabel={`移出书架：${item.title}`} disabled={busyKey === key} onPress={() => void remove(item)} style={styles.removeButton}>
                   <Text style={[styles.removeText, { color: theme.red, opacity: busyKey === key ? 0.4 : 1, fontFamily: theme.sans }]}>{busyKey === key ? "正在移出…" : "移出书架"}</Text>
-                </Pressable>
+                </Pressable>}
+                </View>
               </View>
             );
           }}
-          ListHeaderComponent={error && items.length ? <Text accessibilityRole="alert" style={[styles.notice, { color: theme.red, borderColor: theme.red, fontFamily: theme.sans }]}>{error}</Text> : null}
+          ListHeaderComponent={(error || offlineError) && items.length ? <Text accessibilityRole="alert" style={[styles.notice, { color: theme.red, borderColor: theme.red, fontFamily: theme.sans }]}>{offlineError || error}</Text> : null}
           ListEmptyComponent={(
             <View style={styles.empty}>
               <Text style={[styles.emptyMark, { color: theme.red, fontFamily: theme.serif }]}>架</Text>
@@ -116,8 +131,9 @@ const styles = StyleSheet.create({
   emptyList: { justifyContent: "center" },
   row: { gap: 16, marginBottom: 24 },
   cell: { flexGrow: 0 },
-  removeButton: { minHeight: 34, alignItems: "flex-start", justifyContent: "center" },
-  removeText: { fontSize: 9, fontWeight: "900" },
+  actions: { flexDirection: "row", alignItems: "flex-start", gap: 6, marginTop: 4 },
+  removeButton: { minHeight: 44, alignItems: "flex-start", justifyContent: "center" },
+  removeText: { fontSize: 10 },
   notice: { marginBottom: 18, borderLeftWidth: 2, padding: 10, fontSize: 10, lineHeight: 17, fontWeight: "800" },
   empty: { alignItems: "center", paddingHorizontal: 24 },
   emptyMark: { fontSize: 50, fontWeight: "900" },

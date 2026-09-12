@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { transformJoxBytes } from "@jojo/content";
 
 function installPdfJsImportPolyfills() {
   if (!("DOMMatrix" in globalThis)) {
@@ -152,6 +153,40 @@ const samples = [
 ];
 
 describe("protected Archive PDFs", () => {
+  it("reads and downloads Jox PDFs with the object key and absolute range offsets", async () => {
+    const { resolvePdfSource, fetchPdfDownloadBytes } = await loadProtectionModule();
+    const key = "content/newspapers/rmrb/items/1976/10/1976-10-09/assets/newspaper.pdf.jox";
+    const original = makePdf("JoxPDF", 4096);
+    const { fetchFn, ranges } = createRangeFetch(transformJoxBytes(original, key));
+    const options = { fetchFn: fetchFn as typeof fetch, joxObjectKey: key, rangeChunkSize: 64 };
+    const url = `https://cdn.example.test/${key}?v=revision`;
+    const source = await resolvePdfSource(url, true, options);
+    expect(source.kind).toBe("protected");
+    if (source.kind !== "protected") throw new Error("Expected range transport");
+    expect(byteArray(source.initialData)).toEqual(byteArray(original.slice(0, 64)));
+    const events: Array<{ begin: number; chunk: Uint8Array }> = [];
+    source.transport.transportReady((event: { begin: number; chunk: Uint8Array }) => events.push(event));
+    source.transport.requestDataRange(97, 181);
+    await waitForMicrotasks();
+    expect(byteArray(events[0]?.chunk ?? new Uint8Array())).toEqual(byteArray(original.slice(97, 181)));
+    source.transport.abort();
+    const download = await fetchPdfDownloadBytes(url, true, options);
+    expect(byteArray(download.bytes)).toEqual(byteArray(original));
+    await expect(readPdfText(download.bytes)).resolves.toContain("JoxPDF");
+    expect(ranges).not.toContain("full");
+    await expect(resolvePdfSource(url, true, { ...options, joxObjectKey: "wrong/key.jox" })).rejects.toThrow();
+  });
+
+  it("decodes Jox with the same key when CORS requires a full-fetch fallback", async () => {
+    const { fetchPdfDownloadBytes } = await loadProtectionModule();
+    const key = "content/newspapers/hq/items/1964/196419/assets/issue.pdf.jox";
+    const original = makePdf("Jox fallback");
+    const fetchFn = vi.fn().mockRejectedValueOnce(new TypeError("CORS range unavailable"))
+      .mockResolvedValueOnce(new Response(transformJoxBytes(original, key).slice().buffer));
+    const result = await fetchPdfDownloadBytes(`https://cdn.example/${key}`, true, { fetchFn, joxObjectKey: key });
+    expect(byteArray(result.bytes)).toEqual(byteArray(original));
+  });
+
   it("cancels the initial range request before a transport exists", async () => {
     const { resolvePdfSource } = await loadProtectionModule();
     let receivedSignal: AbortSignal | null | undefined;

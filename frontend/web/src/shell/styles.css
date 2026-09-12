@@ -2,6 +2,7 @@
   --app-canvas: #f4f4f2;
   --app-line: #ddd9d2;
   --app-gray: #706d69;
+  --app-bottom-navigation-height: 0px;
 }
 
 .app-shell {
@@ -703,9 +704,12 @@ a.jojo-citation:hover {
 .bookshelf-cover { width: 100%; aspect-ratio: 3 / 4; padding: clamp(9px, 1.2vw, 14px); box-shadow: 3px 3px 0 rgba(32, 32, 32, .1); font-family: var(--font-serif); }
 .bookshelf-card strong { overflow: hidden; font-family: var(--font-serif); font-size: .9rem; text-overflow: ellipsis; white-space: nowrap; }
 .bookshelf-card small { overflow: hidden; color: var(--app-gray); font-size: .68rem; text-overflow: ellipsis; white-space: nowrap; }
-.bookshelf-card > button {
+.bookshelf-card-actions { display: flex; align-items: start; gap: 12px; margin-top: 6px; }
+.bookshelf-card-actions > button {
   justify-self: start;
-  margin-top: 8px;
+  min-height: 32px;
+  margin-left: auto;
+  flex-shrink: 0;
   border: 0;
   border-bottom: 1px solid transparent;
   padding: 0;
@@ -713,9 +717,23 @@ a.jojo-citation:hover {
   background: transparent;
   font-size: .66rem;
 }
-.bookshelf-card > button:hover:not(:disabled),
-.bookshelf-card > button:focus-visible { border-bottom-color: currentColor; color: var(--color-red); outline: 0; }
-.bookshelf-card > button:disabled { cursor: wait; opacity: .55; }
+.bookshelf-card-actions > button:hover:not(:disabled) { color: var(--color-red); }
+.bookshelf-card-actions > button:disabled { cursor: wait; opacity: .55; }
+
+.shelf-download { flex: 1; min-width: 0; font: 400 11px var(--font-sans); color: var(--app-gray); }
+.shelf-download-row { display: flex; min-height: 32px; align-items: center; gap: 4px; }
+.shelf-download button { display: inline-flex; align-items: center; gap: 5px; min-height: 32px; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; white-space: nowrap; }
+.shelf-download button:hover { color: var(--color-red); }
+.shelf-download button:focus-visible, .bookshelf-card-actions > button:focus-visible { outline: 1px solid var(--color-red); outline-offset: 3px; }
+.shelf-download button:disabled { opacity: .5; cursor: wait; }
+.shelf-download svg { width: 14px; height: 14px; }
+.shelf-download-pending { color: var(--color-red); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.shelf-download .shelf-download-cancel { justify-content: center; min-width: 28px; }
+.shelf-download-progress { height: 2px; background: var(--app-line); }
+.shelf-download-progress > span { display: block; height: 100%; background: var(--color-red); }
+.shelf-download-detail { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; border-top: 1px solid var(--app-line); padding-top: 4px; }
+.shelf-download-detail button { color: var(--color-red); }
+.shelf-download-error { margin: 4px 0 0; color: var(--color-red); font-size: 10px; line-height: 1.6; overflow-wrap: anywhere; }
 
 .app-library {
   display: grid;
@@ -920,6 +938,9 @@ a.jojo-citation:hover {
 }
 
 @media (max-width: 720px) {
+  .app-shell:has(> .app-mobile-navigation) {
+    --app-bottom-navigation-height: calc(56px + env(safe-area-inset-bottom));
+  }
   .search-entry {
     padding-inline: 20px;
   }
@@ -989,7 +1010,7 @@ a.jojo-citation:hover {
     display: grid;
     grid-auto-flow: column;
     grid-auto-columns: minmax(0, 1fr);
-    height: calc(56px + env(safe-area-inset-bottom));
+    height: var(--app-bottom-navigation-height);
     padding: 0 max(8px, env(safe-area-inset-left)) env(safe-area-inset-bottom) max(8px, env(safe-area-inset-right));
     border-top: 1px solid var(--app-line);
     background: rgba(255, 255, 255, .98);
@@ -1029,7 +1050,7 @@ a.jojo-citation:hover {
   }
   .app-shell > .app-mobile-navigation + * {
     box-sizing: border-box;
-    padding-bottom: calc(56px + env(safe-area-inset-bottom));
+    padding-bottom: var(--app-bottom-navigation-height);
   }
   .app-login { font-size: .78rem; }
   .app-home { min-height: calc(100vh - 58px); padding: 38px 20px 40px; }

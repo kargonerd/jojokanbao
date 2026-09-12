@@ -13,6 +13,7 @@ import {
   ArchiveReaderPage,
   AccountEntry,
   BookshelfPage,
+  startOfflineAccountSync,
   BookReaderPage,
   LibraryPage,
   PERIODICALS,
@@ -41,7 +42,7 @@ function DesktopRuntime() {
   const accountInitialized = useAccountSessionStore((state) => state.initialized);
   const userId = useAccountSessionStore((state) => state.userId);
 
-  useEffect(() => startAccountSessionSync(), []);
+  useEffect(() => { startOfflineAccountSync(); return startAccountSessionSync(); }, []);
   useEffect(() => {
     if (accountInitialized) void refreshFeatureFlags();
   }, [accountInitialized, userId]);

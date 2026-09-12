@@ -10,6 +10,7 @@ import {
 } from "react";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import { PdfPage } from "./PdfPage";
+import type { PdfSearchTarget, PdfSearchResult } from "./searchText";
 
 interface PdfViewerProps {
   document: PDFDocumentProxy;
@@ -27,6 +28,8 @@ interface PdfViewerProps {
   onPageError?: (page: number, error: Error) => void;
   enableTextLayer?: boolean;
   suppressPageLoading?: boolean;
+  searchTarget?: PdfSearchTarget;
+  onSearchResult?: (result: PdfSearchResult) => void;
 }
 
 interface VisiblePage {
@@ -92,12 +95,14 @@ function selectResidentPages(
   pages: Iterable<number>,
   currentPage: number,
   constrained: boolean,
+  pendingSearchPage: number | null = null,
 ): Set<number> {
-  const candidates = [...new Set([...pages, currentPage])].filter((page) => page > 0);
+  const candidates = [...new Set([...pages, currentPage, pendingSearchPage ?? 0])].filter((page) => page > 0);
   if (!constrained || candidates.length <= MAX_CONSTRAINED_RESIDENT_PAGES) return new Set(candidates);
 
   candidates.sort((left, right) => (
-    Math.abs(left - currentPage) - Math.abs(right - currentPage) || left - right
+    Number(right === pendingSearchPage) - Number(left === pendingSearchPage)
+    || Math.abs(left - currentPage) - Math.abs(right - currentPage) || left - right
   ));
   return new Set(candidates.slice(0, MAX_CONSTRAINED_RESIDENT_PAGES));
 }
@@ -118,6 +123,8 @@ export function PdfViewer({
   onPageError,
   enableTextLayer = true,
   suppressPageLoading = false,
+  searchTarget,
+  onSearchResult,
 }: PdfViewerProps) {
   const normalizedInitialPage = clampPage(initialPage, document.numPages);
   const [loadedPages, setLoadedPages] = useState<Set<number>>(() => new Set([normalizedInitialPage]));
@@ -140,6 +147,62 @@ export function PdfViewer({
   const [constrainedResidency] = useState(() => shouldConstrainPageResidency(touchInput));
   const [activeTextLayerPage, setActiveTextLayerPage] = useState<number | null>(normalizedInitialPage);
   const textLayerEnabled = enableTextLayer && !touchInput;
+  const lastSearchFocusRef = useRef("");
+  const pendingSearchPageRef = useRef<number | null>(null);
+  const searchKey = searchTarget ? JSON.stringify([searchTarget.page, searchTarget.query, searchTarget.quote, searchTarget.activeIndex, searchTarget.focusToken, searchTarget.outline]) : "";
+
+  useLayoutEffect(() => {
+    const page = searchTarget?.page;
+    pendingSearchPageRef.current = page && page >= 1 && page <= document.numPages ? page : null;
+  }, [document, searchKey]);
+
+  useEffect(() => { lastSearchFocusRef.current = ""; }, [document]);
+
+  useEffect(() => {
+    const position = searchTarget?.outline;
+    if (!position || !pageAspectRatios.has(searchTarget.page) || lastSearchFocusRef.current === searchKey) return;
+    const page = containerRef.current?.querySelector<HTMLElement>(`[data-page="${searchTarget.page}"]`);
+    if (!page) return;
+    const frame = window.requestAnimationFrame(() => {
+      if (!page.isConnected || lastSearchFocusRef.current === searchKey) return;
+      const root = scrollContainerRef?.current;
+      const rect = page.getBoundingClientRect();
+      const controlsHeight = root?.querySelector("[data-reader-controls]")?.getBoundingClientRect().height ?? 0;
+      const top = rect.top + rect.height * position.top;
+      if (root) {
+        const bounds = root.getBoundingClientRect();
+        root.scrollTo({
+          top: Math.max(0, root.scrollTop + top - bounds.top - controlsHeight - 16),
+          ...(position.left !== undefined ? { left: Math.max(0, root.scrollLeft + rect.left + rect.width * position.left - bounds.left - root.clientWidth / 2) } : {}),
+        });
+      } else {
+        window.scrollTo({ top: Math.max(0, window.scrollY + top - 16) });
+      }
+      lastSearchFocusRef.current = searchKey;
+      pendingSearchPageRef.current = null;
+      onSearchResult?.({ status: "outline", matches: 0 });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [document, searchKey, pageAspectRatios, onSearchResult, scrollContainerRef]);
+
+  const handleSearchResult = useCallback((result: PdfSearchResult, active: HTMLElement | null) => {
+    if (searchTarget?.outline) return;
+    pendingSearchPageRef.current = null;
+    onSearchResult?.(result);
+    if (!active || lastSearchFocusRef.current === searchKey) return;
+    lastSearchFocusRef.current = searchKey;
+    window.requestAnimationFrame(() => {
+      if (!active.isConnected) return;
+      const root = scrollContainerRef?.current;
+      if (!root) { active.scrollIntoView({ block: "center", inline: "center" }); return; }
+      const rect = active.getBoundingClientRect();
+      const bounds = root.getBoundingClientRect();
+      root.scrollTo({
+        top: Math.max(0, root.scrollTop + rect.top - bounds.top - root.clientHeight / 2),
+        left: Math.max(0, root.scrollLeft + rect.left - bounds.left - root.clientWidth / 2),
+      });
+    });
+  }, [onSearchResult, scrollContainerRef, searchKey, searchTarget?.outline]);
 
   const scheduleTextLayerForPage = useCallback((pageNumber: number) => {
     if (!textLayerEnabled || !constrainedResidency) return;
@@ -221,6 +284,13 @@ export function PdfViewer({
   }, [document, document.numPages, initialPage]);
 
   useEffect(() => {
+    if (searchTarget && searchTarget.page >= 1 && searchTarget.page <= document.numPages) {
+      addPage(searchTarget.page);
+    }
+  }, [addPage, document, document.numPages, initialPage, searchTarget?.page, searchTarget?.query, searchTarget?.quote, searchTarget?.activeIndex, searchTarget?.focusToken]);
+
+
+  useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
@@ -237,6 +307,7 @@ export function PdfViewer({
           pagesInRange,
           currentPageRef.current,
           constrainedResidency,
+          pendingSearchPageRef.current,
         ));
       },
       {
@@ -292,7 +363,7 @@ export function PdfViewer({
           setLoadedPages((previous) => {
             const next = new Set(previous).add(pageNumber);
             if (!pagesInLoadRangeRef.current.has(previousPage)) next.delete(previousPage);
-            return selectResidentPages(next, pageNumber, constrainedResidency);
+            return selectResidentPages(next, pageNumber, constrainedResidency, pendingSearchPageRef.current);
           });
           scheduleTextLayerForPage(pageNumber);
           onPageChange(pageNumber);
@@ -514,6 +585,7 @@ export function PdfViewer({
       data-pdf-viewer
       data-zoom={effectiveZoom}
       data-render-zoom={renderZoom}
+      data-search-location={searchTarget ? (searchTarget.outline ? "outline" : "text") : undefined}
       data-touch-input={touchInput}
       className={`relative w-full ${className}`}
     >
@@ -566,9 +638,11 @@ export function PdfViewer({
                 quality={quality}
                 renderZoom={pageNumber === currentPageRef.current ? renderZoom : 1}
                 layoutZoom={effectiveZoom}
-                enableTextLayer={textLayerEnabled && (
+                enableTextLayer={pageNumber === searchTarget?.page || (textLayerEnabled && (
                   !constrainedResidency || pageNumber === activeTextLayerPage
-                )}
+                ))}
+                searchTarget={pageNumber === searchTarget?.page ? searchTarget : undefined}
+                onSearchResult={handleSearchResult}
                 showLoading={!suppressPageLoading}
                 onPageMetrics={handlePageMetrics}
                 onRendered={onPageRendered}

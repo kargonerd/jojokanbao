@@ -1,5 +1,6 @@
 import {
   JoxClient,
+  JOJO_AI_PERIODICAL_IDS,
   asJojoBookSearchIndex,
   asJojoCatalog,
   asJojoDatasetIndex,
@@ -21,8 +22,10 @@ import {
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "@earendil-works/pi-ai";
 import { addCitationIds } from "./citations";
+import { createPeriodicalTools } from "./periodical-tools";
 
 export interface RagScope {
+  contentType?: "all" | "book" | "periodical";
   mode?: "all" | "selected";
   datasetIds?: string[];
   itemIds?: string[];
@@ -196,6 +199,28 @@ function itemToc(manifest: JojoItemManifest, manifestObject: string): AgentTocEn
 }
 
 export function createRagTools(options: RagToolOptions): AgentTool[] {
+  if (options.scope?.contentType === "periodical") return createPeriodicalTools(options);
+  const scope = options.scope ?? {};
+  // Requests from older book readers omit contentType but still constrain a book.
+  const combined = scope.contentType === "all" || (!scope.contentType
+    && !options.focus && !scope.datasetIds?.length && !scope.itemIds?.length && !scope.manifestObjects?.length);
+  if (!combined) return createBookTools(options);
+  if (options.focus || scope.itemIds?.length || scope.manifestObjects?.length) {
+    throw new Error("跨书籍与报刊范围不支持章节或单期限制，请先选择资料类型");
+  }
+  const isPeriodical = (id: string) => JOJO_AI_PERIODICAL_IDS.some((allowed) => allowed === id);
+  const bookIds = scope.datasetIds?.filter((id) => !isPeriodical(id));
+  const periodicalIds = scope.datasetIds?.filter(isPeriodical);
+  const unrestricted = !scope.datasetIds?.length;
+  return [
+    ...(unrestricted || bookIds?.length
+      ? createBookTools({ ...options, scope: { ...scope, contentType: "book", datasetIds: bookIds } }) : []),
+    ...(unrestricted || periodicalIds?.length
+      ? createPeriodicalTools({ ...options, scope: { ...scope, contentType: "periodical", datasetIds: periodicalIds } }) : []),
+  ];
+}
+
+function createBookTools(options: RagToolOptions): AgentTool[] {
   const fetchFn = options.fetchFn ?? fetch;
   const jox = new JoxClient(options.contentCdnBase, fetchFn);
   const scope = options.scope ?? {};

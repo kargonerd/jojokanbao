@@ -14,6 +14,8 @@ import {
   type JojoFragment,
   type JojoItemManifest,
   type JojoTocNode,
+  type JojoContentAccess,
+  bookFragmentAssetRefs,
 } from "@jojo/content";
 import { mobileContentCache } from "./contentCache";
 
@@ -24,6 +26,7 @@ export interface MobileBook {
   type: "book" | "book-series";
   itemCount?: number;
   aiEnabled?: boolean;
+  access?: JojoContentAccess;
 }
 
 export interface MobileBookVolume {
@@ -32,6 +35,7 @@ export interface MobileBookVolume {
   title: string;
   order: number;
   manifestObject: string;
+  access?: JojoContentAccess;
 }
 
 export type MobileBookOpenTarget =
@@ -67,6 +71,10 @@ export interface LoadedMobileBookItem {
   volume: MobileBookVolume;
   manifest: JojoItemManifest;
   manifestObject: string;
+  contentClient?: JoxClient;
+  offline?: boolean;
+  ownerId?: string;
+  access?: JojoContentAccess;
 }
 
 export interface LoadedMobileBookChapter {
@@ -107,7 +115,7 @@ let catalogPromise: Promise<MobileBook[]> | undefined;
 const volumePromises = new Map<string, Promise<MobileBookVolume[]>>();
 const coverPromises = new Map<string, Promise<string | undefined>>();
 const loadedCoverUris = new Map<string, string>();
-const searchIndexPromises = new Map<string, Promise<JojoBookSearchIndex>>();
+const searchIndexPromises = new WeakMap<JoxClient, Map<string, Promise<JojoBookSearchIndex>>>();
 
 export function fuzzyBookTitleScore(title: string, query: string): number {
   const normalize = (value: string) => value.toLocaleLowerCase()
@@ -141,6 +149,7 @@ export function selectPublishedBooks(entries: readonly JojoCatalogEntry[]): Mobi
       type: entry.type,
       itemCount: entry.itemCount,
       aiEnabled: entry.aiEnabled,
+      access: entry.access,
     }))
     .sort((left, right) => left.title.localeCompare(right.title, "zh-CN"));
 }
@@ -154,6 +163,7 @@ export function selectPublishedBookVolumes(items: readonly JojoDatasetItemSummar
       title: item.title,
       order: item.order,
       manifestObject: item.manifestObject,
+      access: item.access,
     }))
     .sort((left, right) => left.order - right.order || left.title.localeCompare(right.title, "zh-CN"));
 }
@@ -176,6 +186,7 @@ export function loadMobileBookVolumes(book: MobileBook): Promise<MobileBookVolum
       .then(asJojoDatasetIndex)
       .then((index) => {
         if (index.datasetId !== book.datasetId) throw new Error("Dataset Index 格式无效");
+        book.access = index.access ?? book.access;
         return selectPublishedBookVolumes(index.items);
       })
       .catch((error: unknown) => {
@@ -215,51 +226,67 @@ function bytesToBase64(bytes: Uint8Array): string {
 }
 
 export function cachedMobileBookCover(book: MobileBook | string, itemKey?: string): string {
-  return loadedCoverUris.get(`${typeof book === "string" ? book : book.datasetId}:${itemKey ?? ""}`) ?? "";
+  return typeof book !== "string" && book.access === "authenticated" ? "" : loadedCoverUris.get(`${typeof book === "string" ? book : book.datasetId}:${itemKey ?? ""}`) ?? "";
 }
 
 export function loadMobileBookCover(source: MobileBook | string, itemKey?: string): Promise<string | undefined> {
   const datasetId = typeof source === "string" ? source : source.datasetId;
   const cacheKey = `${datasetId}:${itemKey ?? ""}`;
+  const publicCacheKey = `jojo:book-cover:public:${cacheKey}`;
+  let fallback: Uint8Array | undefined;
   let promise = coverPromises.get(cacheKey);
   if (!promise) {
-    promise = coverCache.get(`jojo:book-cover:${cacheKey}`, 7 * 86400_000, async () => {
+    promise = (async () => {
+      const cached = typeof source === "string" || source.access !== "authenticated"
+        ? await contentStore?.get(publicCacheKey).catch(() => undefined) : undefined;
+      fallback = cached?.bytes;
+      if (cached && cached.expiresAt > Date.now()) {
+        const uri = new TextDecoder().decode(cached.bytes) || undefined;
+        if (uri) loadedCoverUris.set(cacheKey, uri);
+        return uri;
+      }
       const book = typeof source === "string" ? (await loadMobileBooks()).find((item) => item.datasetId === source) : source;
       if (!book) throw new Error("书籍目录暂时无法载入");
       const volumes = await loadMobileBookVolumes(book);
-      const volume = itemKey
-        ? volumes.find((candidate) => candidate.itemKey === itemKey || candidate.itemId === itemKey)
-        : volumes[0];
-      if (!volume) return new Uint8Array();
-      const manifestObject = resolveJoxObject(book.indexObject, volume.manifestObject);
-      const manifest = asJojoItemManifest(
-        await client.fetchJson<JojoItemManifest>(manifestObject),
-      );
-      const cover = manifest.assets.find((asset) => asset.type === "image" && asset.role === "cover");
-      if (!cover) return new Uint8Array();
-      const object = resolveJoxObject(manifestObject, cover.object);
-      const bytes = await client.fetchDecodedBytes(object, undefined, cover.sha256);
-      const encoded = new TextEncoder().encode(`data:${cover.mediaType};base64,${bytesToBase64(bytes)}`);
-      // Reading history uses itemKey; the account bookshelf uses itemId.
-      for (const key of new Set([volume.itemKey, volume.itemId, itemKey ?? ""])) {
-        void contentStore?.set(`jojo:book-cover:${datasetId}:${key}`, {
-          bytes: encoded, expiresAt: Date.now() + 7 * 86400_000,
-        }).catch(() => undefined);
+      const volume = itemKey ? volumes.find((candidate) => candidate.itemKey === itemKey || candidate.itemId === itemKey) : volumes[0];
+      if (!volume) return undefined;
+      const loaded = await loadMobileBookItem(datasetId, volume.itemKey);
+      if (loaded.access === "authenticated") { book.access = "authenticated"; fallback = undefined; }
+      const fetchCover = async () => {
+        const cover = loaded.manifest.assets.find((asset) => asset.type === "image" && asset.role === "cover");
+        if (!cover) return new Uint8Array();
+        const object = resolveJoxObject(loaded.manifestObject, cover.object);
+        const bytes = await (loaded.contentClient ?? client).fetchDecodedBytes(object, undefined, cover.sha256);
+        return new TextEncoder().encode(`data:${cover.mediaType};base64,${bytesToBase64(bytes)}`);
+      };
+      // Keep public cover persistence and itemId aliases; restricted bytes never enter the shared cache.
+      const restricted = loaded.access === "authenticated";
+      const bytes = restricted ? await fetchCover() : await coverCache.get(publicCacheKey, 7 * 86400_000, fetchCover);
+      const uri = new TextDecoder().decode(bytes) || undefined;
+      if (restricted) { coverPromises.delete(cacheKey); loadedCoverUris.delete(cacheKey); }
+      else if (uri) {
+        loadedCoverUris.set(cacheKey, uri);
+        for (const key of new Set([volume.itemKey, volume.itemId, itemKey ?? ""])) {
+          void contentStore?.set(`jojo:book-cover:public:${datasetId}:${key}`, { bytes, expiresAt: Date.now() + 7 * 86400_000 }).catch(() => undefined);
+        }
       }
-      return encoded;
-    }).then((bytes) => new TextDecoder().decode(bytes) || undefined).then((uri) => {
-      if (uri) loadedCoverUris.set(cacheKey, uri);
       return uri;
-    }).catch((error: unknown) => {
-      coverPromises.delete(cacheKey);
-      throw error;
-    });
+    })().catch((error: unknown) => { coverPromises.delete(cacheKey); if (fallback) return new TextDecoder().decode(fallback) || undefined; throw error; });
     coverPromises.set(cacheKey, promise);
   }
   return promise;
 }
 
 export async function loadMobileBookItem(datasetId: string, itemKey: string, signal?: AbortSignal): Promise<LoadedMobileBookItem> {
+  const offline = await import("../offline/books").then(({ openMobileOfflineBook }) => openMobileOfflineBook(datasetId, itemKey)).catch(() => undefined);
+  if (signal?.aborted) throw new Error("读取已取消");
+  if (offline) return {
+    book: { datasetId, title: offline.entry.title, type: offline.entry.type as MobileBook["type"], indexObject: offline.entry.indexObject, access: offline.entry.access },
+    volume: { itemId: offline.item.itemId, itemKey: offline.item.itemKey, title: offline.item.title, order: offline.item.order, manifestObject: offline.item.manifestObject, access: offline.item.access },
+    manifest: offline.manifest, manifestObject: offline.manifestObject, contentClient: offline.client, offline: true,
+    access: offline.scope === "public" ? "public" : "authenticated",
+    ownerId: offline.scope.startsWith("user:") ? offline.scope.slice(5) : undefined,
+  };
   const books = await abortable(loadMobileBooks(), signal);
   const book = books.find((candidate) => candidate.datasetId === datasetId);
   if (!book) throw new Error("书籍不存在");
@@ -273,7 +300,12 @@ export async function loadMobileBookItem(datasetId: string, itemKey: string, sig
   if (manifest.datasetId !== datasetId || manifest.itemId !== volume.itemId) {
     throw new Error("书籍内容格式无效");
   }
-  return { book, volume, manifest, manifestObject };
+  const access = manifest.access ?? volume.access ?? book.access ?? "public";
+  const contentClient = access === "authenticated"
+    ? (await import("../offline/books")).mobileAuthenticatedBookClient()
+    : client;
+  const ownerId = access === "authenticated" ? (await import("../offline/books")).mobileBookOwnerId() ?? undefined : undefined;
+  return { book, volume, manifest, manifestObject, contentClient, access, ownerId };
 }
 
 export async function loadMobileBookChapter(
@@ -282,12 +314,15 @@ export async function loadMobileBookChapter(
   includeAssets = true,
   signal?: AbortSignal,
 ): Promise<LoadedMobileBookChapter> {
+  if (loaded.access === "authenticated") (await import("../offline/books")).assertMobileBookOwner(loaded.ownerId, Boolean(loaded.offline));
   const chapter = loaded.manifest.content.chapters?.find((candidate) => candidate.id === chapterId);
   if (!chapter) throw new Error("章节不存在");
-  const fragment = asJojoFragment(await client.fetchJson<unknown>(
+  const contentClient = loaded.contentClient ?? client;
+  const originalFragment = asJojoFragment(await contentClient.fetchJson<unknown>(
     resolveJoxObject(loaded.manifestObject, chapter.object),
     signal, "default", chapter.sha256,
   ));
+  const fragment = { ...originalFragment, assetRefs: bookFragmentAssetRefs(originalFragment) };
   if (fragment.itemId !== loaded.manifest.itemId || fragment.fragmentId !== chapter.id) {
     throw new Error("章节内容格式无效");
   }
@@ -296,7 +331,7 @@ export async function loadMobileBookChapter(
     const asset = loaded.manifest.assets.find((candidate) => candidate.id === assetId);
     if (!asset) return undefined;
     try {
-      const bytes = await client.fetchDecodedBytes(resolveJoxObject(loaded.manifestObject, asset.object), signal, asset.sha256);
+      const bytes = await contentClient.fetchDecodedBytes(resolveJoxObject(loaded.manifestObject, asset.object), signal, asset.sha256);
       return [assetId, `data:${asset.mediaType};base64,${bytesToBase64(bytes)}`] as const;
     } catch {
       return undefined;
@@ -417,12 +452,15 @@ async function loadMobileBookSearchIndex(loaded: LoadedMobileBookItem): Promise<
   const descriptor = loaded.manifest.search;
   if (!descriptor) return undefined;
   const object = resolveJoxObject(loaded.manifestObject, descriptor.object);
+  const contentClient = loaded.contentClient ?? client;
+  let promises = searchIndexPromises.get(contentClient);
+  if (!promises) { promises = new Map(); searchIndexPromises.set(contentClient, promises); }
   const key = `${loaded.manifest.itemId}\0${object}\0${descriptor.sha256}`;
-  let promise = searchIndexPromises.get(key);
+  let promise = promises.get(key);
   if (!promise) {
-    promise = client.fetchJson<unknown>(object, undefined, "default", descriptor.sha256).then(asJojoBookSearchIndex)
-      .catch((error: unknown) => { if (searchIndexPromises.get(key) === promise) searchIndexPromises.delete(key); throw error; });
-    searchIndexPromises.set(key, promise);
+    promise = contentClient.fetchJson<unknown>(object, undefined, "default", descriptor.sha256).then(asJojoBookSearchIndex)
+      .catch((error: unknown) => { if (promises!.get(key) === promise) promises!.delete(key); throw error; });
+    promises.set(key, promise);
   }
   const index = await promise;
   if (index.itemId !== loaded.manifest.itemId) throw new Error("书内搜索文件与当前书籍不匹配");
@@ -434,6 +472,7 @@ export async function searchMobileBook(
   query: string,
   size = 30,
 ): Promise<MobileBookSearchResult[]> {
+  if (loaded.access === "authenticated") (await import("../offline/books")).assertMobileBookOwner(loaded.ownerId, Boolean(loaded.offline));
   if (!normalizedSearchText(query)) return [];
   const chapterTitles = new Map(
     (loaded.manifest.content.chapters ?? []).map((candidate) => [candidate.id, candidate.title]),

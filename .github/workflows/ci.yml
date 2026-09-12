@@ -19,6 +19,7 @@ jobs:
     name: Detect affected areas
     runs-on: ubuntu-latest
     outputs:
+      archive_pdf: ${{ steps.filter.outputs.archive_pdf }}
       all_node: ${{ steps.filter.outputs.all_node }}
       base_sha: ${{ steps.filter.outputs.base_sha }}
       cloud_api: ${{ steps.filter.outputs.cloud_api }}
@@ -53,6 +54,21 @@ jobs:
           EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
           EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: node tools/ci/affected.mjs
+
+  archive_pdf:
+    name: Archive Delivery publication
+    needs: changes
+    if: needs.changes.outputs.archive_pdf == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - run: pip install -r tools/archive-pdf/requirements.txt
+      - run: python -m unittest discover -s tools/archive-pdf/tests -v
+      - run: python -m unittest discover -s tools/jojo-admin/server/tests -p test_rmrb_review_publish.py -v
 
   node:
     name: Node workspaces
@@ -446,6 +462,7 @@ jobs:
     if: always()
     needs:
       - changes
+      - archive_pdf
       - cloud-api
       - desktop-e2e
       - mobile-ios

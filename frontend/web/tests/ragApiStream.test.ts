@@ -21,6 +21,32 @@ afterEach(() => {
 });
 
 describe("askStream references", () => {
+  it.each(["all", "periodical"] as const)("sends the %s scope and retains newspaper citation metadata from SSE", async (contentType) => {
+    const reference = {
+      citationId: "Jpaper", type: "newspaper", datasetId: "rmrb", itemId: "rmrb:1999-06-25",
+      targetId: "article-1", title: "关注黄河", date: "1999-06-25", page: 5,
+    };
+    const frame = (event: string, payload: unknown) => `event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`;
+    const fetchMock = vi.fn().mockResolvedValue(new Response([
+      frame("tool_start", { name: "search_periodicals", args: { query: "黄河" } }),
+      frame("tool_end", { name: "search_periodicals", references: [reference] }),
+      frame("text_delta", { delta: "报道关注黄河。[cite:Jpaper]" }),
+      frame("done", {}),
+    ].join("")));
+    globalThis.fetch = fetchMock;
+    const activity = vi.fn();
+    const references = await new Promise<RagReference[] | undefined>((resolve, reject) => {
+      askStream({
+        contentType, datasetIds: ["rmrb"], scopeMode: "all", question: "黄河报道",
+      }, () => undefined, resolve, reject, activity);
+    });
+    expect(references).toEqual([reference]);
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toMatchObject({
+      scope: { contentType, datasetIds: ["rmrb"], itemIds: [], manifestObjects: [] },
+    });
+    expect(activity).toHaveBeenCalledWith({ phase: "searching", message: "正在人民日报中检索原文：“黄河”" });
+  });
+
   it("sends recent client history without stale citation ids", async () => {
     const frame = (event: string, payload: unknown) => (
       `event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`

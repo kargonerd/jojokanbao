@@ -46,6 +46,8 @@ export interface RecentBook {
 }
 
 export interface MobileAiConversation {
+  contentType?: "all" | "book" | "periodical";
+  scopeMode?: "all" | "selected";
   id: string;
   ownerId: string;
   title: string;

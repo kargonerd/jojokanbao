@@ -34,6 +34,17 @@ success. The independent queue check can recover only after a real healthy queue
 probe. External Healthchecks still detects a dead scheduler even if its database
 or function cannot run.
 
+The scheduler heartbeat has five minutes of grace after the next minute tick,
+allowing brief dependency outages and a lost tick's 90-second lease to clear.
+Degraded monitor ticks still send only logs, so a dead scheduler or persistently
+broken consumer still alerts. Failure logs identify the affected monitor.
+
+Dispatch failures are associated with their expected slot. A real success for
+that slot prevents later reconciliation errors from starting a delivery alarm;
+an older slot's success cannot suppress a new slot's failure. Accepted receipts
+for one-attempt tasks skip further GitHub queries in the same slot, while their
+execution monitors continue to require real outcomes and enforce deadlines.
+
 Queue probes retry only GitHub's transient count/list inconsistencies (for
 example, `total_count: 1` with an empty `workflow_runs` during a status change).
 Only the inconsistent workflow/status is re-read, at most twice after 500 ms

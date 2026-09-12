@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "id": "repair-bb9581794bc47b4b1b92d6723b08230d989d5622",
+  "createdAt": "2026-09-12T02:45:45.182102+00:00",
+  "index": "jojo-1tk2lxru",
+  "operation": "repair",
+  "replacedDocumentId": "jojo-book-b5b788da1257c86c430d74156f0babac563355bc",
+  "document": {
+    "type": "book",
+    "datasetId": "ma-ke-si-en-ge-si-quan-ji",
+    "itemId": "ma-ke-si-en-ge-si-quan-ji:volume-1",
+    "title": "莱茵河女神 叙事诗",
+    "content": "莱茵河女神 叙事诗\n（见本卷第885-889页）",
+    "date": "1995-06-01",
+    "source": "马克思恩格斯全集",
+    "metadata": {
+      "itemTitle": "马克思恩格斯全集（第一卷）",
+      "chapterId": "chapter:234",
+      "chapterOrder": 229,
+      "authors": [
+        "中共中央马克思恩格斯列宁斯大林著作编译局编译"
+      ],
+      "publisher": "人民出版社",
+      "language": "zh-CN",
+      "canonicalObject": "books/collections/马克思恩格斯全集/items/volume-1.json.gz"
+    }
+  },
+  "reason": "用户授权将已修复书籍正文同步 ES；以追加修订替换旧内容",
+  "state": "applied",
+  "appliedAt": "2026-09-12T02:45:39.567775+00:00",
+  "result": {
+    "documentId": "repair-bb9581794bc47b4b1b92d6723b08230d989d5622",
+    "verified": true,
+    "bulkAppendOnly": true
+  }
+}

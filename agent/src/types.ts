@@ -31,6 +31,9 @@ export interface AgentUsage {
 export type PlatformAgentStatus = "placeholder" | "available";
 
 export interface AgentSourceReference {
+  type?: "newspaper";
+  date?: string;
+  page?: number;
   citationId?: string;
   datasetId?: string;
   itemId?: string;

@@ -10,6 +10,17 @@ describe("WeRead transport decoder", () => {
     expect(hashWereadId(36)).toBe("19c3222022419ca14e7eef7");
   });
 
+  it("rejects rate-limit responses mixed into an exported chapter", () => {
+    expect(() => decodeWereadParts([
+      `${"A".repeat(32)}xSGk`,
+      JSON.stringify({ errcode: -10102, errmsg: "Hit api rate limit." }),
+    ])).toThrow("有效的编码分片");
+  });
+
+  it("rejects invalid UTF-8 instead of producing unreadable replacement glyphs", () => {
+    expect(() => decodeWereadParts([`${"A".repeat(32)}x/w`])).toThrow("UTF-8");
+  });
+
   it("detects TOC entries whose chapter responses are missing", () => {
     const result = inspectWereadCompleteness({
       meta: { chapterSize: 5, lastChapterIdx: 5 },

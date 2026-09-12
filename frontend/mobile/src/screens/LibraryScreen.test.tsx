@@ -42,6 +42,12 @@ vi.mock("@react-navigation/native", async () => {
 });
 vi.mock("../account/auth", () => ({ useMobileAuthStore: (select: (state: { user: typeof mocks.user }) => unknown) => select({ user: mocks.user }) }));
 vi.mock("../account/accountData", () => ({ loadMobileBookshelf: mocks.loadShelf, setMobileBookshelf: mocks.setShelf }));
+// Download persistence is covered by offline/bookshelf and repository tests.
+vi.mock("../offline/books", () => ({
+  startMobileOfflineAccountSync: vi.fn(),
+  mobileOfflineBooks: { download: vi.fn(), remove: vi.fn() },
+  useMobileOfflineBooksStore: (select: (state: unknown) => unknown) => select({ books: [], loading: false, error: "" }),
+}));
 vi.mock("react-native-safe-area-context", () => ({ SafeAreaView: "main", useSafeAreaInsets: () => ({ bottom: 0 }) }));
 vi.mock("../config/appVariant", () => ({ get IS_EINK_RELEASE() { return mocks.eInk; } }));
 vi.mock("../components/BookCoverCard", () => ({ BookCoverCard: "book-card" }));

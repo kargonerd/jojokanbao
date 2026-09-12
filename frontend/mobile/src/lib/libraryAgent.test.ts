@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const getSession = vi.hoisted(() => vi.fn());
+const streamingFetch = vi.hoisted(() => vi.fn());
+vi.mock("expo/fetch", () => ({ fetch: streamingFetch }));
 
 vi.mock("../account/auth", () => ({
   mobileAuthClient: { auth: { getSession } },
@@ -11,6 +13,7 @@ import { askMobileLibraryAgent, boundedMobileAgentHistory, mobileAgentToolActivi
 describe("mobile library agent", () => {
   beforeEach(() => {
     getSession.mockReset();
+    streamingFetch.mockReset();
     getSession.mockResolvedValue({ data: { session: { access_token: "mobile-token" } }, error: null });
   });
 
@@ -34,16 +37,38 @@ describe("mobile library agent", () => {
     });
     expect(mobileAgentToolActivity("read_fragment").phase).toBe("reading");
     expect(mobileAgentToolActivity("search_content", undefined, true).message).toContain("调整检索方式");
+    expect(mobileAgentToolActivity("search_periodicals", { query: "黄河" }).message).toContain("正在人民日报中检索原文");
+    expect(mobileAgentToolActivity("read_periodical_article").phase).toBe("reading");
+  });
+
+  it("forwards the periodical scope and preserves newspaper references", async () => {
+    const reference = { citationId: "Jpaper", type: "newspaper", datasetId: "rmrb", itemId: "rmrb:1999-06-25", targetId: "article-1", date: "1999-06-25", page: 5 };
+    const frame = (event: string, payload: unknown) => `event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`;
+    streamingFetch.mockResolvedValue(new Response([
+      frame("tool_end", { references: [reference] }),
+      frame("text_delta", { delta: "报道[cite:Jpaper]" }),
+      frame("done", {}),
+    ].join("")));
+    await new Promise<void>((resolve, reject) => {
+      askMobileLibraryAgent({ contentType: "periodical", question: "黄河报道", datasetIds: ["rmrb"], scopeMode: "all" }, {
+        onChunk: vi.fn(), onError: reject,
+        onDone: (_id, references) => { expect(references).toEqual([reference]); resolve(); },
+      });
+    });
+    expect(JSON.parse(String(streamingFetch.mock.calls[0]?.[1]?.body))).toMatchObject({
+      scope: { contentType: "periodical", datasetIds: ["rmrb"], itemIds: [], manifestObjects: [] },
+    });
   });
 
   it("streams an all-library question and keeps only cited references", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response([
+    const fetchMock = streamingFetch.mockResolvedValue(new Response([
       'event: tool_end\ndata: {"name":"search_content","references":[{"citationId":"ref_1","itemId":"one"},{"citationId":"ref_2","itemId":"two"}]}',
       'event: text_delta\ndata: {"delta":"回答[cite:ref_2]"}',
       'event: done\ndata: {}',
       "",
     ].join("\n\n"), { headers: { "Content-Type": "text/event-stream" } }));
-    vi.stubGlobal("fetch", fetchMock);
+    const nativeFetch = vi.fn().mockResolvedValue({ ok: true, body: undefined });
+    vi.stubGlobal("fetch", nativeFetch);
 
     const result = await new Promise<{ id: string; references: Array<{ citationId?: string }> }>((resolve, reject) => {
       askMobileLibraryAgent({
@@ -58,6 +83,8 @@ describe("mobile library agent", () => {
     });
 
     const [, init] = fetchMock.mock.calls[0]!;
+    expect(nativeFetch).not.toHaveBeenCalled();
+    expect(new Headers(init.headers).get("accept")).toBe("text/event-stream");
     expect(JSON.parse(String(init.body))).toMatchObject({
       message: "比较两本书",
       scope: { mode: "all", datasetIds: ["book-a", "book-b"] },

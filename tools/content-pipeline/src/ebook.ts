@@ -429,11 +429,16 @@ async function decodeEpub(sourcePath: string, source: Uint8Array): Promise<Decod
       const reference = current.attr("href")?.trim();
       if (!reference || isExternalEpubReference(reference)) return;
       internalLinkCount += 1;
+      const downgrade = (error: string): void => {
+        internalLinkErrors.push({ file: part.entry.file, reference, error });
+        element.name = "span";
+        current.removeAttr("href").removeAttr("data-target-id").removeAttr("data-anchor-id");
+      };
       let resolved: { file: string; anchor?: string };
       try {
         resolved = zipPath(part.entry.file, reference);
       } catch {
-        internalLinkErrors.push({ file: part.entry.file, reference, error: "EPUB 内链编码无效" });
+        downgrade("EPUB 内链编码无效");
         return;
       }
       const epubTypes = (current.attr("epub:type") ?? current.attr("role") ?? "").split(/\s+/);
@@ -444,11 +449,11 @@ async function decodeEpub(sourcePath: string, source: Uint8Array): Promise<Decod
       }
       const targetId = chapterIds.get(resolved.file);
       if (!targetId) {
-        internalLinkErrors.push({ file: part.entry.file, reference, error: "EPUB 内链目标不在正文 spine 中" });
+        downgrade("EPUB 内链目标不在正文 spine 中");
         return;
       }
       if (resolved.anchor && !sourceDocumentAnchors.get(resolved.file)?.has(resolved.anchor)) {
-        internalLinkErrors.push({ file: part.entry.file, reference, error: "EPUB 内链锚点不存在" });
+        downgrade("EPUB 内链锚点不存在");
         return;
       }
       const anchorId = resolved.anchor ? chapterAnchor(resolved.file, resolved.anchor)
