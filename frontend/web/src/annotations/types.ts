@@ -28,6 +28,20 @@ export interface AnnotationComment {
   visibility: AnnotationVisibility;
   createdAt: string;
   reportedByMe: boolean;
+  /** Older deployments and newly created comments default to zero/unliked. */
+  likeCount?: number;
+  likedByMe?: boolean;
+}
+
+export interface AnnotationCommentLike {
+  id: string;
+  likeCount: number;
+  likedByMe: boolean;
+}
+
+export function sortAnnotationComments(comments: readonly AnnotationComment[]): AnnotationComment[] {
+  return [...comments].sort((a, b) => (b.likeCount ?? 0) - (a.likeCount ?? 0)
+    || Date.parse(a.createdAt) - Date.parse(b.createdAt) || a.id.localeCompare(b.id));
 }
 
 export interface AnnotationThread extends AnnotationSubject, TextAnchor {

@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { CommentVisibilityControl } from "./CommentVisibilityControl";
-import { ANNOTATION_REPORT_LABELS, type AnnotationReportReason, type AnnotationThread, type AnnotationVisibility } from "./types";
+import { ANNOTATION_REPORT_LABELS, sortAnnotationComments, type AnnotationReportReason, type AnnotationThread, type AnnotationVisibility } from "./types";
 import "./annotations.css";
 
 interface AnnotationDiscussionPanelProps {
@@ -9,13 +9,14 @@ interface AnnotationDiscussionPanelProps {
   onClose: () => void;
   onComment: (body: string, parentCommentId?: string, visibility?: AnnotationVisibility) => Promise<unknown>;
   onReport: (commentId: string, reason: AnnotationReportReason, details?: string) => Promise<unknown>;
+  onLike: (commentId: string, liked: boolean) => Promise<unknown>;
 }
 
 function displayTime(value: string): string {
   return new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
 }
 
-export function AnnotationDiscussionPanel({ thread, currentUserId, onClose, onComment, onReport }: AnnotationDiscussionPanelProps) {
+export function AnnotationDiscussionPanel({ thread, currentUserId, onClose, onComment, onReport, onLike }: AnnotationDiscussionPanelProps) {
   const [draft, setDraft] = useState("");
   const [visibility, setVisibility] = useState<AnnotationVisibility>("public");
   const [replyTo, setReplyTo] = useState<string>();
@@ -24,8 +25,25 @@ export function AnnotationDiscussionPanel({ thread, currentUserId, onClose, onCo
   const [reportDetails, setReportDetails] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
+  const pendingLikes = useRef(new Set<string>());
+  const [liking, setLiking] = useState<Set<string>>(new Set());
   const reply = thread.comments.find((comment) => comment.id === replyTo);
   const underlineCount = Math.max(1, Math.trunc(thread.underlineCount ?? 1));
+
+  async function changeLike(commentId: string, liked: boolean) {
+    if (pendingLikes.current.has(commentId)) return;
+    pendingLikes.current.add(commentId);
+    setLiking(new Set(pendingLikes.current));
+    setNotice("");
+    try {
+      await onLike(commentId, liked);
+    } catch (reason) {
+      setNotice(reason instanceof Error ? reason.message : "点赞暂时失败，请重试。");
+    } finally {
+      pendingLikes.current.delete(commentId);
+      setLiking(new Set(pendingLikes.current));
+    }
+  }
 
   async function submitComment() {
     if (!draft.trim() || busy) return;
@@ -75,10 +93,10 @@ export function AnnotationDiscussionPanel({ thread, currentUserId, onClose, onCo
         </div>
       </section>
 
-      <div className="annotation-comments__heading"><span>想法</span><b>{thread.comments.length}</b></div>
+      <div className="annotation-comments__heading"><span>想法</span><b>{thread.comments.length}</b><small>按点赞排序</small></div>
 
       <ol className="annotation-comments">
-        {thread.comments.map((comment) => {
+        {sortAnnotationComments(thread.comments).map((comment) => {
           const parent = thread.comments.find((candidate) => candidate.id === comment.parentCommentId);
           return (
             <li key={comment.id}>
@@ -86,6 +104,11 @@ export function AnnotationDiscussionPanel({ thread, currentUserId, onClose, onCo
               {parent ? <small>回复 {parent.authorName}</small> : null}
               <p>{comment.body}</p>
               {comment.visibility !== "private" ? <div className="annotation-comment__actions">
+                <button type="button" className="annotation-comment__like" aria-pressed={Boolean(comment.likedByMe)}
+                  aria-label={`${comment.likedByMe ? "取消点赞" : "点赞"}，${comment.likeCount ?? 0} 个赞`}
+                  disabled={liking.has(comment.id)} onClick={() => void changeLike(comment.id, !comment.likedByMe)}>
+                  {comment.likedByMe ? "已赞" : "赞"} {comment.likeCount ?? 0}
+                </button>
                 <button type="button" onClick={() => { setReplyTo(comment.id); setReporting(undefined); }}>回复</button>
                 {comment.authorId !== currentUserId ? (
                   <button type="button" disabled={comment.reportedByMe} onClick={() => { setReporting(comment.id); setReplyTo(undefined); }}>

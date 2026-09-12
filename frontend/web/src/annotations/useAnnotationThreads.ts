@@ -4,7 +4,9 @@ import {
   createAnnotation,
   loadAnnotationThreads,
   reportAnnotationComment,
+  setAnnotationCommentLike,
 } from "./api";
+import { sortAnnotationComments } from "./types";
 import type {
   AnnotationReportReason,
   AnnotationSubject,
@@ -29,6 +31,7 @@ function compatibleThread(
   if (!hasAggregateFields && !underlinedByMe) return undefined;
   return {
     ...thread,
+    comments: sortAnnotationComments(thread.comments),
     underlineCount: Math.max(1, Math.trunc(thread.underlineCount ?? 1)),
     underlinedByMe,
     publiclyVisible: hasAggregateFields ? Boolean(thread.publiclyVisible) : false,
@@ -48,6 +51,9 @@ export function useAnnotationThreads(subject: AnnotationSubject, enabled: boolea
     contentUrl: subject.contentUrl,
   }), [subject.contentId, subject.contentTitle, subject.contentType, subject.contentUrl, subject.sectionId]);
   const activeSubjectKey = useRef(subjectKey);
+  const scopeKey = `${subjectKey}:${currentUserId}:${enabled}`;
+  const activeScopeKey = useRef(scopeKey);
+  activeScopeKey.current = scopeKey;
   const displayedSubjectKey = useRef(subjectKey);
   const requestId = useRef(0);
   activeSubjectKey.current = subjectKey;
@@ -107,7 +113,7 @@ export function useAnnotationThreads(subject: AnnotationSubject, enabled: boolea
       const created = await addAnnotationComment(annotationId, body, parentCommentId, visibility);
       if (activeSubjectKey.current === actionSubjectKey) {
         setThreads((current) => current.map((thread) => thread.id === annotationId
-          ? { ...thread, comments: [...thread.comments, created] }
+          ? { ...thread, comments: sortAnnotationComments([...thread.comments, created]) }
           : thread));
       }
       return created;
@@ -121,7 +127,20 @@ export function useAnnotationThreads(subject: AnnotationSubject, enabled: boolea
           : thread));
       }
     },
-  }), [currentUserId, stableSubject, subjectKey]);
+    async like(annotationId: string, commentId: string, liked: boolean) {
+      const changed = await setAnnotationCommentLike(commentId, liked);
+      if (activeScopeKey.current === scopeKey) {
+        // A load started before this write must not restore the previous count.
+        requestId.current++;
+        setLoading(false);
+        setThreads((current) => current.map((thread) => thread.id === annotationId
+          ? { ...thread, comments: sortAnnotationComments(thread.comments.map((comment) => comment.id === commentId
+            ? { ...comment, likeCount: changed.likeCount, likedByMe: changed.likedByMe } : comment)) }
+          : thread));
+      }
+      return changed;
+    },
+  }), [currentUserId, scopeKey, stableSubject, subjectKey]);
 
   return { threads, loading, error, refresh, ...actions };
 }

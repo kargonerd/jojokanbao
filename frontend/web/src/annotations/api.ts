@@ -1,5 +1,6 @@
 import type {
   AnnotationComment,
+  AnnotationCommentLike,
   AnnotationReportReason,
   AnnotationSubject,
   AnnotationThread,
@@ -92,4 +93,12 @@ export async function reportAnnotationComment(
     p_details: details?.trim() || null,
   });
   if (error) throw new Error(error.message || "举报提交失败");
+}
+
+export async function setAnnotationCommentLike(commentId: string, liked: boolean): Promise<AnnotationCommentLike> {
+  const { data, error } = await rpc("set_annotation_comment_like", {
+    p_comment_id: commentId,
+    p_liked: liked,
+  });
+  return resultOrThrow<AnnotationCommentLike>(data, error);
 }

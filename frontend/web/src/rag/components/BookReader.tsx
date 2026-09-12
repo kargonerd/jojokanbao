@@ -1030,6 +1030,7 @@ export function BookReader({
       onClose={() => setActiveAnnotationId(undefined)}
       onComment={(body, parentCommentId, visibility) => annotations.comment(activeAnnotation.id, body, parentCommentId, visibility)}
       onReport={(commentId, reason, details) => annotations.report(activeAnnotation.id, commentId, reason, details)}
+      onLike={(commentId, liked) => annotations.like(activeAnnotation.id, commentId, liked)}
     /> : null}
 
     {toolPopover && <>

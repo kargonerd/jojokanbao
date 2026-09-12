@@ -8,6 +8,7 @@ const annotationApi = vi.hoisted(() => ({
   createAnnotation: vi.fn(),
   addAnnotationComment: vi.fn(),
   reportAnnotationComment: vi.fn(),
+  setAnnotationCommentLike: vi.fn(),
 }));
 
 vi.mock("../src/annotations/api", () => annotationApi);
@@ -43,6 +44,32 @@ afterEach(() => {
 });
 
 describe("useAnnotationThreads", () => {
+  it("applies server counts and reorders after a like", async () => {
+    const base = thread("chapter-1");
+    const comment = { id: "c1", annotationId: base.id, parentCommentId: null, authorId: "user-1", authorName: "读者", body: "想法", visibility: "public" as const, createdAt: base.createdAt, reportedByMe: false };
+    annotationApi.loadAnnotationThreads.mockResolvedValue([{ ...base, comments: [comment, { ...comment, id: "c2", likeCount: 1 }] }]);
+    annotationApi.setAnnotationCommentLike.mockResolvedValue({ id: "c1", likeCount: 2, likedByMe: true });
+    const { result } = renderHook(() => useAnnotationThreads(subject("chapter-1"), true, "user-1"));
+    await waitFor(() => expect(result.current.threads[0]?.comments[0]?.id).toBe("c2"));
+    await act(async () => { await result.current.like(base.id, "c1", true); });
+    expect(result.current.threads[0]?.comments[0]).toMatchObject({ id: "c1", likeCount: 2, likedByMe: true });
+  });
+
+  it("ignores a previous account's late like response", async () => {
+    let finish!: (value: unknown) => void;
+    const base = { ...thread("chapter-1"), underlineCount: 2, underlinedByMe: false, publiclyVisible: true,
+      comments: [{ id: "c1", annotationId: "annotation-chapter-1", parentCommentId: null, authorId: "user-1", authorName: "读者", body: "想法", visibility: "public" as const, createdAt: "2026-08-18T10:00:00Z", reportedByMe: false, likedByMe: false, likeCount: 0 }] };
+    annotationApi.loadAnnotationThreads.mockResolvedValue([base]);
+    annotationApi.setAnnotationCommentLike.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    const { result, rerender } = renderHook(({ user }) => useAnnotationThreads(subject("chapter-1"), true, user), { initialProps: { user: "user-1" } });
+    await waitFor(() => expect(result.current.threads).toHaveLength(1));
+    let pending!: Promise<unknown>;
+    act(() => { pending = result.current.like(base.id, "c1", true); });
+    rerender({ user: "user-2" });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await act(async () => { finish({ id: "c1", likeCount: 1, likedByMe: true }); await pending; });
+    expect(result.current.threads[0]?.comments[0]?.likedByMe).toBe(false);
+  });
   it("ignores a slow response from the previously selected chapter", async () => {
     let resolveFirst: (value: AnnotationThread[]) => void = () => undefined;
     const first = new Promise<AnnotationThread[]>((resolve) => { resolveFirst = resolve; });

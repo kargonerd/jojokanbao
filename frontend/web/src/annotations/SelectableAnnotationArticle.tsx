@@ -155,6 +155,7 @@ export function SelectableAnnotationArticle({
         onClose={() => setActiveId(undefined)}
         onComment={(body, parentCommentId, visibility) => annotations.comment(active.id, body, parentCommentId, visibility)}
         onReport={(commentId, reason, details) => annotations.report(active.id, commentId, reason, details)}
+        onLike={(commentId, liked) => annotations.like(active.id, commentId, liked)}
       /> : null}
     </>
   );

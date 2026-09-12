@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { addAnnotationComment, createAnnotation } from "../src/annotations/api";
+import { addAnnotationComment, createAnnotation, setAnnotationCommentLike } from "../src/annotations/api";
 
 const { rpc } = vi.hoisted(() => ({ rpc: vi.fn() }));
 
@@ -48,5 +48,13 @@ describe("annotation API compatibility", () => {
 
     expect(rpc.mock.calls[0]?.[0]).toBe("add_annotation_comment");
     expect(rpc.mock.calls[0]?.[1]).not.toHaveProperty("p_visibility");
+  });
+  it("sets and clears likes idempotently and propagates service errors", async () => {
+    rpc.mockResolvedValue({ data: { id: "comment-1", likeCount: 3, likedByMe: true }, error: null });
+    await expect(setAnnotationCommentLike("comment-1", true)).resolves.toEqual({ id: "comment-1", likeCount: 3, likedByMe: true });
+    expect(rpc).toHaveBeenLastCalledWith("set_annotation_comment_like", { p_comment_id: "comment-1", p_liked: true });
+    rpc.mockResolvedValue({ data: null, error: { message: "Public comment not found" } });
+    await expect(setAnnotationCommentLike("comment-1", false)).rejects.toThrow("Public comment not found");
+    expect(rpc).toHaveBeenLastCalledWith("set_annotation_comment_like", { p_comment_id: "comment-1", p_liked: false });
   });
 });
