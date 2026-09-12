@@ -61,7 +61,7 @@ begin
   -- are reading times, not upload times; stale offline uploads cannot rewind it.
   select coalesce(jsonb_agg(r.entry order by r.read_at desc, r.key), '[]'::jsonb) into result
   from (
-    select distinct on (key) key, entry, read_at
+    select distinct on (candidates.key) candidates.key, candidates.entry, candidates.read_at
     from (
       select value as entry, (value->>'updatedAt')::numeric as read_at,
         case value->>'kind' when 'book' then jsonb_build_array('book', value->>'datasetId', value->>'itemKey')
@@ -69,7 +69,7 @@ begin
         ordinality
       from jsonb_array_elements(snapshot.records || p_records) with ordinality
       where (value->>'updatedAt')::numeric > snapshot.cleared_at
-    ) candidates order by key, read_at desc, ordinality
+    ) candidates order by candidates.key, candidates.read_at desc, candidates.ordinality
   ) r;
   select coalesce(jsonb_agg(value order by ordinality), '[]'::jsonb) into result
     from jsonb_array_elements(result) with ordinality where ordinality <= 16;
