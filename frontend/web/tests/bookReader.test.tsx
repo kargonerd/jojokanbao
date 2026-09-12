@@ -227,6 +227,7 @@ describe("BookReader", () => {
     expect(within(toolbar!).getByRole("button", { name: "更多阅读工具" })).toBeTruthy();
     fireEvent.click(within(toolbar!).getByRole("button", { name: "更多阅读工具" }));
     expect(screen.getByRole("button", { name: "显示设置" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "内容纠错" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "加入剪报本" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "切换纸张纹理" })).toBeNull();
   });

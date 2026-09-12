@@ -69,6 +69,7 @@ vi.mock("../components/BookThoughtComposer", () => ({ BookThoughtComposer: () =>
 // Material tools have their own tests; listening integration does not initialize
 // their Supabase repositories.
 vi.mock("../scrapbook/ScrapbookButton", () => ({ ScrapbookButton: () => null, ScrapbookCapture: () => null }));
+vi.mock("../corrections/ContentCorrectionButton", () => ({ ContentCorrectionButton: () => null, ContentCorrectionDialog: () => null }));
 vi.mock("../lib/bookAgent", () => ({ askMobileBookAgent: vi.fn() }));
 vi.mock("../lib/bookDocument", () => ({ createBookDocument: () => "<p>正文</p>" }));
 vi.mock("../lib/books", () => ({

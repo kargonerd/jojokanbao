@@ -35,6 +35,7 @@ import { ReaderSelectionPopover } from "../../reading/ReaderSelectionPopover";
 import { BookThoughtComposer } from "./BookThoughtComposer";
 import "./BookReader.css";
 import { ScrapbookButton, ScrapbookCapture } from "../../scrapbook/ScrapbookButton";
+import { ContentCorrectionButton, ContentCorrectionDialog } from "../../corrections/ContentCorrectionButton";
 import {
   bookshelfContains,
   popularExplanations,
@@ -195,7 +196,7 @@ export function BookReader({
   const [aiOpen, setAiOpen] = useState(false);
   const [tocQuery, setTocQuery] = useState("");
   const [toolPopover, setToolPopover] = useState<ReaderToolPopover>();
-  const [selectionMaterial, setSelectionMaterial] = useState<{ kind: "clip"; quote: string }>();
+  const [selectionMaterial, setSelectionMaterial] = useState<{ kind: "clip" | "correction"; quote: string }>();
   const [textSelection, setTextSelection] = useState<ReaderTextSelection>();
   useLayoutEffect(() => { setSelectionMaterial(undefined); }, [currentUserId, chapterKey]);
   const [thoughtSelection, setThoughtSelection] = useState<ReaderTextSelection>();
@@ -744,7 +745,7 @@ export function BookReader({
     setThoughtSelection(undefined);
   }
 
-  function captureMaterial(kind: "clip"): void {
+  function captureMaterial(kind: "clip" | "correction"): void {
     if (!currentUserId && kind === "clip") {
       navigate(`/account?returnTo=${encodeURIComponent(location.pathname + location.search + location.hash)}`);
       return;
@@ -1063,6 +1064,7 @@ export function BookReader({
         {toolPopover === "materials" ? <div className="reader-material-actions">
           <button type="button" onClick={() => openTool("display")}>显示设置</button>
           <ScrapbookButton source={materialSource} />
+          <ContentCorrectionButton source={materialSource} />
           <Link to="/scrapbook">打开剪报本</Link>
         </div> : toolPopover === "progress" ? <div className="pb-2">
           <div className="mb-5 grid grid-cols-2 divide-x divide-rule border-y border-rule py-4 text-center font-sans">
@@ -1104,11 +1106,13 @@ export function BookReader({
         {annotationAccess && <><button type="button" disabled={annotationSaving} onClick={() => void underlineSelection()} className="reader-selection-action"><span aria-hidden="true" className="book-selection-underline">A</span><span>划线</span></button>
         <button type="button" disabled={annotationSaving} onClick={composeThought} className="reader-selection-action"><IoCreateOutline aria-hidden="true" /><span>写想法</span></button></>}
         <button type="button" onClick={() => captureMaterial("clip")} className="reader-selection-action"><IoCreateOutline aria-hidden="true" /><span>剪报</span></button>
+        <button type="button" onClick={() => captureMaterial("correction")} className="reader-selection-action"><span aria-hidden="true">!</span><span>纠错</span></button>
         <button type="button" onClick={() => agentAccess ? void explainSelection() : openBookAi()} className="reader-selection-action" aria-label="AI 解释"><IoSparklesOutline aria-hidden="true" /><span>AI 解释</span></button>
       </div>
     </ReaderSelectionPopover>}
 
     {selectionMaterial?.kind === "clip" && <ScrapbookCapture source={selectedMaterialSource} quote={selectionMaterial.quote} onSaved={() => setReaderNotice("已保存到剪报本")} onClose={() => setSelectionMaterial(undefined)} />}
+    {selectionMaterial?.kind === "correction" && <ContentCorrectionDialog source={selectedMaterialSource} onClose={() => setSelectionMaterial(undefined)} />}
     {thoughtSelection && <BookThoughtComposer quote={thoughtSelection.text} value={thought} visibility={thoughtVisibility}
       saving={annotationSaving} error={thoughtError} panelClass={panelClass} onChange={setThought} onVisibilityChange={setThoughtVisibility}
       onSave={() => void saveThought()} onClose={clearSelection} />}

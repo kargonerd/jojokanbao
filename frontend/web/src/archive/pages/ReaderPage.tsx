@@ -7,6 +7,7 @@ import { PUBLICATIONS, type PublicationName } from "../publications";
 import { archiveIssuePath } from "../../routes";
 import { useRecentReadingStore } from "../../library/recentReadingStore";
 import { ScrapbookButton } from "../../scrapbook/ScrapbookButton";
+import { ContentCorrectionButton } from "../../corrections/ContentCorrectionButton";
 import { rollout } from "../../rollout";
 import { ReadingLoadingState } from "../../reading/ReadingLoadingState";
 import { useArchivePdf } from "../useArchivePdf";
@@ -745,6 +746,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
         <div className="absolute right-0 top-10 z-[90] w-[min(220px,calc(100vw-24px))] border border-rule-dark bg-paper p-3 space-y-4 shadow-[4px_4px_0_rgba(139,26,26,.14)] sm:p-4">
           {rollout.platformRedesign && <div className="reader-material-actions border-b border-rule pb-3">
             <ScrapbookButton source={materialSource} />
+            <ContentCorrectionButton source={materialSource} />
             <Link to="/scrapbook">打开剪报本</Link>
           </div>}
           <div>

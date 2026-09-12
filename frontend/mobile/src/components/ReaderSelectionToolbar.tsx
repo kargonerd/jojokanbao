@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View, type LayoutRectangle } from "react-n
 import type { MobileTheme } from "../theme/tokens";
 
 
-export function ReaderSelectionToolbar({ selection, frame, theme, eInk, onCopy, onUnderline, onThought, onExplain, onClip }: {
+export function ReaderSelectionToolbar({ selection, frame, theme, eInk, onCopy, onUnderline, onThought, onExplain, onClip, onCorrect }: {
   selection: { rect?: ReaderSelectionRect; viewport?: { width: number; height: number } };
   frame: LayoutRectangle;
   theme: MobileTheme;
@@ -14,9 +14,10 @@ export function ReaderSelectionToolbar({ selection, frame, theme, eInk, onCopy, 
   onThought?: () => void;
   onExplain: () => void;
   onClip?: () => void;
+  onCorrect?: () => void;
 }) {
   if (!selection.rect || !selection.viewport || selection.viewport.width <= 0 || selection.viewport.height <= 0 || !frame.width || !frame.height) return null;
-  const actionCount = 2 + Number(Boolean(onUnderline)) + Number(Boolean(onThought)) + Number(Boolean(onClip));
+  const actionCount = 2 + Number(Boolean(onUnderline)) + Number(Boolean(onThought)) + Number(Boolean(onClip)) + Number(Boolean(onCorrect));
   const columns = actionCount > 4 ? 3 : actionCount;
   const toolbarHeight = actionCount > 4 ? 112 : 64;
   const scaleX = frame.width / selection.viewport.width;
@@ -35,6 +36,7 @@ export function ReaderSelectionToolbar({ selection, frame, theme, eInk, onCopy, 
     { label: "划线", icon: null, onPress: onUnderline },
     { label: "写想法", icon: "create-outline", onPress: onThought },
     ...(onClip ? [{ label: "剪报", icon: "file-tray-full-outline" as const, onPress: onClip }] : []),
+    ...(onCorrect ? [{ label: "纠错", icon: "alert-circle-outline" as const, onPress: onCorrect }] : []),
     { label: "AI 解释", icon: "sparkles-outline", onPress: onExplain },
   ] as const;
   return <View style={[styles.container, { left: position.left, top: position.top, width: position.width }]}>

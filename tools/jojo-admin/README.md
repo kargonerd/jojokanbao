@@ -157,3 +157,12 @@ ES directly; publish Canonical to Hugging Face, then run the unified ES sync.
 
 For the production-style local launcher, run `server/start.bat`. It builds the
 web client and serves it together with the API at `http://127.0.0.1:5000/`.
+
+
+### 内容纠错
+
+管理台的“内容纠错”页面汇总 Web、桌面端和移动端读者提交的文字、缺页、错页与排版问题，保留资料编号、标题、章节 / 版次、阅读链接和可选原文摘录。可按待处理、核查中、已修正、已答复筛选，处理时必须填写说明；读者再次打开原阅读页的纠错入口可以查看自己的处理结果。
+
+依赖 `infrastructure/supabase/migrations/202609110002_content_corrections.sql`，需要按现有数据库发布流程应用迁移后使用。管理操作复用服务端 `JOJO_OPERATOR_TOKEN`，浏览器不接收管理员凭据。读者只能查看自己的纠错，不能直接修改处理状态；同一请求重试不会重复建单，账号切换时旧表单会关闭。
+
+针对性检查：`python -m pytest tools/jojo-admin/server/tests/test_content_correction_routes.py -q`（从仓库根目录执行），数据库权限用 `infrastructure/supabase/tests/database/content_corrections.test.sql` 验证。
