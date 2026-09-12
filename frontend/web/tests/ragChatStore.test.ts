@@ -47,13 +47,14 @@ describe("RAG chat scope", () => {
     });
   });
 
-  it("starts with all AI-enabled books and supports an optional multi-book scope", async () => {
+  it("starts with all sources and supports an optional multi-book scope", async () => {
     notebookApi.list.mockResolvedValue([
       { id: "book-a", title: "甲书" },
       { id: "book-b", title: "乙书" },
     ]);
 
     await useChatStore.getState().loadNotebooks();
+    expect(useChatStore.getState().contentType).toBe("all");
     expect(useChatStore.getState().selectedNotebookIds).toEqual([]);
 
     useChatStore.getState().toggleNotebook("book-a");
@@ -103,6 +104,25 @@ describe("RAG chat scope", () => {
     expect(askStream.mock.calls[0]?.[0]).toMatchObject({ contentType: "periodical", datasetIds: ["rmrb"], scopeMode: "all" });
   });
 
+  it.each([{ selection: [] }, { selection: ["rmrb", "book-a"] }])("saves and restores a combined scope %j", async ({ selection }) => {
+    notebookApi.list.mockResolvedValue([{ id: "book-a", title: "甲书" }]);
+    await useChatStore.getState().loadNotebooks();
+    for (const id of selection) useChatStore.getState().toggleNotebook(id);
+    askStream.mockImplementationOnce((...args: unknown[]) => {
+      const onDone = args[2] as (refs: unknown[], id: string) => void;
+      onDone([], "conv-mixed");
+      return vi.fn();
+    });
+    useChatStore.getState().sendMessage("调查研究");
+    await vi.waitFor(() => expect(localConversationApi.put).toHaveBeenCalledTimes(1));
+    const saved = localConversationApi.put.mock.calls[0]?.[0];
+    expect(saved.conversation.scope).toEqual({ contentType: "all", mode: selection.length ? "selected" : "all", datasetIds: ["rmrb", "book-a"] });
+    useChatStore.getState().selectContentType("book");
+    localConversationApi.get.mockResolvedValue(saved);
+    await useChatStore.getState().openConversation("conv-mixed");
+    expect(useChatStore.getState()).toMatchObject({ contentType: "all", selectedNotebookIds: selection });
+  });
+
   it("sends every explicitly selected book as one scoped question", async () => {
     notebookApi.list.mockResolvedValue([
       { id: "book-a", title: "甲书" },
@@ -130,7 +150,7 @@ describe("RAG chat scope", () => {
     expect(notebookApi.getSources).not.toHaveBeenCalled();
   });
 
-  it("sends all AI-enabled book ids when the reader asks without choosing a scope", async () => {
+  it("sends all periodical and AI-enabled book ids by default", async () => {
     notebookApi.list.mockResolvedValue([
       { id: "book-a", title: "甲书" },
       { id: "book-b", title: "乙书" },
@@ -143,7 +163,8 @@ describe("RAG chat scope", () => {
     await vi.waitFor(() => {
       expect(askStream).toHaveBeenCalledWith(
         expect.objectContaining({
-          datasetIds: ["book-a", "book-b"],
+          contentType: "all",
+          datasetIds: ["rmrb", "book-a", "book-b"],
           scopeMode: "all",
           question: "直接比较两本书",
         }),
@@ -190,6 +211,7 @@ describe("RAG chat scope", () => {
 
     expect(useChatStore.getState()).toMatchObject({
       conversationId: "conv_saved",
+      contentType: "book",
       selectedNotebookIds: ["book-a"],
       messages: [
         { role: "user", content: "历史问题" },
@@ -243,6 +265,7 @@ describe("RAG chat scope", () => {
       manifestObject: "content/books/book-a/items/item-a/manifest.jox",
     }]);
     await useChatStore.getState().loadNotebooks();
+    useChatStore.getState().selectContentType("book");
     useChatStore.getState().selectNotebook("book-a");
 
     useChatStore.getState().sendMessage("查找劳动价值");

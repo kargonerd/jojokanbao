@@ -47,8 +47,8 @@ describe("periodical RAG tools", () => {
     expect(init?.signal?.aborted).toBe(true);
   });
 
-  it("does not expose ES tools to default or selected book scopes", () => {
-    for (const scope of [{}, { contentType: "book" as const, datasetIds: ["book-a"] }]) {
+  it("does not expose ES tools to explicit or legacy selected book scopes", () => {
+    for (const scope of [{ contentType: "book" as const }, { datasetIds: ["book-a"] }]) {
       expect(fixture(scope).tools.map((tool) => tool.name)).not.toContain("search_periodicals");
     }
     expect(() => fixture({ contentType: "periodical", datasetIds: ["ckxx"] })).toThrow("仅支持人民日报");

@@ -125,7 +125,7 @@ export const notebookApi = {
 };
 
 // Chat (streaming)
-export function askStream(params: { contentType?: "book" | "periodical"; datasetIds: string[]; scopeMode: "all" | "selected"; question: string; conversationId?: string; itemIds?: string[]; manifestObjects?: string[]; history?: RagMessage[]; focus?: RagFocusContext }, onChunk: (text: string) => void, onDone: (refs?: RagReference[], conversationId?: string, metadata?: RagAnswerMetadata) => void, onError: (err: string) => void, onActivity?: (activity: RagStreamActivity) => void) {
+export function askStream(params: { contentType?: "all" | "book" | "periodical"; datasetIds: string[]; scopeMode: "all" | "selected"; question: string; conversationId?: string; itemIds?: string[]; manifestObjects?: string[]; history?: RagMessage[]; focus?: RagFocusContext }, onChunk: (text: string) => void, onDone: (refs?: RagReference[], conversationId?: string, metadata?: RagAnswerMetadata) => void, onError: (err: string) => void, onActivity?: (activity: RagStreamActivity) => void) {
   const ctrl = new AbortController();
   let settled = false;
   const conversationId = params.conversationId || `conv_${crypto.randomUUID().replaceAll("-", "").slice(0, 24)}`;

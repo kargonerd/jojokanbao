@@ -1,7 +1,8 @@
 import { gzipSync } from "node:zlib";
-import { transformJoxBytes } from "@jojo/content";
+import { CONTENT_SEARCH_API, transformJoxBytes } from "@jojo/content";
 import { describe, expect, it, vi } from "vitest";
 import { createRagTools, type RagScope } from "../src/rag-tools";
+import { toolSourceReferences } from "../src/runtime";
 
 function jox(value: unknown, key: string): Uint8Array {
   return transformJoxBytes(gzipSync(JSON.stringify(value)), key);
@@ -50,7 +51,11 @@ function seriesFixture(scope: RagScope) {
       body: { format: "text", value: `苹果 第 ${index + 1} 卷` }, assetRefs: [], annotations: [],
     });
   });
-  const fetchFn = vi.fn(async (input: RequestInfo | URL) => {
+  const fetchFn = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+    if (String(input) === CONTENT_SEARCH_API) return Response.json({ data: { total: 1, results: [{
+      type: "newspaper", datasetId: "rmrb", itemId: "rmrb:1981-07-17", documentId: "article-1",
+      title: "苹果报道", content: "苹果报刊原文", date: "1981-07-17", metadata: { page: 2 },
+    }] } });
     const bytes = objects.get(String(input));
     return bytes ? new Response(bytes.slice().buffer) : new Response(null, { status: 404 });
   });
@@ -59,6 +64,33 @@ function seriesFixture(scope: RagScope) {
 }
 
 describe("RAG content tools", () => {
+  it.each([{}, { contentType: "all" as const, datasetIds: ["rmrb", "series"] }])(
+    "searches book indexes and periodical ES with separate citations in a combined scope: %j", async (scope) => {
+      const { tool, fetchFn, fragmentObjects } = seriesFixture(scope);
+      await tool("list_library_books").execute("list", {}, undefined);
+      const books = await tool("search_content").execute("books", { query: "苹果", datasetIds: ["series"] }, undefined);
+      expect(books.details).toMatchObject({ total: 2, searchedItemCount: 2 });
+      const book = await tool("read_fragment").execute("book", { fragmentObject: fragmentObjects[0] }, undefined);
+      expect(toolSourceReferences(book)[0]).toMatchObject({ datasetId: "series", itemId: "series:one", targetId: "chapter:1" });
+      const papers = await tool("search_periodicals").execute("papers", { query: "苹果" }, undefined);
+      expect(papers.details).toMatchObject({ total: 1 });
+      const paper = await tool("read_periodical_article").execute("paper", { targetId: "article-1" }, undefined);
+      expect(toolSourceReferences(paper)[0]).toMatchObject({ type: "newspaper", datasetId: "rmrb", date: "1981-07-17", page: 2 });
+      expect(toolSourceReferences(book)[0]?.citationId).not.toBe(toolSourceReferences(paper)[0]?.citationId);
+      const esCall = fetchFn.mock.calls.find(([url]) => String(url) === CONTENT_SEARCH_API)!;
+      expect(JSON.parse(String(esCall[1]?.body))).toMatchObject({ datasetIds: ["rmrb"], types: ["newspaper"] });
+    },
+  );
+
+  it("does not widen a combined selection into an unselected source type", async () => {
+    const books = seriesFixture({ contentType: "all", datasetIds: ["series"] });
+    expect(books.tool("search_periodicals")).toBeUndefined();
+    expect((await books.tool("search_content").execute("books", { query: "苹果" }, undefined)).details).toMatchObject({ total: 2 });
+    const papers = seriesFixture({ contentType: "all", datasetIds: ["rmrb"] });
+    expect(papers.tool("search_content")).toBeUndefined();
+    expect((await papers.tool("search_periodicals").execute("papers", { query: "苹果" }, undefined)).details).toMatchObject({ total: 1 });
+  });
+
   it.each([
     { itemIds: ["series:one"] },
     { manifestObjects: ["content/books/series/items/one/manifest.jox"] },

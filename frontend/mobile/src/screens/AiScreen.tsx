@@ -124,7 +124,7 @@ export function AiScreen() {
   const listRef = useRef<FlatList<MobileBookAgentMessage>>(null);
   const cancelRef = useRef<(() => void) | undefined>(undefined);
   const [books, setBooks] = useState<MobileBook[]>([]);
-  const [contentType, setContentType] = useState<"book" | "periodical">("book");
+  const [contentType, setContentType] = useState<"all" | "book" | "periodical">("all");
   const [loadingBooks, setLoadingBooks] = useState(false);
   const [booksError, setBooksError] = useState("");
   const [selectedDatasetIds, setSelectedDatasetIds] = useState<string[]>([]);
@@ -143,18 +143,21 @@ export function AiScreen() {
     () => savedConversations.filter((conversation) => conversation.ownerId === ownerId),
     [ownerId, savedConversations],
   );
-  const scopeItems = useMemo(() => contentType === "book" ? books : JOJO_AI_PERIODICAL_IDS.map((datasetId) => ({
-    datasetId, title: ARCHIVE_PUBLICATION_BY_ID[datasetId].title,
-  })), [books, contentType]);
+  const scopeItems = useMemo(() => {
+    const periodicals = JOJO_AI_PERIODICAL_IDS.map((datasetId) => ({
+      datasetId, title: ARCHIVE_PUBLICATION_BY_ID[datasetId].title,
+    }));
+    return contentType === "all" ? [...periodicals, ...books] : contentType === "book" ? books : periodicals;
+  }, [books, contentType]);
   const selectedTitles = selectedDatasetIds.flatMap((id) => {
     const book = scopeItems.find((candidate) => candidate.datasetId === id);
     return book ? [book.title] : [];
   });
   const scopeLabel = selectedTitles.length === 0
-    ? (contentType === "book" ? "全部书籍" : "报刊 · 人民日报")
+    ? (contentType === "all" ? "全部报刊 + 书籍" : contentType === "book" ? "全部书籍" : "报刊 · 人民日报")
     : selectedTitles.length === 1
       ? `仅《${selectedTitles[0]}》`
-      : `限定 ${selectedTitles.length} ${contentType === "book" ? "本书" : "种报刊"}`;
+      : `限定 ${selectedTitles.length} ${contentType === "all" ? "份资料" : contentType === "book" ? "本书" : "种报刊"}`;
   const visibleBooks = useMemo(() => {
     const needle = scopeQuery.trim().toLocaleLowerCase("zh-CN");
     return needle ? scopeItems.filter((item) => item.title.toLocaleLowerCase("zh-CN").includes(needle)) : scopeItems;
@@ -191,7 +194,10 @@ export function AiScreen() {
     setStreamContent("");
     setStreamStatus("");
     setError("");
-    if (resetScope) setSelectedDatasetIds([]);
+    if (resetScope) {
+      setContentType("all");
+      setSelectedDatasetIds([]);
+    }
   }
 
   function chooseScope(next: string[]) {
@@ -386,7 +392,7 @@ export function AiScreen() {
           </Pressable>
         </View>
 
-        {booksError && contentType === "book" ? (
+        {booksError && contentType !== "periodical" ? (
           <View style={[styles.errorBox, { borderColor: theme.red, backgroundColor: theme.paper }]}>
             <Text style={[styles.errorText, { color: theme.red, fontFamily: theme.sans }]}>{booksError}</Text>
           </View>
@@ -487,11 +493,11 @@ export function AiScreen() {
         <View style={styles.scopeSheetContent}>
           {contentType === "book" && <Text style={[styles.scopeHelp, { color: theme.muted, fontFamily: theme.sans }]}>不选时查询全部书籍，可以多选。</Text>}
           <View style={{ flexDirection: "row", marginTop: 12 }}>
-            {(["book", "periodical"] as const).map((type) => (
+            {(["all", "book", "periodical"] as const).map((type) => (
               <Pressable
                 key={type}
                 accessibilityRole="button"
-                accessibilityLabel={type === "book" ? "书籍" : "报刊"}
+                accessibilityLabel={type === "all" ? "全部" : type === "book" ? "书籍" : "报刊"}
                 accessibilityState={{ selected: contentType === type }}
                 disabled={streaming}
                 onPress={() => {
@@ -502,7 +508,7 @@ export function AiScreen() {
                 }}
                 style={{ flex: 1, padding: 12, alignItems: "center", borderBottomWidth: 2, borderBottomColor: contentType === type ? theme.red : theme.rule }}
               >
-                <Text style={{ color: contentType === type ? theme.red : theme.muted, fontFamily: theme.sans, fontWeight: "800" }}>{type === "book" ? "书籍" : "报刊"}</Text>
+                <Text style={{ color: contentType === type ? theme.red : theme.muted, fontFamily: theme.sans, fontWeight: "800" }}>{type === "all" ? "全部" : type === "book" ? "书籍" : "报刊"}</Text>
               </Pressable>
             ))}
           </View>
@@ -511,13 +517,13 @@ export function AiScreen() {
             <TextInput
               value={scopeQuery}
               onChangeText={setScopeQuery}
-              placeholder={contentType === "book" ? "输入书名筛选" : "输入报刊名筛选"}
+              placeholder={contentType === "all" ? "输入书名或报刊名筛选" : contentType === "book" ? "输入书名筛选" : "输入报刊名筛选"}
               placeholderTextColor={theme.muted}
               style={[styles.scopeSearchInput, { color: theme.ink, fontFamily: theme.sans }]}
             />
           </View>
           <FlatList
-            data={[{ datasetId: "", title: contentType === "book" ? "全部书籍" : "全部报刊" }, ...visibleBooks]}
+            data={[{ datasetId: "", title: contentType === "all" ? "全部报刊 + 书籍" : contentType === "book" ? "全部书籍" : "全部报刊" }, ...visibleBooks]}
             keyExtractor={(item) => item.datasetId || "all"}
             keyboardShouldPersistTaps="handled"
             renderItem={({ item }) => {

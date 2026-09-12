@@ -13,7 +13,7 @@ import type {
 
 const LAST_CONVERSATION_KEY = "rag-last-conversation";
 
-function freshScope(datasetIds: string[], contentType: RagContentType = "book") {
+function freshScope(datasetIds: string[], contentType: RagContentType = "all") {
   return {
     contentType,
     selectedNotebookIds: datasetIds,
@@ -50,7 +50,7 @@ interface ChatState {
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
-  contentType: "book",
+  contentType: "all",
   notebooks: [],
   selectedNotebookIds: [],
   messages: [],
@@ -112,7 +112,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     });
     try {
       const detail = await localConversationApi.get(conversationId);
-      const contentType = detail.conversation.scope?.contentType === "periodical" ? "periodical" : "book";
+      const contentType = detail.conversation.scope?.contentType ?? "book";
       const available = new Set(scopeNotebooks(get().notebooks, contentType).map((item) => item.id));
       const scoped = (detail.conversation.scope?.datasetIds ?? [])
         .filter((id) => available.has(id));
@@ -299,6 +299,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
   clearConversation: () => {
     if (get().streaming || get().historyLoading) return;
     localStorage.removeItem(LAST_CONVERSATION_KEY);
-    set(freshScope([], get().contentType));
+    set(freshScope([]));
   },
 }));

@@ -112,11 +112,14 @@ function requestBody(value: unknown): AgentRequestBody {
   };
   const datasetIds = stringList(scope?.datasetIds);
   const contentType = scope?.contentType;
-  if (contentType !== undefined && contentType !== "book" && contentType !== "periodical") {
-    throw new AgentHttpError(400, "scope.contentType must be book or periodical");
+  if (contentType !== undefined && contentType !== "all" && contentType !== "book" && contentType !== "periodical") {
+    throw new AgentHttpError(400, "scope.contentType must be all, book or periodical");
   }
   const itemIds = stringList(scope?.itemIds);
   const manifestObjects = stringList(scope?.manifestObjects);
+  if (contentType === "all" && (itemIds?.length || manifestObjects?.length)) {
+    throw new AgentHttpError(400, "combined scope only supports dataset selection");
+  }
   const mode = scope?.mode === "all" || scope?.mode === "selected"
     ? scope.mode
     : undefined;
@@ -156,7 +159,7 @@ function requestBody(value: unknown): AgentRequestBody {
       ...(prefix ? { prefix } : {}),
       ...(suffix ? { suffix } : {}),
     };
-    if (contentType === "periodical" || itemIds?.length !== 1 || manifestObjects?.length !== 1) {
+    if ((contentType && contentType !== "book") || itemIds?.length !== 1 || manifestObjects?.length !== 1) {
       throw new AgentHttpError(400, "focus requires one selected book item");
     }
   }

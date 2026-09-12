@@ -3,7 +3,7 @@ import { AppShell } from "@jojo/ui";
 import { AiExperimentalNotice } from "../components/AiBetaNotice";
 import { ReferenceButtons } from "../components/ReferenceButtons";
 import { useChatStore } from "../stores/chatStore";
-import { scopeNotebooks } from "../scope";
+import { ALL_RAG_SOURCES_LABEL, scopeNotebooks } from "../scope";
 import { formatChatMarkdown } from "../utils/markdown";
 
 function conversationDate(timestamp?: number): string {
@@ -127,7 +127,7 @@ function ScopeSelector({ onClose }: { onClose?: () => void }) {
     toggleNotebook,
   } = useChatStore();
   const [query, setQuery] = useState("");
-  const sourceLabel = contentType === "book" ? "书籍" : "报刊";
+  const sourceLabel = contentType === "all" ? "资料" : contentType === "book" ? "书籍" : "报刊";
   const disabled = streaming || historyLoading;
   const visibleNotebooks = useMemo(() => {
     const candidates = scopeNotebooks(notebooks, contentType);
@@ -154,7 +154,7 @@ function ScopeSelector({ onClose }: { onClose?: () => void }) {
         </button>
       </div>
       <div role="group" aria-label="资料类型" className="mb-3 flex border-b border-rule">
-        {(["book", "periodical"] as const).map((type) => (
+        {(["all", "book", "periodical"] as const).map((type) => (
           <button
             key={type}
             type="button"
@@ -163,7 +163,7 @@ function ScopeSelector({ onClose }: { onClose?: () => void }) {
             onClick={() => { setQuery(""); selectContentType(type); }}
             className={`flex-1 border-0 border-b-2 bg-transparent px-3 py-2 text-xs font-bold disabled:opacity-35 ${contentType === type ? "border-red text-red" : "border-transparent text-muted hover:text-red"}`}
           >
-            {type === "book" ? "书籍" : "报刊"}
+            {type === "all" ? "全部" : type === "book" ? "书籍" : "报刊"}
           </button>
         ))}
       </div>
@@ -173,7 +173,7 @@ function ScopeSelector({ onClose }: { onClose?: () => void }) {
           type="search"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder={contentType === "book" ? "输入书名筛选" : "输入报刊名筛选"}
+          placeholder={contentType === "all" ? "输入书名或报刊名筛选" : contentType === "book" ? "输入书名筛选" : "输入报刊名筛选"}
           className="w-full border border-rule-dark bg-paper px-3 py-2 text-xs shadow-none focus:border-red focus:outline-none"
         />
       </label>
@@ -193,7 +193,7 @@ function ScopeSelector({ onClose }: { onClose?: () => void }) {
             {selectedNotebookIds.length === 0 ? "✓" : "·"}
           </span>
           <span>
-            <strong className="block text-xs leading-5">全部{sourceLabel}</strong>
+            <strong className="block text-xs leading-5">{contentType === "all" ? ALL_RAG_SOURCES_LABEL : `全部${sourceLabel}`}</strong>
             <small className="mt-0.5 block font-sans text-[9px] font-normal text-muted">默认范围</small>
           </span>
         </button>
@@ -270,10 +270,10 @@ export function ChatPage() {
     return notebook?.title || notebook?.name || "";
   }).filter(Boolean);
   const scopeLabel = selectedTitles.length === 0
-    ? (contentType === "book" ? "全部书籍" : "报刊 · 人民日报")
+    ? (contentType === "all" ? ALL_RAG_SOURCES_LABEL : contentType === "book" ? "全部书籍" : "报刊 · 人民日报")
     : selectedTitles.length === 1
       ? `仅《${selectedTitles[0]}》`
-      : `限定 ${selectedTitles.length} ${contentType === "book" ? "本书" : "种报刊"}`;
+      : `限定 ${selectedTitles.length} ${contentType === "all" ? "份资料" : contentType === "book" ? "本书" : "种报刊"}`;
   const canSend = Boolean(input.trim() && availableNotebooks.length && !loading && !historyLoading && !streaming);
   const hasThread = Boolean(conversationId) || messages.length > 0 || streaming || Boolean(error);
   const handleSend = () => {

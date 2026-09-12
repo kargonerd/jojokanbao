@@ -50,7 +50,7 @@ beforeEach(async () => {
 afterEach(async () => { await act(async () => view.unmount()); vi.unstubAllGlobals(); });
 
 it("selects People's Daily, persists the scope, and opens newspaper citations in the archive reader", async () => {
-  await act(async () => button("选择资料，当前全部书籍").props.onPress());
+  await act(async () => button("选择资料，当前全部报刊 + 书籍").props.onPress());
   expect(button("甲书")).toBeDefined();
   await act(async () => button("报刊").props.onPress());
   expect(button("甲书")).toBeUndefined();
@@ -78,4 +78,25 @@ it("selects People's Daily, persists the scope, and opens newspaper citations in
   await act(async () => button("历史对话").props.onPress());
   await act(async () => button("黄河报道").props.onPress());
   expect(button("选择资料，当前仅《人民日报》")).toBeDefined();
+  await act(async () => button("新对话").props.onPress());
+  expect(button("选择资料，当前全部报刊 + 书籍")).toBeDefined();
+});
+
+it("sends all books and periodicals by default and restores the combined conversation", async () => {
+  expect(button("选择资料，当前全部报刊 + 书籍")).toBeDefined();
+  await act(async () => view.root.findByType("input").props.onChangeText("调查研究"));
+  await act(async () => button("发送").props.onPress());
+  expect(mocks.ask.mock.calls[0]?.[0]).toMatchObject({ contentType: "all", datasetIds: ["rmrb", "book-a"], scopeMode: "all" });
+  expect(mocks.volumes).not.toHaveBeenCalled();
+  await act(async () => {
+    mocks.ask.mock.calls[0]?.[1].onChunk("馆藏回答");
+    mocks.ask.mock.calls[0]?.[1].onDone("conv-all", []);
+  });
+  expect(mocks.upsert).toHaveBeenCalledWith(expect.objectContaining({ contentType: "all", selectedDatasetIds: [] }));
+  await act(async () => button("选择资料，当前全部报刊 + 书籍").props.onPress());
+  await act(async () => button("报刊").props.onPress());
+  await act(async () => button("关闭").props.onPress());
+  await act(async () => button("历史对话").props.onPress());
+  await act(async () => button("调查研究").props.onPress());
+  expect(button("选择资料，当前全部报刊 + 书籍")).toBeDefined();
 });

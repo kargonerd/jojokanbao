@@ -21,7 +21,7 @@ afterEach(() => {
 });
 
 describe("askStream references", () => {
-  it("sends the periodical scope and retains newspaper citation metadata from SSE", async () => {
+  it.each(["all", "periodical"] as const)("sends the %s scope and retains newspaper citation metadata from SSE", async (contentType) => {
     const reference = {
       citationId: "Jpaper", type: "newspaper", datasetId: "rmrb", itemId: "rmrb:1999-06-25",
       targetId: "article-1", title: "关注黄河", date: "1999-06-25", page: 5,
@@ -37,12 +37,12 @@ describe("askStream references", () => {
     const activity = vi.fn();
     const references = await new Promise<RagReference[] | undefined>((resolve, reject) => {
       askStream({
-        contentType: "periodical", datasetIds: ["rmrb"], scopeMode: "all", question: "黄河报道",
+        contentType, datasetIds: ["rmrb"], scopeMode: "all", question: "黄河报道",
       }, () => undefined, resolve, reject, activity);
     });
     expect(references).toEqual([reference]);
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toMatchObject({
-      scope: { contentType: "periodical", datasetIds: ["rmrb"], itemIds: [], manifestObjects: [] },
+      scope: { contentType, datasetIds: ["rmrb"], itemIds: [], manifestObjects: [] },
     });
     expect(activity).toHaveBeenCalledWith({ phase: "searching", message: "正在人民日报中检索原文：“黄河”" });
   });
