@@ -52,7 +52,7 @@ const SEMANTIC_FONTS = new Set(["kai", "fang-song"]);
 const SEMANTIC_SIZES = new Set(["small"]);
 const SEMANTIC_BREAKS = new Set(["page"]);
 
-type SemanticTag = "strong" | "em" | "sup" | "sub" | "u" | "s" | "q" | "blockquote" | "h4";
+type SemanticTag = "strong" | "em" | "sup" | "sub" | "u" | "s" | "q" | "blockquote" | "h4" | "span" | "p";
 
 function sourceClasses(current: ReturnType<cheerio.CheerioAPI>): string[] {
   return (current.attr("class") ?? "").split(/\s+/).filter(Boolean);
@@ -327,6 +327,11 @@ function textualAnnotations(
   $("p").each((_index, element) => {
     const text = $(element).text().replace(/\s+/g, " ").trim();
     const noteParagraph = $(element).attr("data-source-note-definition") === "true";
+    // Editorial stars also prefix ordinary prose. A paragraph with its own
+    // references is not a star-note definition unless the source labels it so.
+    if (!noteParagraph && /^\*+/.test(text) && (
+      $(element).find("a[href]").length > 0 || /^\*+\d{1,2}月\d{1,2}日寄自/.test(text)
+    )) return;
     const match = text.match(noteParagraph
       ? /^(\*+|\[(\d{1,3})\]|〔(\d{1,3})〕|\((\d{1,3})\)|（(\d{1,3})）)\s*(.+)$/s
       : /^(\*+|\[(\d{1,3})\]|〔(\d{1,3})〕)\s*(.+)$/s);
@@ -463,6 +468,43 @@ export interface SemanticChapterResult {
   characterCount: number;
 }
 
+function normalizeSourceAnchors($: cheerio.CheerioAPI, chapterId: string): void {
+  const bodies = $("body");
+  const reserved = new Set($("[id]").map((_index, element) => $(element).attr("id")!).get());
+  const seen = new Set<string>();
+  const scopes = bodies.length ? bodies.toArray() : $.root().toArray();
+  scopes.forEach((body, bodyIndex) => {
+    const scope = $(body);
+    const renamed = new Map<string, string>();
+    const localIds = new Set<string>();
+    scope.find("[id]").add(scope.filter("[id]")).each((_index, element) => {
+      const current = $(element);
+      const id = current.attr("id")!;
+      const firstLocalOccurrence = !localIds.has(id);
+      localIds.add(id);
+      if (!seen.has(id)) { seen.add(id); return; }
+      let replacement = `jojo-body-${bodyIndex + 1}-${id}`;
+      for (let suffix = 2; reserved.has(replacement); suffix += 1) replacement = `jojo-body-${bodyIndex + 1}-${id}-${suffix}`;
+      reserved.add(replacement);
+      if (firstLocalOccurrence) renamed.set(id, replacement);
+      current.attr("id", replacement);
+    });
+    scope.find("a[href],a[data-anchor-id]").each((_index, element) => {
+      const current = $(element);
+      const href = current.attr("href");
+      if (href?.startsWith("#")) {
+        let anchor = href.slice(1);
+        try { anchor = decodeURIComponent(anchor); } catch { /* Keep malformed source fragments unchanged. */ }
+        const replacement = renamed.get(anchor);
+        if (replacement) current.attr("href", `#${encodeURIComponent(replacement)}`);
+      }
+      const target = current.attr("data-target-id");
+      const replacement = renamed.get(current.attr("data-anchor-id") ?? "");
+      if (replacement && (!target || target === chapterId)) current.attr("data-anchor-id", replacement);
+    });
+  });
+}
+
 export function convertWereadChapter(
   source: DecodedWereadChapter,
   diagnostics: PipelineDiagnostic[],
@@ -471,6 +513,9 @@ export function convertWereadChapter(
     ? `<html><body>${textBody(source.content)}</body></html>`
     : source.content;
   const $ = cheerio.load(input, { xmlMode: true });
+  // Exporters can repeat an ID on both halves of a heading, or concatenate
+  // documents with independent ID scopes. Local links keep their first target.
+  normalizeSourceAnchors($, source.id);
   // Preserve only the small, interoperable part of source presentation that
   // carries meaning in books (for example a right-aligned date or signature).
   // Arbitrary classes and inline CSS are still removed by the sanitizer.
@@ -674,6 +719,28 @@ export function convertWereadChapter(
     current.replaceWith(`<figure data-asset-id="${id}">${caption ? `<figcaption>${escapeText(caption)}</figcaption>` : ""}</figure>`);
   });
 
+  // A leaf div can itself be a paragraph, including a linked endnote. Dropping
+  // that wrapper joins adjacent paragraphs. Keep container divs unwrapped so
+  // existing headings, lists and paragraphs never become nested inside a p.
+  const sourceAnchors = new Map($("a[id]").toArray()
+    .map((element) => [$(element).attr("id")!, element]));
+  $("div").each((_index, element) => {
+    const current = $(element);
+    if (!current.text().trim() || current.find("div,section,p,h1,h2,h3,h4,h5,h6,blockquote,ol,ul,li,table,figure").length) return;
+    const first = current.contents().filter((_childIndex, child) => (
+      child.type !== "comment" && (child.type !== "text" || Boolean(child.data.trim()))
+    )).first();
+    const href = first.attr("href") ?? "";
+    const reference = href.startsWith("#") ? sourceAnchors.get(href.slice(1)) : undefined;
+    const linkedNote = first.is("a[id][href]")
+      && /^(?:\[\d+\]|〔\d+〕|\(\d+\)|（\d+）|\*+)$/.test(first.text().trim())
+      && reference && $(reference).attr("href") === `#${first.attr("id")}`;
+    renameElement(element, "p");
+    const alignment = semanticAlignment(current);
+    if (alignment) current.attr("data-align", alignment);
+    if (linkedNote) current.attr("data-role", "note").attr("data-indent", "none");
+  });
+
   $("a[href]").each((_index, element) => {
     const current = $(element);
     const href = current.attr("href")?.trim() ?? "";
@@ -686,6 +753,10 @@ export function convertWereadChapter(
     const current = $(element);
     if (current.find("sup[data-annotation-id]").length && !current.text().trim()) {
       current.replaceWith(current.contents());
+    } else if (current.attr("href") === undefined && !current.attr("data-target-id") && !current.attr("data-anchor-id")) {
+      // Page/section destinations are not links. Keep their IDs and text
+      // without exposing them to the Reader's interactive link styling.
+      renameElement(element, "span");
     }
   });
 

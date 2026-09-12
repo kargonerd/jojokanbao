@@ -50,6 +50,34 @@ async function fixture(options: {
 }
 
 describe("EPUB import compatibility and integrity", () => {
+  it("downgrades missing note destinations through canonical, delivery and EPUB export", async () => {
+    const { file, directory } = await fixture({ entries: [
+      { id: "c1", file: "text/ch1.xhtml", body: '<p>正文<a id="zero" href="#note0"><sup>(0)</sup></a>1）因为增长。</p><p><a id="missing-file" href="gone.xhtml#note">缺失注释</a><a id="valid" href="ch2.xhtml#note">有效跨章注释</a></p>' },
+      { id: "c2", file: "text/ch2.xhtml", body: '<p id="note">注释内容</p>' },
+    ] });
+    const output = path.join(directory, "build");
+    const report = await buildContentPipeline({ inputPaths: [file], outputDirectory: output, fetchAssets: false });
+    expect(report).toMatchObject({ acceptedFiles: 1, rejectedFiles: 0, chapters: 2 });
+    expect(report.diagnostics).toContainEqual(expect.objectContaining({ code: "internal-links-unresolved", level: "warning" }));
+    expect((await validatePipelineOutput(output)).errors).toEqual([]);
+    const canonicalPath = path.join(output, report.itemsBuilt[0]!.canonicalObject);
+    const item = JSON.parse(gunzipSync(await readFile(canonicalPath)).toString("utf8")) as JojoCanonicalItem;
+    if (item.content.schema !== "jojo-content/book/1") throw new Error("Expected book");
+    const $ = cheerio.load(item.content.chapters[0]!.body.value);
+    expect($("span#zero sup").text()).toBe("(0)");
+    expect($("#missing-file").is("span")).toBe(true);
+    expect($("#valid").is("a[data-target-id]")).toBe(true);
+    const epub = await buildEpub({ itemId: item.itemId, title: item.title, author: "作者", language: item.language, chapters: item.content.chapters, toc: item.content.toc, annotations: item.annotations, assets: item.assets, canonicalDatasetDirectory: directory });
+    const zip = await JSZip.loadAsync(epub);
+    const html = cheerio.load(await zip.file("OEBPS/chapters/chapter-0001.xhtml")!.async("string"), { xmlMode: true });
+    expect(html("#zero").is("span")).toBe(true);
+    expect(html("#zero").attr("href")).toBeUndefined();
+    expect(html("#valid").attr("href")).toBe("chapter-0002.xhtml#note");
+    item.content.chapters[0]!.body.value += '<p><a href="#missing">坏链接</a></p>';
+    await writeFile(canonicalPath, gzipSync(JSON.stringify(item)));
+    expect((await validatePipelineOutput(output)).errors.some((error) => error.includes("#missing") && error.includes("内链"))).toBe(true);
+  });
+
   it("reads namespace-prefixed package documents and uses the declared unique identifier", async () => {
     const { file } = await fixture({ prefixed: true, metadata: '<dc:identifier>9781234567890</dc:identifier><dc:identifier id="uid">urn:uuid:actual-book</dc:identifier>' });
     const decoded = await decodeEbookFile(file);

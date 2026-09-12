@@ -17,6 +17,7 @@ import {
   type JojoTocNode,
 } from "@jojo/content";
 import type { PipelineReport } from "./models";
+import { downgradeUnresolvedInternalLinks } from "./internal-links";
 
 function digest(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
@@ -125,6 +126,9 @@ export async function validatePipelineOutput(rootDirectory: string): Promise<Val
       }
       const canonical = JSON.parse(gunzipSync(await readFile(path.join(root, ...summary.canonicalObject.split("/")))).toString("utf8")) as JojoCanonicalItem;
       if (canonical.content.schema === "jojo-content/book/1") {
+        for (const link of downgradeUnresolvedInternalLinks(canonical.content.chapters, canonical.annotations).unresolved) {
+          errors.push(`${summary.canonicalObject}: ${link.chapterId} 内链 ${link.reference} 不存在`);
+        }
         const chapterIds = new Set(canonical.content.chapters.map((chapter) => chapter.id));
         const chapterAnchors = new Map<string, Set<string>>();
         const documents = canonical.content.chapters.map((chapter) => {

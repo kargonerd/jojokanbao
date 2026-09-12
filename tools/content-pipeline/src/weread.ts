@@ -56,13 +56,24 @@ export function decodeWereadParts(parts: string[]): string {
   if (parts.length === 0 || parts.some((part) => typeof part !== "string")) {
     throw new Error("章节响应分片不完整");
   }
+  // An exported API error is not an encoded chapter. Previously its message
+  // was fed into Base64 decoding and silently published as replacement glyphs.
+  for (const part of parts) {
+    if (!/^[A-Fa-f0-9]{32}/.test(part)) {
+      throw new Error("章节响应不是有效的编码分片（可能包含上游限流或错误响应）");
+    }
+  }
   const joined = parts.map((part) => part.slice(32)).join("").slice(1);
   const restored = undoCharacterSwaps(joined, calculateSwapIndexes(joined));
   const normalized = restored
     .replaceAll("-", "+")
     .replaceAll("_", "/")
     .replace(/[^A-Za-z0-9+/]/g, "");
-  return Buffer.from(normalized, "base64").toString("utf8");
+  try {
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(Buffer.from(normalized, "base64"));
+  } catch {
+    throw new Error("章节响应解码后不是有效的 UTF-8 正文");
+  }
 }
 
 function chapterEncoding(chapter: WereadChapterRecord): "epub" | "text" | undefined {

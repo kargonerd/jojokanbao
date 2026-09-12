@@ -591,7 +591,9 @@ def publish_huggingface(build_root: Path, on_log: Callable[[str], None]) -> dict
     api = HfApi(token=token)
     private = _huggingface_private()
     api.create_repo(repo_id=repo_id, repo_type="dataset", private=private, exist_ok=True)
-    info = api.repo_info(repo_id=repo_id, repo_type="dataset")
+    # This shared repo contains large raw/newspaper trees. Only these two
+    # fields are needed; fetching every sibling can stall a single-book update.
+    info = api.repo_info(repo_id=repo_id, repo_type="dataset", expand=["sha", "private"], timeout=30)
     if bool(info.private) != private:
         expected = "私有" if private else "公开"
         raise RuntimeError(f"Hugging Face Dataset {repo_id} 不是预期的{expected}仓库，停止发布")
