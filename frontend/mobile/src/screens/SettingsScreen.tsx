@@ -382,7 +382,7 @@ export function SettingsScreen() {
           <SectionTitle title="阅读数据" aside={`${recentIssues.length + recentBooks.length} 条`} />
           <View style={[styles.panel, { backgroundColor: theme.paper, borderColor: theme.rule }]}>
             <Pressable
-              onPress={() => Alert.alert("清除阅读记录？", undefined, [
+              onPress={() => Alert.alert("清除阅读记录？", "登录后，此操作会同步清除账号在其他设备上的阅读记录。", [
                 { text: "取消", style: "cancel" },
                 { text: "清除", style: "destructive", onPress: clearRecentReading },
               ])}

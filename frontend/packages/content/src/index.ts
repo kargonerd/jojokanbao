@@ -19,3 +19,4 @@ export * from "./book-assets";
 export * from "./offline-identity";
 export * from "./speech-position";
 export * from "./reading-progress";
+export * from "./reading-history";

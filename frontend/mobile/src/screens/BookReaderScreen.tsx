@@ -442,8 +442,9 @@ export function BookReaderScreen({ route, navigation }: Props) {
     !initialChapterId && !initialAnchorId && !initialText && recentBook?.chapterId === activeChapterId
       ? recentBook.scrollProgress
       : undefined,
-    !initialChapterId && !initialAnchorId && !initialText && legacyResume?.chapterId === activeChapterId
-      ? legacyResume.chapterProgress
+    !initialChapterId && !initialAnchorId && !initialText
+      ? (recentBook?.chapterId === activeChapterId ? recentBook.chapterProgress : undefined)
+        ?? (legacyResume?.chapterId === activeChapterId ? legacyResume.chapterProgress : undefined)
       : undefined,
     {
       tocAnchorIds: tocEntries.filter((entry) => entry.chapterId === activeChapterId && entry.anchorId).map((entry) => entry.anchorId!),
@@ -451,7 +452,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
       initialChapterId: chapter?.fragment.fragmentId,
       chapters: chapters.map((entry) => ({ id: entry.id, title: entry.title, tocAnchorIds: tocEntries.filter((toc) => toc.chapterId === entry.id && toc.anchorId).map((toc) => toc.anchorId!) })),
     },
-  ), [activeChapterId, activeIndex, chapters, tocEntries, chapter, bookReadingMode, bookAnnotations, chapterAnnotations, chapterEntryEdge, initialAnchorId, initialChapterId, initialText, leftTapNext, legacyResume, recentBook?.chapterId, recentBook?.scrollProgress, recentBook?.spreadIndex]);
+  ), [activeChapterId, activeIndex, chapters, tocEntries, chapter, bookReadingMode, bookAnnotations, chapterAnnotations, chapterEntryEdge, initialAnchorId, initialChapterId, initialText, leftTapNext, legacyResume, recentBook?.chapterId, recentBook?.chapterProgress, recentBook?.scrollProgress, recentBook?.spreadIndex]);
 
   useEffect(() => {
     for (const annotation of bookReadingMode === "scroll" ? bookAnnotations : chapterAnnotations) {
@@ -615,6 +616,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
         chapterId: visibleChapterId,
         spreadIndex: message.paged ? message.spreadIndex : undefined,
         scrollProgress: message.paged ? undefined : message.scrollProgress,
+        chapterProgress: message.paged ? (message.spreadCount <= 1 ? 0 : message.spreadIndex / (message.spreadCount - 1)) : message.scrollProgress,
       });
       return;
     }

@@ -145,7 +145,7 @@ describe("book reader bridge", () => {
     expect(startScript).toContain("startAtEnd = false");
     const legacyResumeScript = createBookReaderBridgeScript("start", false, [], undefined, undefined, 0.42);
     expect(legacyResumeScript).toContain("var restoreChapterProgress = 0.42");
-    expect(legacyResumeScript).toContain("Math.floor(restoreChapterProgress * spreadCount)");
+    expect(legacyResumeScript).toContain("Math.round(restoreChapterProgress * (spreadCount - 1))");
     expect(startScript).toContain('document.addEventListener("contextmenu"');
     expect(startScript).toContain('document.addEventListener("selectionchange"');
     expect(endScript).toContain("startAtEnd = true");

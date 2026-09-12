@@ -98,9 +98,10 @@ describe("BookReader", () => {
     focus?: { anchorId?: string; text?: string },
     strict = false,
     activeChapterId = "chapter-1",
+    position?: number,
   ) {
     const reader = (
-      <MemoryRouter initialEntries={["/book/test-books/test-books:full-book"]}>
+      <MemoryRouter initialEntries={[`/book/test-books/test-books:full-book${position === undefined ? "" : `?chapter=${activeChapterId}&position=${position}`}`]}>
         <BookReader
           bookTitle="测试书"
           datasetId="test-books"
@@ -140,7 +141,7 @@ describe("BookReader", () => {
     return { ...view, onChapterChange, onInternalLink };
   }
 
-  async function renderContinuousReader() {
+  async function renderContinuousReader(position?: number) {
     window.localStorage.setItem("jojo-reader-mode", "scroll");
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
       const scroll = document.querySelector<HTMLElement>("[data-book-reading-surface]");
@@ -165,7 +166,7 @@ describe("BookReader", () => {
     const onVisibleChapterChange = vi.fn();
     function Harness() {
       const [activeChapterId, setActiveChapterId] = useState("chapter-1");
-      return <MemoryRouter><BookReader bookTitle="测试书" datasetId="test-books" itemId="test-books:full-book"
+      return <MemoryRouter initialEntries={[`/book/test-books/full-book${position === undefined ? "" : `?chapter=chapter-1&position=${position}`}`]}><BookReader bookTitle="测试书" datasetId="test-books" itemId="test-books:full-book"
         itemKey="full-book" manifestObject="test-books/manifest.jox" characterCount={2000}
         chapters={chapters} toc={[]} activeChapterId={activeChapterId} chapterKey={activeChapterId}
         backHref="/library" onChapterChange={onChapterChange} onLocate={vi.fn()} onSearch={async () => []}
@@ -175,7 +176,7 @@ describe("BookReader", () => {
     const view = render(<Harness />);
     await screen.findByText("chapter-1 连续正文。");
     const scroll = view.container.querySelector<HTMLElement>("[data-book-reading-surface]")!;
-    act(() => { scroll.scrollTop = 650; fireEvent.scroll(scroll); });
+    if (position === undefined) act(() => { scroll.scrollTop = 650; fireEvent.scroll(scroll); });
     await screen.findByText("chapter-2 连续正文。");
     return { ...view, scroll, loadChapter, onChapterChange, onVisibleChapterChange };
   }
@@ -227,9 +228,19 @@ describe("BookReader", () => {
       itemKey: "full-book",
       title: "测试书",
       subtitle: "第二章",
-      href: "/book/test-books/full-book?chapter=chapter-2",
+      href: expect.stringContaining("/book/test-books/full-book?chapter=chapter-2&position="),
     }));
     expect(useRecentReadingStore.getState().items[0]?.progress).toBeGreaterThanOrEqual(50);
+  });
+
+  it("restores a synced chapter position before saving the new reading session", async () => {
+    window.localStorage.setItem("jojo-reader-mode", "scroll");
+    const view = renderReader(vi.fn(), vi.fn(), undefined, false, "chapter-2", 0.75);
+    const surface = view.container.querySelector("[data-book-reading-surface]")!;
+    Object.defineProperty(surface, "scrollHeight", { configurable: true, value: 1400 });
+    Object.defineProperty(surface, "clientHeight", { configurable: true, value: 400 });
+    await waitFor(() => expect(useRecentReadingStore.getState().items[0]?.chapterProgress).toBe(0.75));
+    expect(surface.scrollTo).toHaveBeenCalledWith({ top: 750 });
   });
 
   it("switches to scrolling mode and remembers the choice", async () => {
@@ -611,6 +622,16 @@ describe("BookReader", () => {
     expect(loadChapter).toHaveBeenCalledTimes(2);
     expect(onChapterChange).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: /下一章|上一章/ })).toBeNull();
+  });
+
+  it("restores synced progress within its chapter when adjacent chapters are loaded", async () => {
+    const { scroll } = await renderContinuousReader(0.75);
+    await waitFor(() => expect(useRecentReadingStore.getState().items[0]?.chapterProgress).toBe(0.75));
+    // The reading line is 60px below the viewport top, within the 1000px chapter.
+    expect(scroll.scrollTop).toBe(690);
+    expect(screen.getByText("chapter-1 连续正文。")).toBeTruthy();
+    expect(screen.getByText("chapter-2 连续正文。")).toBeTruthy();
+    expect(useRecentReadingStore.getState().items[0]?.href).toContain("chapter=chapter-1&position=0.75");
   });
 
   it("resolves repeated footnote ids within the chapter containing the clicked link", async () => {
