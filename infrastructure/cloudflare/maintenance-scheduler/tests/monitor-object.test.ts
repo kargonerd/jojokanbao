@@ -62,6 +62,42 @@ function fixture(slug = "times-capture") {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("durable monitor inbox", () => {
+  it("does not alarm on a post-success state read failure at the end of an AI catch-up window", async () => {
+    const f = fixture("jojo-ai-availability");
+    const expectedAt = base + 17 * 60_000;
+    f.add(1, 18, "success");
+    await f.tick(19, { expectedAt, dispatch: { kind: "accepted" } });
+    const deadline = f.state().deadlineAt;
+    await f.tick(21, { expectedAt, dispatch: { kind: "failed", permanent: false, reason: "Scheduler state get: HTTP 504" } });
+    f.restart();
+    await f.tick(27, { dispatch: { kind: "idle" } });
+    expect(f.state().down).toBe(false);
+    expect(f.state().dispatchFailedAt).toBeUndefined();
+    expect(f.state().deadlineAt).toBe(deadline);
+    expect(f.deliveries.map((entry) => entry.signal)).toEqual(["success"]);
+
+    // That success must not hide a delivery failure for the next half hour.
+    await f.tick(51, { expectedAt: base + 47 * 60_000, dispatch: { kind: "failed", permanent: false, reason: "HTTP 504" } });
+    f.restart();
+    await f.tick(57, { dispatch: { kind: "idle" } });
+    expect(f.deliveries.at(-1)).toMatchObject({ signal: "fail", payload: { failureType: "dispatch-failure-duration" } });
+  });
+
+  it("reconciles a delayed successful outcome for the failed dispatch slot after the catch-up window", async () => {
+    const f = fixture("jojo-ai-availability");
+    f.add(1, 1, "success");
+    await f.tick(2);
+    await f.tick(21, { expectedAt: base + 17 * 60_000, dispatch: { kind: "failed", permanent: false, reason: "HTTP 504" } });
+    // The event predates the read failure, but proves the same slot succeeded.
+    f.add(2, 18, "success");
+    f.restart();
+    await f.tick(22, { dispatch: { kind: "idle" } });
+    await f.tick(27, { dispatch: { kind: "idle" } });
+    expect(f.state().dispatchFailedAt).toBeUndefined();
+    expect(f.state().dispatchExpectedAt).toBeUndefined();
+    expect(f.deliveries.map((entry) => entry.signal)).toEqual(["success", "success"]);
+  });
+
   it("survives restarts, deduplicates retries, and delivers one failure/recovery", async () => {
     const f = fixture();
     f.add(1, 1); f.add(1, 1);

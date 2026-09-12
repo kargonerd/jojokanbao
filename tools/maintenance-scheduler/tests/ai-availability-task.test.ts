@@ -93,7 +93,27 @@ describe("AI availability scheduled task", () => {
     const fetcher = vi.fn<typeof fetch>(async (input) => String(input).endsWith("/dispatches")
       ? new Response(null, { status: 204 }) : Response.json({ workflow_runs: [] }));
     await durableDispatch(store, task, env, { fetcher, slot, observedAtMs: now });
+    fetcher.mockRejectedValue(new Error("GitHub temporarily unavailable"));
+    await expect(durableDispatch(store, task, env, { fetcher, slot, observedAtMs: now + 60_000 }))
+      .resolves.toMatchObject({ outcome: "skipped", reason: "slot-already-dispatched" });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher.mock.calls.filter(([url]) => String(url).endsWith("/dispatches"))).toHaveLength(1);
+  });
+
+  it("still reconciles ambiguous receipts and permits a fresh slot after an accepted one", async () => {
+    const values = new Map<string, unknown>([[task.id, { slot: slot.id, state: "sending", at: now }]]);
+    const store: StateStore = {
+      get: async <T>(key: string) => values.get(key) as T | undefined,
+      put: async (key, value) => { values.set(key, value); },
+    };
+    const fetcher = vi.fn<typeof fetch>(async (input) => String(input).endsWith("/dispatches")
+      ? new Response(null, { status: 204 }) : Response.json({ workflow_runs: [] }));
     await expect(durableDispatch(store, task, env, { fetcher, slot, observedAtMs: now + 60_000 })).rejects.toThrow("unconfirmed");
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    values.set(task.id, { slot: slot.id, state: "accepted", at: now });
+    const next = now + 30 * 60_000;
+    await expect(durableDispatch(store, task, env, { fetcher, slot: resolveScheduledSlot(task, next)!, observedAtMs: next }))
+      .resolves.toMatchObject({ outcome: "dispatched", attempt: 1 });
     expect(fetcher.mock.calls.filter(([url]) => String(url).endsWith("/dispatches"))).toHaveLength(1);
   });
 

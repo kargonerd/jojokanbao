@@ -32,6 +32,7 @@ export interface MonitorState {
   lastExecutionAt: number;
   seen: string[];
   dispatchFailedAt?: number;
+  dispatchExpectedAt?: number;
   dispatchReason?: string;
   dispatchPermanent?: boolean;
   lastDispatchAt: number;
@@ -85,8 +86,9 @@ export function applyExecution(state: MonitorState, check: HealthcheckDefinition
     state.lastSuccessAt = event.at;
     state.executionFailures = 0;
     state.deadlineAt = nextDeadline(check, event.at);
-    if (state.dispatchFailedAt !== undefined && event.at >= state.dispatchFailedAt) {
+    if (state.dispatchFailedAt !== undefined && event.at >= (state.dispatchExpectedAt ?? state.dispatchFailedAt)) {
       delete state.dispatchFailedAt;
+      delete state.dispatchExpectedAt;
       delete state.dispatchReason;
       delete state.dispatchPermanent;
     }
@@ -103,10 +105,15 @@ export function applyExecution(state: MonitorState, check: HealthcheckDefinition
   }
 }
 
-export function applyDispatch(state: MonitorState, observation: DispatchObservation, now: number): void {
+export function applyDispatch(state: MonitorState, observation: DispatchObservation, now: number, expectedAt?: number): void {
   if (now < state.lastDispatchAt) return;
   state.lastDispatchAt = now;
+  // Reconciliation can fail after this slot already completed. It is no longer
+  // a delivery failure; retain the genuine execution heartbeat and deadline.
+  if (expectedAt !== undefined && state.lastSuccessAt >= expectedAt) return;
   if (observation.kind === "failed") {
+    if (expectedAt !== undefined) state.dispatchExpectedAt = expectedAt;
+    else delete state.dispatchExpectedAt;
     state.dispatchFailedAt ??= now;
     state.dispatchReason = observation.reason;
     state.dispatchPermanent = observation.permanent;
@@ -114,6 +121,7 @@ export function applyDispatch(state: MonitorState, observation: DispatchObservat
   } else if (observation.kind === "accepted") {
     // Acceptance resolves a dispatch retry streak, not an execution incident.
     delete state.dispatchFailedAt;
+    delete state.dispatchExpectedAt;
     delete state.dispatchReason;
     delete state.dispatchPermanent;
   } else if (observation.kind === "exhausted") {
