@@ -7,7 +7,7 @@ import { parse } from "yaml";
 
 const patterns = {
   archive_pdf: /^(tools\/(archive-pdf\/|content-pipeline\/jojo_format\.py$|jojo-admin\/server\/rmrb_review_publish\.py$)|\.github\/workflows\/(ci|maintenance-sync-rmrb)\.yml$)/,
-  node: /^(agent\/|frontend\/|infrastructure\/(cloudflare\/|tencent-scf\/maintenance-scheduler\/)|tools\/(ci\/|monitoring\/|maintenance-scheduler\/|release\/|times-pipeline\/|[^/]+\/web\/)|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$|\.github\/workflows\/(release-desktop|release-mobile(-eink|-ios|-ota)?|maintenance-times[^/]*|maintenance-sync-rmrb)\.yml$)/,
+  node: /^(agent\/|frontend\/|infrastructure\/(cloudflare\/|tencent-scf\/maintenance-scheduler\/)|tools\/(ci\/|posthog\/|monitoring\/|maintenance-scheduler\/|release\/|times-pipeline\/|[^/]+\/web\/)|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$|\.github\/workflows\/(sync-runtime-config|release-desktop|release-mobile(-eink|-ios|-ota)?|maintenance-times[^/]*|maintenance-sync-rmrb)\.yml$)/,
   maintenance_scheduler: /^(tools\/maintenance-scheduler\/|infrastructure\/(cloudflare\/maintenance-scheduler\/|tencent-scf\/maintenance-scheduler\/|supabase\/migrations\/202609060001_maintenance_scheduler_state.sql)|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|\.github\/workflows\/ci\.yml$)/,
   all_node: /^(\.github\/workflows\/ci\.yml$|tools\/ci\/|patches\/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$|\.npmrc$|\.pnpmfile\.cjs$)/,
   desktop_e2e: /^(frontend\/(desktop|web|packages\/(auth|content|pdf-viewer|ui)|tooling\/tsconfig|patches)\/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$|\.github\/workflows\/(ci|release-desktop)\.yml$)/,

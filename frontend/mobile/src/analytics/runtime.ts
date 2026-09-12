@@ -4,6 +4,7 @@ import { sanitizePostHogEvent } from "@jojo/analytics/sanitize";
 import { nativeApplicationVersion } from "expo-application";
 import Constants from "expo-constants";
 import { randomUUID } from "expo-crypto";
+import { channel as updateChannel } from "expo-updates";
 import { AppState, Platform } from "react-native";
 import { useMobileAuthStore } from "../account/auth";
 import { IS_EINK_RELEASE } from "../config/appVariant";
@@ -54,7 +55,8 @@ export async function initializeMobileAnalytics(): Promise<void> {
     consent();
     identity();
     const context = { client: "mobile" as const, platform: Platform.OS, app_variant: IS_EINK_RELEASE ? "eink" : "standard",
-      release_channel: "stable", app_version: nativeApplicationVersion || Constants.expoConfig?.version || "unknown",
+      release_channel: updateChannel === "production-standard" || updateChannel === "production-eink" ? "stable" : "preview",
+      app_version: nativeApplicationVersion || Constants.expoConfig?.version || "unknown",
       installation_id: installationId };
     client.register(context);
     let sdkEnabled: boolean | undefined;
