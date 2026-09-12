@@ -138,6 +138,7 @@ export function renderedBody(fragment: JojoFragment, assetUrls: Record<string, s
     && (element.textContent?.replace(/\s+/g, "").length || element.querySelector("img,figure,svg"))
   ));
   if (/^H[1-6]$/.test(firstContentElement?.tagName ?? "")
+    && !firstContentElement?.querySelector("a,sup,[data-annotation-id]")
     && firstContentElement?.textContent?.normalize("NFKC").replace(/\s+/g, " ").trim()
       === fragment.title.normalize("NFKC").replace(/\s+/g, " ").trim()) {
     const headingId = firstContentElement.id;
@@ -197,9 +198,23 @@ export function renderedBody(fragment: JojoFragment, assetUrls: Record<string, s
 }
 
 export function shouldRenderChapterTitle(fragment: JojoFragment, html: string): boolean {
-  if (fragment.title !== "封面" && fragment.title !== "插图") return true;
   const document = new DOMParser().parseFromString(`<main>${html}</main>`, "text/html");
   const main = document.querySelector("main");
+  if (fragment.title !== "封面" && fragment.title !== "插图") {
+    const normalize = (value: string) => value.normalize("NFKC").replace(/\s+/g, "");
+    const heading = [...(main?.children ?? [])].find((element) => element.tagName !== "HR"
+      && (normalize(element.textContent || "") || element.querySelector("img,figure,svg")));
+    if (!heading || !/^H[1-6]$/.test(heading.tagName)) return true;
+    if (normalize(heading.textContent || "") === normalize(fragment.title)) return false;
+    // Work on a detached copy: the displayed title keeps every note and anchor.
+    const comparison = heading.cloneNode(true) as Element;
+    for (const marker of comparison.querySelectorAll('a[href^="#"],a[data-target-id],a[data-anchor-id],[data-annotation-id],[role="doc-noteref"]')) {
+      const text = normalize(marker.textContent || "");
+      if (/^(?:\[\d+\]|〔\d+〕|【\d+】|\(\d+\)|[①-⑳*]+)$/.test(text)
+        || (marker.tagName === "A" && /^\d+$/.test(text) && marker.querySelector("sup"))) marker.remove();
+    }
+    return normalize(comparison.textContent || "") !== normalize(fragment.title);
+  }
   return Boolean(main?.textContent?.replace(/\s+/g, "").length) || !main?.querySelector("img,figure,svg");
 }
 

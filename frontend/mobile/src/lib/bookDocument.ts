@@ -1,4 +1,5 @@
 import type { JojoFragment } from "@jojo/content";
+import { DomUtils, parseDocument } from "htmlparser2";
 import type { BookReadingMode } from "./bookReaderBridge";
 import type { BookPaperColor } from "../store/mobileStore";
 
@@ -49,9 +50,28 @@ function insertAssets(html: string, assetUrls: Record<string, string>): string {
 function hasDuplicateLeadingTitle(html: string, title: string): boolean {
   const heading = /^\s*<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1\s*>/i.exec(html);
   if (!heading) return false;
-  const headingText = heading[2]!.replace(/<[^>]+>/g, "").replace(/\s+/g, "").trim();
-  const titleText = title.replace(/\s+/g, "").trim();
-  return headingText === titleText;
+  const normalize = (value: string) => value.normalize("NFKC").replace(/\s+/g, "");
+  const nodes = parseDocument(heading[2]!).children;
+  const text = nodes.map((node) => DomUtils.textContent(node)).join("");
+  if (normalize(text) === normalize(title)) return true;
+  function withoutNoteMarkers(node: (typeof nodes)[number]): string {
+    if (node.type === "text") return node.data;
+    if (!("children" in node)) return "";
+    if ("name" in node) {
+      const attributes = node.attribs;
+      const internalLink = node.name === "a" && (attributes.href?.startsWith("#")
+        || attributes["data-target-id"] || attributes["data-anchor-id"]);
+      const noteText = normalize(DomUtils.textContent(node));
+      const bracketedMarker = /^(?:\[\d+\]|〔\d+〕|【\d+】|\(\d+\)|[①-⑳*]+)$/.test(noteText);
+      const linkedSuperscript = internalLink && /^\d+$/.test(noteText)
+        && DomUtils.findOne((element) => element.name === "sup", node.children);
+      if ((internalLink || attributes["data-annotation-id"] || attributes.role === "doc-noteref")
+        && (bracketedMarker || linkedSuperscript)) return "";
+    }
+    return node.children.map(withoutNoteMarkers).join("");
+  }
+  // Compare without note labels, but preserve the source heading and its links.
+  return normalize(nodes.map(withoutNoteMarkers).join("")) === normalize(title);
 }
 
 function annotationDisplayLabel(label: string | undefined): string {

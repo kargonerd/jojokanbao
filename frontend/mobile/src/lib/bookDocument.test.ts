@@ -21,6 +21,39 @@ const fragment: JojoFragment = {
 };
 
 describe("createBookDocument", () => {
+  const render = (title: string, body: string) => createBookDocument({
+    fragment: { ...fragment, title, body: { format: "html", value: body } },
+    assetUrls: {}, textScale: 1, lineHeight: 1.95, firstLineIndent: true,
+    eInk: false, readingMode: "paged", paperColor: "ivory",
+  });
+
+  it("keeps the original title and linked note instead of adding the title twice", () => {
+    const title = "非洲当前的任务是反对帝国主义，不是反对资本主义";
+    const heading = `<h1>${title}<a href="#wz_1_21" id="wzyy_1_21"><sup>[1]</sup></a></h1>`;
+    const body = `${heading}<p>（一九五九年二月二十一日）</p><p id="wz_1_21">原注</p>`;
+    const html = render(title, body);
+    expect(html.match(/<h1\b/g)).toHaveLength(1);
+    expect(html).toContain(body);
+    expect(html).not.toContain(`<article><h1>${title}</h1>`);
+  });
+
+  it("compares decoded entities and inline formatting without rewriting the heading", () => {
+    const heading = '<h2><em>A &amp; B</em>&nbsp;论<a href="#note"><sup>2</sup></a></h2>';
+    const html = render("A & B 论", `${heading}<p id="note">注释正文</p>`);
+    expect(html).not.toContain("<h1>");
+    expect(html).toContain(heading);
+  });
+
+  it.each([
+    ["x", "<h1>x<sup>2</sup></h1>"],
+    ["目录标题", "<h1>不同的正文标题</h1>"],
+    ["第一章", '<h1>第一章<a href="https://example.com/">[1]</a></h1>'],
+  ])("keeps distinct headings and meaningful superscripts for %s", (title, body) => {
+    const html = render(title, body);
+    expect(html).toContain(`<article><h1>${title}</h1>`);
+    expect(html).toContain(body);
+  });
+
   it("renders trusted reading content without executable markup", () => {
     const html = createBookDocument({
       fragment,

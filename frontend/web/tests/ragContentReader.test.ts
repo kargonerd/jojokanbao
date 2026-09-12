@@ -17,6 +17,36 @@ describe("content visibility compatibility", () => {
 });
 
 describe("RAG content Reader annotations", () => {
+  it("shows a heading with a footnote once and preserves its original round-trip link", () => {
+    const title = "非洲当前的任务是反对帝国主义，不是反对资本主义";
+    const fragment: JojoFragment = {
+      formatVersion: "jojo-fragment/1", itemId: "book:test", fragmentId: "chapter:726",
+      type: "chapter", order: 1, title, assetRefs: [], annotations: [],
+      body: { format: "html", value: `<h1>${title}<a href="#wz_1_21" id="wzyy_1_21"><sup>[1]</sup></a></h1><p id="wz_1_21">注释<a href="#wzyy_1_21">返回</a></p>` },
+    };
+    const html = renderedBody(fragment, {});
+    expect(shouldRenderChapterTitle(fragment, html)).toBe(false);
+    const document = new DOMParser().parseFromString(html, "text/html");
+    expect(document.querySelectorAll("h1")).toHaveLength(1);
+    expect(document.getElementById("wzyy_1_21")?.getAttribute("href")).toBe("#wz_1_21");
+    expect(document.getElementById("wz_1_21")?.textContent).toBe("注释返回");
+    expect(shouldRenderChapterTitle({ ...fragment, title: "不同的目录标题" }, html)).toBe(true);
+    expect(shouldRenderChapterTitle({ ...fragment, title: "x" }, "<h1>x<sup>2</sup></h1>")).toBe(true);
+  });
+
+  it("keeps a generated empty annotation marker in the original heading", () => {
+    const fragment: JojoFragment = {
+      formatVersion: "jojo-fragment/1", itemId: "book:test", fragmentId: "chapter:1",
+      type: "chapter", order: 1, title: "第一章", assetRefs: [],
+      annotations: [{ id: "note-1", targetId: "chapter:1", kind: "footnote", label: "1", body: { format: "text", value: "注释" } }],
+      body: { format: "html", value: '<h1>第一章<sup data-annotation-id="note-1"></sup></h1><p>正文</p>' },
+    };
+    const html = renderedBody(fragment, {});
+    expect(shouldRenderChapterTitle(fragment, html)).toBe(false);
+    expect(html).toContain('href="#note-1"');
+    expect(html).toContain('id="annotation-ref-note-1"');
+  });
+
   it("renders imported tables and MathML with searchable anchors", () => {
     const fragment: JojoFragment = {
       formatVersion: "jojo-fragment/1", itemId: "book:test", fragmentId: "chapter:math",
