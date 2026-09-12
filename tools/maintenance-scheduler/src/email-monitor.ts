@@ -38,7 +38,7 @@ export async function tickEmailMonitor(storage: StateStore, check: HealthcheckDe
     state.cursor = ping.n;
   }
   if (tick.expectedAt !== undefined && state.lastObservationAt < tick.expectedAt) state.deadlineAt = Math.min(state.deadlineAt, tick.expectedAt + check.graceSeconds * 1000);
-  if (tick.dispatch) applyEmailDispatch(state, tick.dispatch, tick.now);
+  if (tick.dispatch) applyEmailDispatch(state, tick.dispatch, tick.now, tick.expectedAt);
   if (selected.length < unseen.length) {
     await storage.put("monitor", state);
     return { cursor: state.cursor, down: state.down };

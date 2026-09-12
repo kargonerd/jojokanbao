@@ -18,7 +18,7 @@ export interface EmailMonitorState {
   collector: { lastSuccessAt: number; incident?: EmailIncident };
   transport: { lastSuccessAt: number; seen: string[]; incident?: EmailIncident };
   delivery: { lastSuccessAt: number; incident?: EmailIncident };
-  dispatch: { at: number; failure?: EmailIncident; permanent?: boolean };
+  dispatch: { at: number; expectedAt?: number; failure?: EmailIncident; permanent?: boolean };
   down: boolean;
   status: "unknown" | "up" | "down";
   pending?: { signal: "success" | "fail"; reason: string; at: number; run?: string };
@@ -48,11 +48,13 @@ export function applyEmailObservation(state: EmailMonitorState, check: Healthche
   state.seen = [...state.seen.slice(-255), runId];
   state.lastObservationAt = at;
   state.deadlineAt = nextDeadline(check, at);
-  // A newer workflow result proves the earlier dispatch reached its consumer.
-  // A later dispatch failure is applied after this observation and stays active.
-  if (state.dispatch.failure && at >= state.dispatch.failure.at) {
+  // An observation for the affected slot proves dispatch reached its consumer,
+  // even if it arrives after a later reconciliation error. Older slots cannot
+  // clear a newer slot's fault. Legacy state falls back to the error timestamp.
+  if (state.dispatch.failure && at >= (state.dispatch.expectedAt ?? state.dispatch.failure.at)) {
     delete state.dispatch.failure;
     delete state.dispatch.permanent;
+    delete state.dispatch.expectedAt;
   }
   if (!observation.scanComplete) {
     state.collector.incident = { at, reason: observation.scanError! };
@@ -121,9 +123,16 @@ export function applyEmailObservation(state: EmailMonitorState, check: Healthche
   evaluateEmailState(state, at, observation.scanComplete && !state.collector.incident, observation.run);
 }
 
-export function applyEmailDispatch(state: EmailMonitorState, dispatch: DispatchObservation, now: number): void {
+export function applyEmailDispatch(state: EmailMonitorState, dispatch: DispatchObservation, now: number, expectedAt?: number): void {
   if (now < state.dispatch.at) return;
   state.dispatch.at = now;
+  // A state/API read can fail while reconciling an already observed slot.
+  // That does not invalidate its collector, delivery or SMTP evidence.
+  if (expectedAt !== undefined && state.lastObservationAt >= expectedAt) return;
+  if (dispatch.kind === "failed" || dispatch.kind === "exhausted") {
+    if (expectedAt !== undefined) state.dispatch.expectedAt = expectedAt;
+    else delete state.dispatch.expectedAt;
+  }
   if (dispatch.kind === "failed") {
     state.dispatch.failure ??= { at: now, reason: "email_dispatch_failed" };
     state.dispatch.permanent = dispatch.permanent;
@@ -133,6 +142,7 @@ export function applyEmailDispatch(state: EmailMonitorState, dispatch: DispatchO
   } else if (dispatch.kind === "accepted") {
     delete state.dispatch.failure;
     delete state.dispatch.permanent;
+    delete state.dispatch.expectedAt;
   }
 }
 
