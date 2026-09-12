@@ -168,8 +168,6 @@ export function BookReaderScreen({ route, navigation }: Props) {
   const readingChapterRef = useRef(activeChapterId);
   readingChapterRef.current = activeChapterId;
   const readerReadyChapterRef = useRef("");
-  const readerBootstrapTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(() => () => clearTimeout(readerBootstrapTimer.current), [chapter, textScale, bookLineHeight, bookFirstLineIndent, bookReadingMode, bookPaperColor]);
   const pendingSpeechPosition = useRef<{ id: number; resolve: (value: SpeechReadingPosition) => void; reject: () => void } | null>(null);
   const speechLocationRef = useRef<{ location: SpeechLocation; reveal: boolean } | null>(null);
   const getSpeechPosition = useCallback(() => new Promise<SpeechReadingPosition>((resolve, reject) => {
@@ -314,7 +312,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
   const progress = chapters.length ? Math.min(100, Math.round(((activeIndex + chapterPageProgress) / chapters.length) * 100)) : 0;
   const readerStatus = bookReadingMode === "paged" && pageState?.paged
     ? `${pageState.pageStart}${pageState.pageEnd > pageState.pageStart ? `–${pageState.pageEnd}` : ""} / ${pageState.pageCount}`
-    : `全书 ${progress}%`;
+    : bookReadingMode === "paged" ? "正在排版…" : `全书 ${progress}%`;
   const document = useMemo(() => chapter ? createBookDocument({
     fragment: chapter.fragment,
     assetUrls: chapter.assetUrls,
@@ -346,6 +344,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
     if (revealChrome) setChromeVisible(true);
     setPageState(undefined);
     setChapterEntryEdge(entryEdge);
+    if (chapterId === activeChapterId) setChapterRetryToken((value) => value + 1);
     setActiveChapterId(chapterId);
   }
 
@@ -476,22 +475,9 @@ export function BookReaderScreen({ route, navigation }: Props) {
     pendingLocateRef.current = { chapterId, text: target };
     chooseChapter(chapterId);
   }
-  function handleReaderLoaded() {
-    if (readingChapterRef.current !== activeChapterId || chapter?.fragment.fragmentId !== activeChapterId) return;
-    // The inline bootstrap normally runs first. Android's load callback is a
-    // second chance; a successful HTML load alone does not prove it ran.
-    webViewRef.current?.injectJavaScript(readerBridgeScript);
-    clearTimeout(readerBootstrapTimer.current);
-    readerBootstrapTimer.current = setTimeout(() => {
-      if (readingChapterRef.current === activeChapterId && readerReadyChapterRef.current !== activeChapterId) {
-        setError("阅读交互未能启动，请重新加载");
-      }
-    }, 3000);
-  }
   function handleReaderReady() {
     if (readingChapterRef.current !== activeChapterId || chapter?.fragment.fragmentId !== activeChapterId) return;
     if (readerReadyChapterRef.current === activeChapterId) return;
-    clearTimeout(readerBootstrapTimer.current);
     readerReadyChapterRef.current = activeChapterId;
     webViewRef.current?.injectJavaScript(createBookReaderMeasureScript());
     setTimeout(() => {
@@ -702,7 +688,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
             domStorageEnabled={false}
             cacheEnabled={false}
             onLoadStart={() => { readerReadyChapterRef.current = ""; }}
-            onLoadEnd={handleReaderLoaded}
+            onInitializationError={() => { setChapterLoading(false); setError("阅读页面未能就绪，请重新加载"); }}
             onError={() => { setChapterLoading(false); setError("章节显示失败，请重新加载"); }}
             onRenderProcessGone={() => { setChapterLoading(false); setError("阅读页面已被系统回收，请重新加载"); }}
             onContentProcessDidTerminate={() => { setChapterLoading(false); setError("阅读页面已被系统回收，请重新加载"); }}
