@@ -333,10 +333,11 @@ export function BookReaderScreen({ route, navigation }: Props) {
     !initialChapterId && !initialAnchorId && !initialText && recentBook?.chapterId === activeChapterId
       ? recentBook.scrollProgress
       : undefined,
-    !initialChapterId && !initialAnchorId && !initialText && legacyResume?.chapterId === activeChapterId
-      ? legacyResume.chapterProgress
+    !initialChapterId && !initialAnchorId && !initialText
+      ? (recentBook?.chapterId === activeChapterId ? recentBook.chapterProgress : undefined)
+        ?? (legacyResume?.chapterId === activeChapterId ? legacyResume.chapterProgress : undefined)
       : undefined,
-  ), [activeChapterId, chapterAnnotations, chapterEntryEdge, initialAnchorId, initialChapterId, initialText, leftTapNext, legacyResume, recentBook?.chapterId, recentBook?.scrollProgress, recentBook?.spreadIndex]);
+  ), [activeChapterId, chapterAnnotations, chapterEntryEdge, initialAnchorId, initialChapterId, initialText, leftTapNext, legacyResume, recentBook?.chapterId, recentBook?.chapterProgress, recentBook?.scrollProgress, recentBook?.spreadIndex]);
 
   function chooseChapter(chapterId: string, entryEdge: BookChapterEdge = "start", revealChrome = true) {
     readingProgress.flush();
@@ -435,6 +436,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
         chapterId: activeChapterId,
         spreadIndex: message.paged ? message.spreadIndex : undefined,
         scrollProgress: message.paged ? undefined : message.scrollProgress,
+        chapterProgress: message.paged ? (message.spreadCount <= 1 ? 0 : message.spreadIndex / (message.spreadCount - 1)) : message.scrollProgress,
       });
       return;
     }

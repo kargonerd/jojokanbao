@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
-import type { ArchivePublicationName } from "@jojo/content";
+import type { ArchivePublicationName, ReadingHistoryData } from "@jojo/content";
 import type { BookReadingMode } from "../lib/bookReaderBridge";
 import type { MobileBookAgentMessage } from "../lib/bookAgent";
 
@@ -42,6 +42,7 @@ export interface RecentBook {
   chapterId?: string;
   spreadIndex?: number;
   scrollProgress?: number;
+  chapterProgress?: number;
   updatedAt: number;
 }
 
@@ -71,6 +72,9 @@ interface MobileState {
   leftTapNext: boolean;
   recentIssues: RecentIssue[];
   recentBooks: RecentBook[];
+  historyOwnerId?: string | null;
+  historyClearedAt: number;
+  historyAccounts: Record<string, ReadingHistoryData>;
   bookAnnotations: BookAnnotation[];
   aiConversations: MobileAiConversation[];
   timesLanguage: "zh-CN" | "original";
@@ -115,6 +119,8 @@ export const useMobileStore = create<MobileState>()(
       leftTapNext: false,
       recentIssues: [],
       recentBooks: [],
+      historyClearedAt: 0,
+      historyAccounts: {},
       bookAnnotations: [],
       aiConversations: [],
       timesLanguage: "zh-CN",
@@ -224,12 +230,13 @@ export const useMobileStore = create<MobileState>()(
         ].slice(-500),
       })),
       clearRecentIssues: () => set({ recentIssues: [] }),
-      clearRecentReading: () => set({ recentIssues: [], recentBooks: [] }),
+      clearRecentReading: () => set({ recentIssues: [], recentBooks: [], historyClearedAt: Date.now() }),
     }),
     {
       name: "jojo-mobile-preferences-v1",
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: ({ hapticsEnabled, textScale, bookLineHeight, bookReadingMode, bookPaperColor, bookFirstLineIndent, keepScreenAwake, allowLandscape, leftTapNext, recentIssues, recentBooks, bookAnnotations, aiConversations, timesLanguage, timesReadArticleIds, timesDisabledSourceIds }) => ({
+      partialize: ({ hapticsEnabled, textScale, bookLineHeight, bookReadingMode, bookPaperColor, bookFirstLineIndent, keepScreenAwake, allowLandscape, leftTapNext, recentIssues, recentBooks, historyOwnerId, historyClearedAt, historyAccounts, bookAnnotations, aiConversations, timesLanguage, timesReadArticleIds, timesDisabledSourceIds }) => ({
+        historyOwnerId, historyClearedAt, historyAccounts,
         hapticsEnabled,
         textScale,
         bookLineHeight,

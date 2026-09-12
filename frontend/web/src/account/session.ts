@@ -30,6 +30,10 @@ export function startAccountSessionSync(): () => void {
   let active = true;
   let stopAuthSync = () => {};
   let unsubscribe = () => {};
+  let stopReadingSync = () => {};
+  void import("../library/readingHistorySync").then(({ startWebReadingHistorySync }) => {
+    if (active) stopReadingSync = startWebReadingHistorySync();
+  }).catch(() => { /* A failed optional chunk must not block local reading. */ });
 
   void authModule!.then(({ startAuthSync, useAuthStore }) => {
     if (!active) return;
@@ -54,6 +58,7 @@ export function startAccountSessionSync(): () => void {
     active = false;
     unsubscribe();
     stopAuthSync();
+    stopReadingSync();
   };
 }
 
