@@ -52,7 +52,7 @@ describe('Desktop settings', () => {
     render(<SettingsPage />);
 
     const closeBehavior = await screen.findByRole('combobox', { name: '关闭窗口时' });
-    expect(closeBehavior).toHaveValue('tray');
+    await waitFor(() => expect(closeBehavior).toHaveValue('tray'));
     fireEvent.change(closeBehavior, { target: { value: 'quit' } });
     await waitFor(() => expect(saveCloseBehavior).toHaveBeenCalledWith('quit'));
     expect(screen.getByText('已保存')).toBeInTheDocument();
