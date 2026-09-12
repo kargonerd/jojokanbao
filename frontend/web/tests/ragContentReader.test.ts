@@ -28,9 +28,12 @@ describe("RAG content Reader annotations", () => {
     expect(shouldRenderChapterTitle(fragment, html)).toBe(false);
     const document = new DOMParser().parseFromString(html, "text/html");
     expect(document.querySelectorAll("h1")).toHaveLength(1);
+    expect(document.querySelector("h1")?.classList.contains("book-chapter-title")).toBe(true);
     expect(document.getElementById("wzyy_1_21")?.getAttribute("href")).toBe("#wz_1_21");
     expect(document.getElementById("wz_1_21")?.textContent).toBe("注释返回");
     expect(shouldRenderChapterTitle({ ...fragment, title: "不同的目录标题" }, html)).toBe(true);
+    const different = renderedBody({ ...fragment, title: "不同的目录标题" }, {});
+    expect(new DOMParser().parseFromString(different, "text/html").querySelector(".book-chapter-title")).toBeNull();
     expect(shouldRenderChapterTitle({ ...fragment, title: "x" }, "<h1>x<sup>2</sup></h1>")).toBe(true);
   });
 
@@ -45,6 +48,7 @@ describe("RAG content Reader annotations", () => {
     expect(shouldRenderChapterTitle(fragment, html)).toBe(false);
     expect(html).toContain('href="#note-1"');
     expect(html).toContain('id="annotation-ref-note-1"');
+    expect(html).toContain('class="book-chapter-title"');
   });
 
   it("renders imported tables and MathML with searchable anchors", () => {

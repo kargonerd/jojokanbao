@@ -119,6 +119,20 @@ export function findReferencedAnnotation(
     ?? fragment.annotations.find((annotation) => annotation.label === label);
 }
 
+function matchesChapterTitle(heading: Element | undefined, title: string): boolean {
+  if (!heading || !/^H[1-6]$/.test(heading.tagName)) return false;
+  const normalize = (value: string) => value.normalize("NFKC").replace(/\s+/g, "");
+  if (normalize(heading.textContent || "") === normalize(title)) return true;
+  // Work on a detached copy: the displayed title keeps every note and anchor.
+  const comparison = heading.cloneNode(true) as Element;
+  for (const marker of comparison.querySelectorAll('a[href^="#"],a[data-target-id],a[data-anchor-id],[data-annotation-id],[role="doc-noteref"]')) {
+    const text = normalize(marker.textContent || "");
+    if (/^(?:\[\d+\]|〔\d+〕|【\d+】|\(\d+\)|[①-⑳*]+)$/.test(text)
+      || (marker.tagName === "A" && /^\d+$/.test(text) && marker.querySelector("sup"))) marker.remove();
+  }
+  return normalize(comparison.textContent || "") === normalize(title);
+}
+
 export function renderedBody(fragment: JojoFragment, assetUrls: Record<string, string>): string {
   const source = fragment.body.format === "html"
     ? fragment.body.value
@@ -193,6 +207,9 @@ export function renderedBody(fragment: JojoFragment, assetUrls: Record<string, s
     marker.append(link);
     if (trailingText) marker.after(document.createTextNode(trailingText));
   }
+  if (firstContentElement?.parentElement === main && matchesChapterTitle(firstContentElement, fragment.title)) {
+    firstContentElement.classList.add("book-chapter-title");
+  }
   // Only internally generated Blob URLs are inserted after sanitization.
   return main?.innerHTML || "";
 }
@@ -204,16 +221,7 @@ export function shouldRenderChapterTitle(fragment: JojoFragment, html: string): 
     const normalize = (value: string) => value.normalize("NFKC").replace(/\s+/g, "");
     const heading = [...(main?.children ?? [])].find((element) => element.tagName !== "HR"
       && (normalize(element.textContent || "") || element.querySelector("img,figure,svg")));
-    if (!heading || !/^H[1-6]$/.test(heading.tagName)) return true;
-    if (normalize(heading.textContent || "") === normalize(fragment.title)) return false;
-    // Work on a detached copy: the displayed title keeps every note and anchor.
-    const comparison = heading.cloneNode(true) as Element;
-    for (const marker of comparison.querySelectorAll('a[href^="#"],a[data-target-id],a[data-anchor-id],[data-annotation-id],[role="doc-noteref"]')) {
-      const text = normalize(marker.textContent || "");
-      if (/^(?:\[\d+\]|〔\d+〕|【\d+】|\(\d+\)|[①-⑳*]+)$/.test(text)
-        || (marker.tagName === "A" && /^\d+$/.test(text) && marker.querySelector("sup"))) marker.remove();
-    }
-    return normalize(comparison.textContent || "") !== normalize(fragment.title);
+    return !matchesChapterTitle(heading, fragment.title);
   }
   return Boolean(main?.textContent?.replace(/\s+/g, "").length) || !main?.querySelector("img,figure,svg");
 }
@@ -430,7 +438,7 @@ export function ReaderPage() {
       : undefined}
   >
     {fragment ? <>
-          {shouldRenderChapterTitle(fragment, html) && <h1 className="mb-12 mt-0 text-[2em] font-medium leading-[1.4] tracking-[-.02em] text-red">{fragment.title}</h1>}
+          {shouldRenderChapterTitle(fragment, html) && <h1 className="book-chapter-title">{fragment.title}</h1>}
           <div className="prose-editorial [&_p]:my-[1.15em] [&_p]:text-justify [&_p]:indent-[2em] [&_h1]:text-red [&_h2]:text-red [&_h3]:text-red [&_h4]:text-red [&_figure]:my-10 [&_figure_img]:mx-auto [&_figure_img]:block [&_figure_img]:max-h-[78vh] [&_figure_img]:max-w-full [&_figcaption]:mt-3 [&_figcaption]:text-center [&_figcaption]:font-sans [&_figcaption]:text-xs [&_figcaption]:text-muted" dangerouslySetInnerHTML={{ __html: html }} />
           {fragment.annotations.length > 0 && <section className="mt-16 border-t border-rule pt-8 text-[.82em] leading-[1.85]"><h2 className="mb-6 font-sans text-sm tracking-[.18em]">本章注释</h2><ol className="m-0 list-none p-0">{fragment.annotations.map((note: JojoAnnotation) => {
             const reference = parseAnnotationReference(note.body.value);

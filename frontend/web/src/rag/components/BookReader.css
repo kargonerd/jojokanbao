@@ -153,6 +153,15 @@
   background-blend-mode: screen;
 }
 
+.book-chapter-title {
+  margin: 0 0 3rem;
+  color: var(--color-red);
+  font-size: 2em;
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: -.02em;
+}
+
 .prose-editorial [data-align="left"] {
   text-align: left;
 }
