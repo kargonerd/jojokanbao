@@ -35,6 +35,7 @@ export interface BookReaderSelectionMessage {
 }
 
 export type BookReaderMessage =
+  | { type: "reader-ready"; chapterId: string }
   | { type: "reader-speech-position"; requestId: number; position: SpeechReadingPosition }
   | { type: "reader-selection-clear" }
   | { type: "reader-tap" }
@@ -95,6 +96,9 @@ export function createBookReaderClearSelectionScript(): string {
 export function parseBookReaderMessage(value: string): BookReaderMessage | null {
   try {
     const message = JSON.parse(value) as Partial<BookReaderMessage>;
+    if (message.type === "reader-ready" && typeof message.chapterId === "string" && message.chapterId) {
+      return { type: "reader-ready", chapterId: message.chapterId };
+    }
     if (message.type === "reader-speech-position" && Number.isInteger(message.requestId)
       && typeof message.position?.text === "string" && Number.isInteger(message.position.offset)
       && message.position.offset >= 0 && message.position.offset <= message.position.text.length) {
@@ -172,6 +176,13 @@ export function createBookReaderBridgeScript(
 ): string {
   return `
     (function () {
+      if (!document.body || !document.querySelector("article")) return;
+      function reportReady() {
+        var content = document.querySelector("[data-book-content]");
+        var chapterId = content && content.getAttribute("data-target-id");
+        if (chapterId) post({ type: "reader-ready", chapterId: chapterId });
+      }
+      if (window.__jojoBookReaderInitialized) { reportReady(); return; }
       var paged = document.body && document.body.dataset.readingMode === "paged";
       var startAtEnd = ${initialEdge === "end" ? "true" : "false"};
       var leftTapNext = ${leftTapNext ? "true" : "false"};
@@ -598,6 +609,8 @@ export function createBookReaderBridgeScript(
         }, { passive: true });
       }
 
+      window.__jojoBookReaderInitialized = true;
+      reportReady();
       window.requestAnimationFrame(measurePages);
       window.setTimeout(measurePages, 240);
     })();

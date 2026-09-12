@@ -11,6 +11,7 @@ import { WebView, type WebViewMessageEvent } from "react-native-webview";
 import { mobileBookshelfContains, setMobileBookshelf } from "../account/accountData";
 import { useMobileAuthStore } from "../account/auth";
 import { ReaderEnvironment } from "../components/ReaderEnvironment";
+import { BookReaderWebView } from "../components/BookReaderWebView";
 import { ReaderNavigationSheet } from "../components/ReaderNavigationSheet";
 import { ReaderSelectionToolbar } from "../components/ReaderSelectionToolbar";
 import { BookThoughtComposer } from "../components/BookThoughtComposer";
@@ -167,6 +168,8 @@ export function BookReaderScreen({ route, navigation }: Props) {
   const readingChapterRef = useRef(activeChapterId);
   readingChapterRef.current = activeChapterId;
   const readerReadyChapterRef = useRef("");
+  const readerBootstrapTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(readerBootstrapTimer.current), [chapter, textScale, bookLineHeight, bookFirstLineIndent, bookReadingMode, bookPaperColor]);
   const pendingSpeechPosition = useRef<{ id: number; resolve: (value: SpeechReadingPosition) => void; reject: () => void } | null>(null);
   const speechLocationRef = useRef<{ location: SpeechLocation; reveal: boolean } | null>(null);
   const getSpeechPosition = useCallback(() => new Promise<SpeechReadingPosition>((resolve, reject) => {
@@ -337,10 +340,10 @@ export function BookReaderScreen({ route, navigation }: Props) {
       : undefined,
   ), [activeChapterId, chapterAnnotations, chapterEntryEdge, initialAnchorId, initialChapterId, initialText, leftTapNext, legacyResume, recentBook?.chapterId, recentBook?.scrollProgress, recentBook?.spreadIndex]);
 
-  function chooseChapter(chapterId: string, entryEdge: BookChapterEdge = "start") {
+  function chooseChapter(chapterId: string, entryEdge: BookChapterEdge = "start", revealChrome = true) {
     readingProgress.flush();
     setActiveTool(null);
-    setChromeVisible(true);
+    if (revealChrome) setChromeVisible(true);
     setPageState(undefined);
     setChapterEntryEdge(entryEdge);
     setActiveChapterId(chapterId);
@@ -354,6 +357,10 @@ export function BookReaderScreen({ route, navigation }: Props) {
   function handleReaderMessage(event: WebViewMessageEvent) {
     const message = parseBookReaderMessage(event.nativeEvent.data);
     if (!message) return;
+    if (message.type === "reader-ready") {
+      if (message.chapterId === activeChapterId) handleReaderReady();
+      return;
+    }
     if (message.type === "reader-speech-position") {
       if (pendingSpeechPosition.current?.id === message.requestId) pendingSpeechPosition.current.resolve(message.position);
       return;
@@ -432,8 +439,8 @@ export function BookReaderScreen({ route, navigation }: Props) {
       });
       return;
     }
-    if (message.direction === "previous" && activeIndex > 0) chooseChapter(chapters[activeIndex - 1]!.id, "end");
-    else if (message.direction === "next" && activeIndex < chapters.length - 1) chooseChapter(chapters[activeIndex + 1]!.id);
+    if (message.direction === "previous" && activeIndex > 0) chooseChapter(chapters[activeIndex - 1]!.id, "end", false);
+    else if (message.direction === "next" && activeIndex < chapters.length - 1) chooseChapter(chapters[activeIndex + 1]!.id, "start", false);
   }
 
   function resetPage() {
@@ -471,6 +478,20 @@ export function BookReaderScreen({ route, navigation }: Props) {
   }
   function handleReaderLoaded() {
     if (readingChapterRef.current !== activeChapterId || chapter?.fragment.fragmentId !== activeChapterId) return;
+    // The inline bootstrap normally runs first. Android's load callback is a
+    // second chance; a successful HTML load alone does not prove it ran.
+    webViewRef.current?.injectJavaScript(readerBridgeScript);
+    clearTimeout(readerBootstrapTimer.current);
+    readerBootstrapTimer.current = setTimeout(() => {
+      if (readingChapterRef.current === activeChapterId && readerReadyChapterRef.current !== activeChapterId) {
+        setError("阅读交互未能启动，请重新加载");
+      }
+    }, 3000);
+  }
+  function handleReaderReady() {
+    if (readingChapterRef.current !== activeChapterId || chapter?.fragment.fragmentId !== activeChapterId) return;
+    if (readerReadyChapterRef.current === activeChapterId) return;
+    clearTimeout(readerBootstrapTimer.current);
     readerReadyChapterRef.current = activeChapterId;
     webViewRef.current?.injectJavaScript(createBookReaderMeasureScript());
     setTimeout(() => {
@@ -484,6 +505,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
     if (!pending || pending.chapterId !== activeChapterId) return;
     pendingLocateRef.current = undefined;
     setTimeout(() => {
+      if (readingChapterRef.current !== activeChapterId) return;
       if (pending.text) webViewRef.current?.injectJavaScript(createBookReaderLocateTextScript(pending.text));
       else if (pending.anchorId) webViewRef.current?.injectJavaScript(createBookReaderRevealAnchorScript(pending.anchorId));
       else if (typeof pending.spreadIndex === "number") webViewRef.current?.injectJavaScript(createBookReaderGoToSpreadScript(pending.spreadIndex));
@@ -668,17 +690,17 @@ export function BookReaderScreen({ route, navigation }: Props) {
     <SafeAreaView edges={["top", "bottom"]} style={[styles.safe, { backgroundColor: theme.paper }]}>
       <ReaderEnvironment />
       <View onLayout={(event) => setReaderFrame(event.nativeEvent.layout)} style={[styles.reader, { backgroundColor: theme.paper }]}>
-        {chapter ? (
-          <WebView
+        {chapter?.fragment.fragmentId === activeChapterId ? (
+          <BookReaderWebView
             ref={webViewRef}
             key={`${activeChapterId}:${textScale}:${bookLineHeight}:${bookFirstLineIndent}:${bookReadingMode}:${bookPaperColor}`}
-            source={{ html: document }}
+            html={document}
+            bootstrapScript={readerBridgeScript}
             originWhitelist={["about:blank", "data:*"]}
             javaScriptEnabled
             menuItems={[]}
             domStorageEnabled={false}
             cacheEnabled={false}
-            injectedJavaScript={readerBridgeScript}
             onLoadStart={() => { readerReadyChapterRef.current = ""; }}
             onLoadEnd={handleReaderLoaded}
             onError={() => { setChapterLoading(false); setError("章节显示失败，请重新加载"); }}

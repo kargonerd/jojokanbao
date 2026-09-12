@@ -14,6 +14,33 @@ import {
 } from "./bookReaderBridge";
 
 describe("book reader bridge", () => {
+  it("can retry after an empty document and never attaches duplicate tap listeners", () => {
+    const messages: unknown[] = [];
+    const handlers = new Map<string, Array<(event?: unknown) => void>>();
+    const root = {};
+    let available = false;
+    const document = {
+      body: { dataset: { readingMode: "scroll" } },
+      querySelector: (selector: string) => !available ? null : selector === "article" ? root
+        : selector === "[data-book-content]" ? { getAttribute: () => "chapter:11", querySelectorAll: () => [] } : null,
+      addEventListener: (name: string, handler: (event?: unknown) => void) => handlers.set(name, [...(handlers.get(name) ?? []), handler]),
+    };
+    const window = { innerWidth: 100, innerHeight: 100, getSelection: () => ({ toString: () => "" }),
+      ReactNativeWebView: { postMessage: (message: string) => messages.push(JSON.parse(message)) },
+      requestAnimationFrame() {}, setTimeout() {}, addEventListener() {} };
+    const context = { document, window };
+    const script = createBookReaderBridgeScript("start");
+    runInNewContext(script, context);
+    expect(handlers.size).toBe(0);
+    available = true;
+    runInNewContext(script, context);
+    runInNewContext(script, context);
+    expect(handlers.get("click")).toHaveLength(1);
+    expect(messages).toEqual([{ type: "reader-ready", chapterId: "chapter:11" }, { type: "reader-ready", chapterId: "chapter:11" }]);
+    handlers.get("click")![0]!({ target: { closest: () => null }, clientX: 50, clientY: 50 });
+    expect(messages.at(-1)).toEqual({ type: "reader-tap" });
+  });
+
   it("reports long-press selection immediately and clears it without a later stale toolbar", () => {
     const messages: unknown[] = [];
     const handlers = new Map<string, (event?: unknown) => void>();
