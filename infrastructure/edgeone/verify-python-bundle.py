@@ -42,7 +42,7 @@ def offline_environment() -> dict[str, str]:
     if sys.platform == "linux":
         # actions/setup-python may need libpython from its own installation.
         environment["LD_LIBRARY_PATH"] = str(Path(sys.base_prefix) / "lib")
-    return {**environment, "JOJO_ENV": "test", "JOJO_TTS_ENABLED": "false", "JOJO_SPEECH_STORAGE": "local"}
+    return {**environment, "JOJO_ENV": "test", "JOJO_SPEECH_STORAGE": "local"}
 
 
 def deny_external_network(event, args) -> None:
@@ -101,7 +101,10 @@ def verify(bundle: Path) -> None:
                 elif path.endswith("?v=2"):
                     require({item["id"] for item in body["providers"]} == {"auto"}, "Logical voice catalog is incomplete")
                     require({voice["id"] for voice in body["providers"][0]["voices"]} == {"male", "female"}, "Expected two logical voices")
-                    require(all(not item["canGenerate"] for item in body["providers"]), "Offline synthesis must be disabled")
+                    # This only checks configured capabilities. No synthesis is
+                    # requested; the audit hook still rejects external network.
+                    require(body["providers"][0]["canGenerate"] is True, "Edge fallback must be available without credentials")
+                    require(body["providers"][0]["streaming"] is False, "MiMo streaming requires server credentials")
                 else:
                     require(body["defaultProvider"] in {"mimo", "edge"}, "Installed-client voice catalog is incompatible")
                     require(len(body["providers"][0]["voices"]) == 2, "Expected two compatible physical voices")

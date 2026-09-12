@@ -124,7 +124,7 @@ def test_first_mp3_precedes_completion_concurrent_readers_and_legacy_request_sha
         assert calls == 1 and a == b and status == "shared"
         assert result["bytes"] == len(a)
         assert store.client.objects[result["object"]] == a
-        cached = [chunk async for chunk in streaming.stream_audio("auto", "male", "正文", replace(configured(), tts_enabled=False), scope="book")]
+        cached = [chunk async for chunk in streaming.stream_audio("auto", "male", "正文", replace(configured(), mimo_api_key=None), scope="book")]
         assert len(cached) == 1 and cached[0]["url"] == result["url"]
         assert not streaming._streams and not delivery._pending
     asyncio.run(run())

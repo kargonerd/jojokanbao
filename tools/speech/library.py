@@ -49,7 +49,7 @@ def tune(workers, generated, seconds, throttled, clean, ceiling):
 
 
 async def run(args, settings):
-    if settings.speech_storage != "b2" or not settings.mimo_api_key or not settings.tts_enabled:
+    if settings.speech_storage != "b2" or not settings.mimo_api_key:
         raise ValueError("B2/MiMo synthesis configuration is required")
     plan = json.loads(args.plan.read_text(encoding="utf-8"))
     if plan.get("formatVersion") != "jojo-speech-plan/1" or not plan.get("books"):
