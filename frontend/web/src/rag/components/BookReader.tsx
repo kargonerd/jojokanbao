@@ -230,6 +230,12 @@ export function BookReader({
   const tocPanelRef = useRef<HTMLDivElement>(null);
   const currentPageRef = useRef(0);
   const pendingPageRef = useRef<"start" | "end" | null>("start");
+  const resumePositionRef = useRef((() => {
+    const query = new URLSearchParams(location.search);
+    const position = Number(query.get("position"));
+    return query.has("position") && query.get("chapter") && Number.isFinite(position)
+      ? { chapterId: query.get("chapter"), progress: Math.max(0, Math.min(1, position)) } : null;
+  })());
   const transitionTimerRef = useRef<number | undefined>(undefined);
   const jumpTimerRef = useRef<number | undefined>(undefined);
   const aiPreparationRef = useRef(0);
@@ -259,8 +265,9 @@ export function BookReader({
   }, [chapterKey, currentUserId, mode]);
 
   useEffect(() => {
-    if (contentLoading || !activeChapterId) return;
+    if (contentLoading || !activeChapterId || resumePositionRef.current?.chapterId === activeChapterId) return;
     const query = new URLSearchParams({ chapter: activeChapterId });
+    query.set("position", String(readingProgress / 100));
     const returnTo = new URLSearchParams(window.location.search).get("returnTo");
     if (returnTo) query.set("returnTo", returnTo);
     rememberRecentReading({
@@ -272,8 +279,9 @@ export function BookReader({
       subtitle: activeChapterTitle || "正文",
       href: `/book/${encodeURIComponent(datasetId)}/${encodeURIComponent(itemKey)}?${query}`,
       progress: bookProgress,
+      chapterProgress: readingProgress / 100,
     });
-  }, [activeChapterId, activeChapterTitle, bookProgress, bookTitle, contentLoading, datasetId, itemKey, rememberRecentReading]);
+  }, [activeChapterId, activeChapterTitle, bookProgress, bookTitle, contentLoading, datasetId, itemKey, readingProgress, rememberRecentReading]);
 
   useEffect(() => {
     const requested = new URLSearchParams(window.location.search).get("discussion");
@@ -296,17 +304,19 @@ export function BookReader({
     if (needsTrailingBlankPage !== trailingBlankPage) setTrailingBlankPage(needsTrailingBlankPage);
     const spreads = Math.max(1, Math.ceil(physicalPages / columnsPerSpread));
     const step = flow.clientWidth + gap;
-    const requestedPage = pendingPageRef.current === "end"
+    const resume = resumePositionRef.current?.chapterId === activeChapterId ? resumePositionRef.current : null;
+    const requestedPage = resume ? Math.round(resume.progress * (spreads - 1)) : pendingPageRef.current === "end"
       ? spreads - 1
       : pendingPageRef.current === "start"
         ? 0
         : Math.min(currentPageRef.current, spreads - 1);
     pendingPageRef.current = null;
+    if (resume) resumePositionRef.current = null;
     currentPageRef.current = requestedPage;
     flow.scrollLeft = requestedPage * step;
     setPageMetrics({ page: requestedPage, spreads, physicalPages, columnsPerSpread, step });
     setReadingProgress(spreads <= 1 ? 100 : Math.round((requestedPage / (spreads - 1)) * 100));
-  }, [columnsPerSpread, mode, trailingBlankPage]);
+  }, [activeChapterId, columnsPerSpread, mode, trailingBlankPage]);
 
   useEffect(() => {
     window.localStorage.setItem("jojo-reader-font-size", String(fontSize));
@@ -470,6 +480,19 @@ export function BookReader({
       flow?.querySelectorAll("img").forEach((image) => image.removeEventListener("load", measurePages));
     };
   }, [children, contentLoading, fontSize, measurePages, paperColor, paperTexture]);
+
+  useEffect(() => {
+    if (mode !== "scroll" || contentLoading || resumePositionRef.current?.chapterId !== activeChapterId) return;
+    const frame = window.requestAnimationFrame(() => {
+      const resume = resumePositionRef.current;
+      const reader = scrollRef.current;
+      if (!resume || !reader) return;
+      reader.scrollTo({ top: Math.max(0, reader.scrollHeight - reader.clientHeight) * resume.progress });
+      setReadingProgress(resume.progress * 100);
+      resumePositionRef.current = null;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeChapterId, contentLoading, mode]);
 
   const goToPage = useCallback((page: number, behavior: ScrollBehavior = "smooth") => {
     const bounded = Math.max(0, Math.min(page, pageMetrics.spreads - 1));
