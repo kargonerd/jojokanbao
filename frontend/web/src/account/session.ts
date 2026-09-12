@@ -1,10 +1,12 @@
 import { create } from "zustand";
+import { isMonitorUser } from "@jojo/analytics";
 import { clearCachedDisplayName, readCachedDisplayName, writeCachedDisplayName } from "./profileCache";
 
 interface AccountSessionState {
   initialized: boolean;
   userId: string | null;
   displayName: string | null;
+  analyticsExcluded?: boolean;
 }
 
 export const accountSessionConfigured = Boolean(
@@ -23,7 +25,7 @@ export const useAccountSessionStore = create<AccountSessionState>(() => ({
 
 export function startAccountSessionSync(): () => void {
   if (!accountSessionConfigured) {
-    useAccountSessionStore.setState({ initialized: true, userId: null, displayName: null });
+    useAccountSessionStore.setState({ initialized: true, userId: null, displayName: null, analyticsExcluded: false });
     return () => {};
   }
 
@@ -42,6 +44,7 @@ export function startAccountSessionSync(): () => void {
       useAccountSessionStore.setState({
         initialized,
         userId,
+        analyticsExcluded: isMonitorUser(user),
         displayName: freshDisplayName || (userId ? readCachedDisplayName(userId) : null),
       });
     };

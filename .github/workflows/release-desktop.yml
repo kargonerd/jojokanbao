@@ -90,6 +90,8 @@ jobs:
       JOJO_RELEASE_CDN_BASE: ${{ vars.DOWNLOAD_CDN_BASE || 'https://blacknews.jojokanbao.cn' }}
       VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
       VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+      VITE_POSTHOG_TOKEN: ${{ vars.POSTHOG_PROJECT_TOKEN }}
+      VITE_POSTHOG_HOST: ${{ vars.POSTHOG_API_HOST }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 

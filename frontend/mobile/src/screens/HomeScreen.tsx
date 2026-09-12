@@ -204,7 +204,7 @@ export function HomeScreen() {
         </View>
 
         <View style={styles.section}>
-          <SectionTitle title="继续阅读" aside="我的书架" onAsidePress={() => navigation.navigate("Bookshelf")} />
+          <SectionTitle title="继续阅读" aside={"我的书架"} onAsidePress={() => navigation.navigate("Bookshelf")} />
           {recentItems.length ? recentItems.map((item) => (
             <Pressable
               key={item.id}

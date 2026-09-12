@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createReaderIdentityCache } from "../account/readerIdentity";
 import { MainTabs } from "../../App";
 import { ScreenHeader } from "../components/ScreenHeader";
+vi.mock("../analytics/runtime", () => ({ initializeMobileAnalytics: async () => undefined }));
 
 const mocks = vi.hoisted(() => ({ auth: undefined as unknown as JojoAuthStore,
   identity: undefined as unknown as ReturnType<typeof createReaderIdentityCache> }));
@@ -21,7 +22,7 @@ vi.mock("expo-status-bar", () => ({ StatusBar: "status" }));
 vi.mock("../config/appVariant", () => ({ IS_EINK_RELEASE: false }));
 vi.mock("../lib/haptics", () => ({ impactHaptic: vi.fn(), selectionHaptic: vi.fn() }));
 vi.mock("../store/mobileStore", () => ({ useMobileStore: (select: (state: unknown) => unknown) => select({ hapticsEnabled: false }) }));
-vi.mock("../reading/featureFlag", () => ({ startSpeechFlagSync: () => () => undefined }));
+
 vi.mock("../components/AppUpdatePrompt", () => ({ AppUpdatePrompt: () => null }));
 vi.mock("../screens/HomeScreen", () => ({ HomeScreen: () => null }));
 vi.mock("../screens/BookDetailsScreen", () => ({ BookDetailsScreen: () => null }));

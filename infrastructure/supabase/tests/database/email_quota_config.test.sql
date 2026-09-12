@@ -1,4 +1,6 @@
 begin;
+-- Exercise the legacy configuration writer/validators; PostHog ownership is tested separately.
+update private.feature_flags set config_provider = 'supabase' where key = 'ops.email_quota';
 create extension if not exists pgtap with schema extensions;
 select extensions.plan(11);
 select extensions.is(public.get_email_quota_monitor_config(), '{"warningPercent":80,"criticalPercent":90,"usageSource":"records","dailyLimit":100,"monthlyLimit":3000}'::jsonb, 'default email quota thresholds');

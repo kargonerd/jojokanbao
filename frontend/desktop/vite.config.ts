@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { resolve } from "path";
+import { readFileSync } from "node:fs";
 import { viteStaticCopy } from "vite-plugin-static-copy";
 import { pdfViewerStaticCopyTargets } from "@jojo/pdf-viewer/vite";
 import { resolveViteEnvironmentDirectory } from "../tooling/vite-worktree-env";
@@ -11,6 +12,7 @@ export default defineConfig(({ mode }) => ({
   envDir: resolveViteEnvironmentDirectory(resolve(__dirname, "../.."), mode),
   base: "./",
   define: {
+    "import.meta.env.VITE_APP_VERSION": JSON.stringify(JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")).version),
     "import.meta.env.VITE_AGENT_GATEWAY_BASE": JSON.stringify("jojo-agent://reader"),
   },
   publicDir: resolve(__dirname, "../web/public"),

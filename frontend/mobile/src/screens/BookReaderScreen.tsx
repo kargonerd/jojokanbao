@@ -1,4 +1,5 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
+import { createReadingAttempt } from "@jojo/analytics";
 import type { SpeechLocation, SpeechReadingPosition } from "@jojo/content";
 import Slider from "@react-native-community/slider";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -19,7 +20,6 @@ import { useMobileOfflineBooksStore } from "../offline/books";
 import { NativeSpeechPlayer } from "../reading/SpeechPlayer";
 import { mobileSpeechSegments } from "../reading/speech";
 import { useReadingProgress } from "../reading/useReadingProgress";
-import { useSpeechFlagStore } from "../reading/featureFlag";
 import { IS_EINK_RELEASE } from "../config/appVariant";
 import {
   askMobileBookAgent,
@@ -126,6 +126,8 @@ export function BookReaderScreen({ route, navigation }: Props) {
   const [chapterLoading, setChapterLoading] = useState(false);
   const loading = itemLoading || chapterLoading;
   const [error, setError] = useState("");
+  const readingAttempt = useMemo(() => createReadingAttempt("book", `${datasetId}:${itemKey}`), [datasetId, itemKey]);
+  useEffect(() => { if (error) readingAttempt.failed(); }, [error, readingAttempt]);
   const [chromeVisible, setChromeVisible] = useState(true);
   const [activeTool, setActiveTool] = useState<ReaderTool | null>(null);
   const [pageState, setPageState] = useState<BookReaderPageMessage>();
@@ -161,7 +163,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
   const [onBookshelf, setOnBookshelf] = useState<boolean>();
   const [bookshelfBusy, setBookshelfBusy] = useState(false);
   const [legacyResume, setLegacyResume] = useState<{ chapterId: string; chapterProgress: number }>();
-  const speechEnabled = useSpeechFlagStore((state) => state.enabled && state.userId === user?.id);
+  const speechAvailable = Boolean(user);
   const [speechCover, setSpeechCover] = useState<string>();
   const speechPositionSequence = useRef(0);
   const readingChapterRef = useRef(activeChapterId);
@@ -198,9 +200,9 @@ export function BookReaderScreen({ route, navigation }: Props) {
   useEffect(() => {
     let active = true;
     setSpeechCover(undefined);
-    if (loaded && speechEnabled) void loadMobileBookCover(loaded.book, itemKey).then((uri) => { if (active) setSpeechCover(uri); }).catch(() => undefined);
+    if (loaded && speechAvailable) void loadMobileBookCover(loaded.book, itemKey).then((uri) => { if (active) setSpeechCover(uri); }).catch(() => undefined);
     return () => { active = false; };
-  }, [loaded, itemKey, speechEnabled]);
+  }, [loaded, itemKey, speechAvailable]);
   const loadSpeechChapter = useCallback(async (id: string) => {
     if (!loaded) throw new Error("书籍尚未加载");
     const { fragment } = await loadMobileBookChapter(loaded, id, false);
@@ -681,6 +683,9 @@ export function BookReaderScreen({ route, navigation }: Props) {
             injectedJavaScript={readerBridgeScript}
             onLoadStart={() => { readerReadyChapterRef.current = ""; }}
             onLoadEnd={handleReaderLoaded}
+            onLoad={() => {
+              if (readingChapterRef.current === activeChapterId && chapter?.fragment.fragmentId === activeChapterId) readingAttempt.loaded();
+            }}
             onError={() => { setChapterLoading(false); setError("章节显示失败，请重新加载"); }}
             onRenderProcessGone={() => { setChapterLoading(false); setError("阅读页面已被系统回收，请重新加载"); }}
             onContentProcessDidTerminate={() => { setChapterLoading(false); setError("阅读页面已被系统回收，请重新加载"); }}

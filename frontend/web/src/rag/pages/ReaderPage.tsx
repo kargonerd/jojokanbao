@@ -1,4 +1,5 @@
 import DOMPurify from "dompurify";
+import { useReadingAnalytics } from "../../analytics/useReadingAnalytics";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { LoadingSpinner } from "@jojo/ui";
@@ -205,6 +206,7 @@ export function shouldRenderChapterTitle(fragment: JojoFragment, html: string): 
 
 export function ReaderPage() {
   const { notebookId: datasetId, sourceId: itemKey } = useParams<{ notebookId: string; sourceId: string }>();
+  const readingKey = `${datasetId}:${itemKey}`;
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -216,6 +218,7 @@ export function ReaderPage() {
     requestedReturnTo || readerReturnPathFromState(location.state),
   );
   const [loaded, setLoaded] = useState<LoadedItem>();
+  const [readingStateKey, setReadingStateKey] = useState("");
   const [fragment, setFragment] = useState<JojoFragment>();
   const [activeChapter, setActiveChapter] = useState("");
   const [assetUrls, setAssetUrls] = useState<Record<string, string>>({});
@@ -233,6 +236,7 @@ export function ReaderPage() {
   useEffect(() => {
     if (!datasetId || !itemKey) return;
     let active = true;
+    setReadingStateKey(readingKey);
     setLoaded(undefined); setFragment(undefined);
     setLoading(true); setError("");
     loadItem(datasetId, itemKey).then((value) => {
@@ -250,7 +254,7 @@ export function ReaderPage() {
       setActiveChapter(requested?.id || value.manifest.content.chapters?.[0]?.id || "");
     }).catch((reason: Error) => { if (active) setError(reason.message); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [datasetId, itemKey, requestedAnnotation, requestedChapter, requestedQuote, authInitialized, userId, offlineIdentityVersion]);
+  }, [datasetId, itemKey, readingKey, requestedAnnotation, requestedChapter, requestedQuote, authInitialized, userId, offlineIdentityVersion]);
 
   useEffect(() => {
     if (!datasetId || !itemKey) return;
@@ -338,9 +342,14 @@ export function ReaderPage() {
   const spokenChapter = useMemo(() => fragment
     ? speechSegments(fragment.title, fragment.body.value, fragment.body.format)
     : [], [fragment]);
+  const access = loaded && (loaded.manifest.access ?? loaded.item.access ?? loaded.index.access ?? loaded.entry.access ?? "public");
+  // Route changes render once with the previous book's state before load effects reset it.
+  const readingStateIsCurrent = readingStateKey === readingKey;
+  useReadingAnalytics("book", readingKey,
+    readingStateIsCurrent && Boolean(loaded && fragment && !loading && (access !== "authenticated" || (readerIdentityReady && Boolean(readerUserId)))),
+    readingStateIsCurrent && Boolean(error));
   if (loading) return <ReadingLoadingState kind="book" status="正在打开书籍" fullscreen />;
   if (!loaded) return <div className="p-8 text-center text-muted">{error || "内容不存在"}</div>;
-  const access = loaded.manifest.access ?? loaded.item.access ?? loaded.index.access ?? loaded.entry.access ?? "public";
   if (access === "authenticated" && (!readerIdentityReady || !readerUserId)) {
     if (!readerIdentityReady) return <LoadingSpinner text="正在确认登录状态" fullscreen />;
     const returnTo = `${window.location.pathname}${window.location.search}`;

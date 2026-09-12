@@ -3,8 +3,7 @@ const { existsSync, readFileSync } = require("node:fs");
 const { dirname, resolve } = require("node:path");
 const { parseEnv } = require("node:util");
 
-// Only these two public client settings may enter the application manifest.
-function resolveAccountConfig(mobileRoot, environment = process.env) {
+function resolveBuildValues(mobileRoot, environment) {
   const repositoryRoot = resolve(mobileRoot, "../..");
   const mode = environment.NODE_ENV || "development";
   const names = [".env", ".env.local", `.env.${mode}`, `.env.${mode}.local`];
@@ -23,6 +22,12 @@ function resolveAccountConfig(mobileRoot, environment = process.env) {
     }
   }
   Object.assign(values, environment);
+  return values;
+}
+
+// Only explicitly allowlisted public client settings enter the manifest.
+function resolveAccountConfig(mobileRoot, environment = process.env) {
+  const values = resolveBuildValues(mobileRoot, environment);
   const supabaseUrl = (environment.EXPO_PUBLIC_SUPABASE_URL || environment.VITE_SUPABASE_URL || values.EXPO_PUBLIC_SUPABASE_URL || values.VITE_SUPABASE_URL || "").trim();
   const publishableKey = (environment.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY || environment.VITE_SUPABASE_PUBLISHABLE_KEY || values.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY || values.VITE_SUPABASE_PUBLISHABLE_KEY || "").trim();
   // Release profiles require account settings; CI bundle checks can run without them.
@@ -31,4 +36,11 @@ function resolveAccountConfig(mobileRoot, environment = process.env) {
   }
   return { supabaseUrl, publishableKey };
 }
-module.exports = { resolveAccountConfig };
+function resolveAnalyticsConfig(mobileRoot, environment = process.env) {
+  const values = resolveBuildValues(mobileRoot, environment);
+  return {
+    token: (environment.EXPO_PUBLIC_POSTHOG_TOKEN || environment.VITE_POSTHOG_TOKEN || values.EXPO_PUBLIC_POSTHOG_TOKEN || values.VITE_POSTHOG_TOKEN || "").trim(),
+    host: (environment.EXPO_PUBLIC_POSTHOG_HOST || environment.VITE_POSTHOG_HOST || values.EXPO_PUBLIC_POSTHOG_HOST || values.VITE_POSTHOG_HOST || "").trim(),
+  };
+}
+module.exports = { resolveAccountConfig, resolveAnalyticsConfig };

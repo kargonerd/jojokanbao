@@ -26,7 +26,7 @@ vi.mock("@react-navigation/native", () => ({ useIsFocused: () => true }));
 vi.mock("../config/appVariant", () => ({ IS_EINK_RELEASE: false }));
 vi.mock("react-native-safe-area-context", () => ({ SafeAreaView: "main" }));
 vi.mock("../account/auth", () => ({ useMobileAuthStore: (select: (state: unknown) => unknown) => select({ user: { id: "reader" } }) }));
-vi.mock("./featureFlag", () => ({ useSpeechFlagStore: () => ({ userId: "reader", enabled: true }) }));
+
 vi.mock("expo-crypto", async () => { const { createHash } = await import("node:crypto"); return { CryptoDigestAlgorithm: { SHA256: "sha256" }, digestStringAsync: async (_: string, text: string) => createHash("sha256").update(text).digest("hex") }; });
 vi.mock("./speech", () => ({ speechTime: (value: number) => String(value), mobileSpeechClient: {
   loadSpeechProviders: async () => ({ defaultProvider: "auto", defaultVoice: "male", cdnBase: "https://blacknews.jojokanbao.cn", providers: [{ id: "auto", cacheVersion: "test", available: true, streaming: true, voices: [{ id: "male" }, { id: "female" }] }] }),

@@ -2,11 +2,9 @@
 
 `@jojo/web` 是部署到 `reader.jojokanbao.cn` 的统一 Web 客户端。应用外壳、首页、资料库分别位于 `src/shell`、`src/home`、`src/library`；Archive、Account、RAG、JOJO Times 分别位于 `src/archive`、`src/account`、`src/rag`、`src/times`。不再为每个模块维护独立 SPA，也不额外套 `features/`。
 
-## 路由与整站发布开关
+## 路由与发布
 
-- 生产默认（`VITE_ENABLE_PLATFORM_REDESIGN=false`）：保持原站路由和界面，`/` 跳转 `/archive`
-- 新版预览（`VITE_ENABLE_PLATFORM_REDESIGN=true`）：一次开放新版首页、资料库、账号、RAG、时事和阅读器，并保留 `/archive/*`
-- 本地 `vite dev`：始终使用新版，不需要配置发布开关
+生产、预览和本地开发统一使用当前首页、资料库、账号和阅读界面；不再维护旧站构建分支。`/archive` 跳转资料库，`/legacy/*` 返回首页，报刊阅读入口保留。Beta 与 stable 继续通过既有发布渠道区分。
 
 旧 Reader 地址（例如 `/rmrb/19761009#page-5`）以及短暂使用过的 `/reader/*` 前缀会迁移到 `/archive/*`，并保留查询参数和锚点。静态托管必须将未知路径回退到 `index.html`，否则深链接会返回 404。
 
@@ -16,7 +14,7 @@
 
 `/download` 仅提供 iPhone 的网页版安装入口，点击“添加到主屏幕”后进入独立的
 `/download/iphone` 页面查看 Safari 安装说明，可返回下载页。Android 卡片只提供原生安装包。
-安装后以独立窗口打开，启动地址为 `/`，继续遵循当前整站发布开关与账号权限。
+安装后以独立窗口打开，启动地址为 `/`，继续遵循账号权限。
 
 应用清单位于 `public/manifest.webmanifest`，图标由
 `public/brand/jojo-kanbao-mark.svg` 导出：保留猫咪与报纸，将圆形底色扩展为铺满画布的
@@ -95,7 +93,7 @@ IndexedDB，因此重启本地 Agent 不会清空历史。`.env.local` 可用
 `JOJO_AGENT_URL=http://127.0.0.1:8789/rag` 让 Web 开发代理连接它。正式环境不使用这套
 进程内聊天存储；国际 EdgeOne Makers Agent 只负责流式回答，Web 历史仍留在用户浏览器。
 
-`VITE_ENABLE_PLATFORM_REDESIGN` 是生产环境唯一的整站构建开关。关闭时不会注册新版首页、资料库、账号、RAG 和公开书籍阅读入口，共享的 Archive 导航、搜索、反馈页也按旧版呈现。仓库的正式部署工作流默认把它设为 `false`；合并代码不会开放新版，只有显式设置仓库变量为 `true` 并重新部署 Reader 才会切换。本地开发不读取这个回滚开关，始终启动新版。
+书架、共享批注、听读已移除产品开关判断，保留登录与服务端校验。小型运行配置统一见 [PostHog 接入](../../docs/posthog.md)。
 
 其他未完成模块默认不可路由、不会显示在导航中，但源码仍会随项目进行类型检查和单元测试。账号模块需要配置根目录 `.env.example` 列出的 Supabase 浏览器端公开值。
 

@@ -120,7 +120,7 @@ async def _resolve_speech(provider_id: str, voice: str | None, text: str, settin
     store = scoped_store(settings, scope)
     cache_path = f"{settings.speech_cache_path}.news" if scope == "news" else settings.speech_cache_path
     cache_ttl = 86400 if scope == "news" else 30 * 86400
-    # Cached audio remains usable even if the provider is disabled or loses its key.
+    # Cached audio remains usable even if the provider is unavailable or loses its key.
     if store and (cached := await run_blocking(store.get, provider_id, key)):
         return cached, "hit"
     if not store and settings.speech_cache_path:

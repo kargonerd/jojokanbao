@@ -1,5 +1,6 @@
 import { searchResultTitle } from "@jojo/content";
 import { useNavigation, type NavigationProp } from "@react-navigation/native";
+import { analytics } from "@jojo/analytics";
 import { memo, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -94,12 +95,16 @@ export function SearchScreen() {
     controllerRef.current?.abort();
     const controller = new AbortController();
     controllerRef.current = controller;
+    const searchStarted = Date.now();
+    const searchProperties = { content_type: "periodical", page: nextPage };
+    analytics.track("search_started", searchProperties);
     setLoading(true);
     setError("");
     void impactHaptic(hapticsEnabled);
     try {
       const response = await searchArchive({ keyword, page: nextPage, size: PAGE_SIZE, signal: controller.signal });
       if (controller.signal.aborted) return;
+      analytics.track("search_completed", { ...searchProperties, result_count: response.total, duration_ms: Date.now() - searchStarted });
       setSubmittedQuery(keyword);
       setResults(response.results);
       setExpandedResults(new Set());
@@ -109,7 +114,10 @@ export function SearchScreen() {
         listRef.current?.scrollToOffset({ offset: 0, animated: !IS_EINK_RELEASE });
       });
     } catch {
-      if (!controller.signal.aborted) setError("搜索失败，请检查网络后重试。");
+      if (!controller.signal.aborted) {
+        analytics.track("search_failed", { ...searchProperties, duration_ms: Date.now() - searchStarted });
+        setError("搜索失败，请检查网络后重试。");
+      }
     } finally {
       if (!controller.signal.aborted) setLoading(false);
     }

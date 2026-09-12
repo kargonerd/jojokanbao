@@ -1,6 +1,8 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { DefaultTheme, NavigationContainer, type Theme } from "@react-navigation/native";
+import { DefaultTheme, NavigationContainer, useNavigationContainerRef, type Theme } from "@react-navigation/native";
+import { analytics } from "@jojo/analytics";
+import { initializeMobileAnalytics } from "./src/analytics/runtime";
 import { createNativeStackNavigator, type NativeStackNavigationOptions } from "@react-navigation/native-stack";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo, type ComponentProps } from "react";
@@ -30,7 +32,6 @@ import { selectionHaptic } from "./src/lib/haptics";
 import { useMobileStore } from "./src/store/mobileStore";
 import { mobileTheme } from "./src/theme/tokens";
 import { AppUpdatePrompt } from "./src/components/AppUpdatePrompt";
-import { startSpeechFlagSync } from "./src/reading/featureFlag";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tabs = createBottomTabNavigator<MainTabParamList>();
@@ -125,6 +126,17 @@ const styles = StyleSheet.create({
 });
 
 export default function App() {
+  const navigationRef = useNavigationContainerRef<RootStackParamList>();
+  const trackScreen = () => {
+    const name = navigationRef.getCurrentRoute()?.name;
+    const screens: Record<string, string> = {
+      Today: "home", Library: "library", Search: "search", AI: "ai", Times: "times",
+      Account: "account", AccountSecurity: "account_security", Settings: "settings", Notifications: "notifications",
+      Bookshelf: "bookshelf", OpenSourceLicenses: "licenses", Reader: "archive_reader", BookDetails: "book_details",
+      BookReader: "book_reader", TimesDetail: "times_detail",
+    };
+    if (name) analytics.screen(screens[name] ?? "other");
+  };
   const theme = mobileTheme;
   const navigationTheme = useMemo<Theme>(() => ({
     ...DefaultTheme,
@@ -141,13 +153,13 @@ export default function App() {
   }), [theme]);
 
   useEffect(() => { startMobileOfflineAccountSync(); return startMobileAuthSync(); }, []);
-  useEffect(() => startSpeechFlagSync(), []);
+  useEffect(() => { void initializeMobileAnalytics(); }, []);
 
   return (
     <SafeAreaProvider>
       <AppUpdatePrompt />
       <StatusBar style="dark" backgroundColor={theme.paper} />
-      <NavigationContainer theme={navigationTheme}>
+      <NavigationContainer theme={navigationTheme} ref={navigationRef} onReady={trackScreen} onStateChange={trackScreen}>
         <Stack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.paper } }}>
           <Stack.Screen name="Tabs" component={MainTabs} />
           <Stack.Group screenOptions={detailScreenOptions}>

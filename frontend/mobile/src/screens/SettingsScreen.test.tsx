@@ -5,6 +5,7 @@ import { SettingsScreen } from "./SettingsScreen";
 
 const mocks = vi.hoisted(() => ({
   copy: vi.fn(), openURL: vi.fn(), navigate: vi.fn(),
+  config: {qqGroup: "974380749"},
 }));
 vi.mock("react-native", () => ({
   ActivityIndicator: "progress", Pressable: "button", Text: "span", View: "div", ScrollView: "main", Switch: "input",
@@ -22,12 +23,14 @@ vi.mock("../lib/appUpdate", () => ({ checkNativeAppUpdate: vi.fn(), openNativeAp
 vi.mock("../lib/haptics", () => ({ selectionHaptic: vi.fn(), toggleHaptic: vi.fn() }));
 vi.mock("../lib/times", () => ({ mobileTimesApi: {}, timesSourceName: vi.fn() }));
 vi.mock("../store/mobileStore", () => ({ useMobileStore: (select: (state: unknown) => unknown) => select({ timesDisabledSourceIds: [], recentIssues: [], recentBooks: [] }) }));
+vi.mock("../config/supportConfig", () => ({useSupportConfig: () => mocks.config}));
 
 let view: ReactTestRenderer;
 const button = (label: string) => view.root.findAllByType("button").find((node) => node.findAllByType("span").some((child) => child.props.children === label))!;
 beforeEach(async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   vi.clearAllMocks();
+  mocks.config.qqGroup = FEEDBACK_QQ_GROUP;
   mocks.copy.mockResolvedValue(undefined);
   mocks.openURL.mockResolvedValue(undefined);
   await act(async () => { view = create(<SettingsScreen />); });
@@ -50,4 +53,12 @@ it("keeps manual copy and Bilibili feedback available if clipboard copying fails
   await act(async () => button("在 B 站留言或私信").props.onPress());
   expect(mocks.openURL).toHaveBeenCalledExactlyOnceWith("https://space.bilibili.com/571556400");
   expect(view.root.findAllByType("span").some((node) => String(node.props.children).includes("未经原权利人许可"))).toBe(true);
+});
+
+it("copies the new remote group shown on screen after a configuration update", async () => {
+  mocks.config.qqGroup = "123456789";
+  await act(async () => { view.update(<SettingsScreen />); });
+  expect(view.root.findAllByType("span").some(node => node.props.selectable && node.props.children?.includes?.("123456789"))).toBe(true);
+  await act(async () => button("复制群号").props.onPress());
+  expect(mocks.copy).toHaveBeenLastCalledWith("123456789");
 });

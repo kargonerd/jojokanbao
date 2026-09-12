@@ -13,8 +13,8 @@ vi.mock("./api", () => ({ featureFlagApi: api }));
 import { FeatureFlagsPage } from "./FeatureFlagsPage";
 
 const flag = {
-  key: "rag.workspace",
-  description: "RAG 工作区路由与请求",
+  key: "test.feature",
+  description: "测试功能",
   revision: 7,
   updatedAt: "2026-08-16T01:30:00.000Z",
   config: {},
@@ -107,6 +107,36 @@ describe("FeatureFlagsPage", () => {
 
   afterEach(cleanup);
 
+  it("retires annotation rollout and rolls back only config while preserving legacy rules", async () => {
+    const migrated = { ...annotationFlag, rolloutProvider: "retired", revision: 2,
+      config: { publicMarkThreshold: 5, reserved: "keep" },
+      history: [...annotationFlag.history, { ...annotationFlag.history[0], revision: 2, config: { publicMarkThreshold: 5, reserved: "keep" } }],
+    };
+    api.list.mockResolvedValue([migrated]);
+    api.publish.mockResolvedValue({ ...migrated, revision: 3, config: { publicMarkThreshold: 2 } });
+    render(<FeatureFlagsPage />);
+    expect(await screen.findByText("批注已常规开放")).toBeInTheDocument();
+    expect(screen.queryByText("添加规则")).not.toBeInTheDocument();
+    expect(screen.getByRole("spinbutton", { name: "划线公开阈值" })).toHaveValue(5);
+    fireEvent.click(screen.getByRole("button", { name: "回滚配置到 revision 1" }));
+    await waitFor(() => expect(api.publish).toHaveBeenCalledWith(expect.objectContaining({
+      key: "reader.annotations", expectedRevision: 2, rules: migrated.rules, config: { publicMarkThreshold: 2 },
+    })));
+    expect(api.rollback).not.toHaveBeenCalled();
+  });
+
+  it("hides retired product controls even before the database migration", async () => {
+    api.list.mockResolvedValue([
+      ...["reader.speech", "library.bookshelf", "rag.workspace", "olds.workspace"].map(key => ({ ...flag, key })),
+      { ...annotationFlag, configProvider: "posthog" },
+    ]);
+    render(<FeatureFlagsPage />);
+    await screen.findByText("批注已常规开放");
+    for (const key of ["reader.speech", "library.bookshelf", "rag.workspace", "olds.workspace"]) expect(screen.queryByText(key)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "发布更改" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /回滚/ })).not.toBeInTheDocument();
+  });
+
   it("restores invitation signup while preserving existing rules and unrelated config", async () => {
     const signupFlag = { ...aiUsageFlag, key: "auth.signup", description: "注册设置", config: { invitationRequired: false, reserved: "retain" } };
     api.list.mockResolvedValue([signupFlag]);
@@ -130,7 +160,7 @@ describe("FeatureFlagsPage", () => {
     render(<FeatureFlagsPage />);
 
     expect(await screen.findByText("本机 Operator")).toBeInTheDocument();
-    expect(screen.getAllByText("rag.workspace")).toHaveLength(2);
+    expect(screen.getAllByText("test.feature")).toHaveLength(2);
     expect(await screen.findByDisplayValue("内部测试用户")).toBeEnabled();
     expect(screen.queryByRole("button", { name: "登录管理台" })).not.toBeInTheDocument();
   });
@@ -144,7 +174,7 @@ describe("FeatureFlagsPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "发布更改" }));
 
     await waitFor(() => expect(api.publish).toHaveBeenCalledWith(expect.objectContaining({
-      key: "rag.workspace",
+      key: "test.feature",
       config: {},
       expectedRevision: 7,
       reason: "调整灰度规则",
@@ -170,7 +200,7 @@ describe("FeatureFlagsPage", () => {
     fireEvent.click(await screen.findByRole("button", { name: "回滚到 revision 6" }));
 
     await waitFor(() => expect(api.rollback).toHaveBeenCalledWith(expect.objectContaining({
-      key: "rag.workspace",
+      key: "test.feature",
       targetRevision: 6,
       expectedRevision: 7,
     })));
@@ -216,8 +246,8 @@ describe("FeatureFlagsPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /reader\.annotations/ }));
     expect(screen.getByRole("spinbutton", { name: "划线公开阈值" })).toHaveValue(2);
-    expect(screen.getByText("添加规则")).toBeInTheDocument();
-    expect(screen.getByLabelText("规则 1 名称")).toBeEnabled();
+    expect(screen.queryByText("添加规则")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("规则 1 名称")).not.toBeInTheDocument();
   });
 
   it("publishes quota thresholds with revision control and retains unrelated config and rules", async () => {
@@ -320,5 +350,19 @@ describe("FeatureFlagsPage", () => {
 
     expect(await screen.findByText("无法连接功能开关")).toBeInTheDocument();
     expect(screen.getByText(/JOJO_OPERATOR_TOKEN 未配置/)).toBeInTheDocument();
+  });
+
+  it("shows the synchronized config and audit history without a competing editor after migration", async () => {
+    api.list.mockResolvedValue([{...aiUsageFlag, configProvider: "posthog", configRemoteVersion: 12,
+      configSyncedAt: "2026-09-12T00:00:00Z"}]);
+    render(<FeatureFlagsPage />);
+    expect(await screen.findByText("ai_usage_limits_config")).toBeInTheDocument();
+    expect(screen.getByText(/PostHog 版本 12/)).toBeInTheDocument();
+    expect(screen.getByText(/"requestsPerMinute": 3/)).toBeInTheDocument();
+    expect(screen.getByRole("region", {name: "修改记录"})).toBeInTheDocument();
+    expect(screen.queryByRole("spinbutton")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", {name: "发布更改"})).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", {name: /回滚到 revision/})).not.toBeInTheDocument();
+    expect(api.publish).not.toHaveBeenCalled();
   });
 });

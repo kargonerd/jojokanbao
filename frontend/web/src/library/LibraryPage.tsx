@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { LoadingSpinner } from "@jojo/ui";
 import { useAccountSessionStore } from "../account/session";
-import { useFeatureFlag, useFeatureFlagStore } from "../featureFlags";
 import { notebookApi } from "../rag/api";
 import { isContentVisible } from "../rag/contentVisibility";
 import { loadBookshelf, setBookshelf, type BookshelfEntry } from "../rag/readerData";
@@ -62,8 +61,6 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
   const accountInitialized = useAccountSessionStore((state) => state.initialized);
   const userId = useAccountSessionStore((state) => state.userId);
   const signedIn = Boolean(userId);
-  const flagsInitialized = useFeatureFlagStore((state) => state.initialized);
-  const bookshelfEnabled = useFeatureFlag("library.bookshelf");
   const includePeriodicals = periodicals.length > 0;
   const type = includePeriodicals ? normalizedType(searchParams.get("type")) : "book";
   const availableLibraryTypes = includePeriodicals
@@ -91,9 +88,9 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
   }, [includePeriodicals, catalogRequest]);
 
   useEffect(() => {
-    if (!userId || !bookshelfEnabled) {
-      setShelfItems([]);
-      setShelfError("");
+    setShelfItems([]);
+    setShelfError("");
+    if (!userId) {
       return;
     }
     let active = true;
@@ -107,7 +104,7 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
         if (active) setShelfError("书架暂时无法载入。");
       });
     return () => { active = false; };
-  }, [bookshelfEnabled, userId]);
+  }, [userId]);
 
   const selectedBook = books.find((item) => item.id === datasetId);
   const selectedBookVisible = isContentVisible(selectedBook?.access, signedIn);
@@ -204,10 +201,7 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
       navigate(`/account?returnTo=${encodeURIComponent(returnTo)}`);
       return false;
     }
-    if (!bookshelfEnabled) {
-      setShelfError("书架功能暂未向你的账号开放。");
-      return false;
-    }
+
     return true;
   }
 
@@ -371,11 +365,11 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
                     <button
                       type="button"
                       className={`shelf-toggle${onShelf ? " is-shelved" : ""}`}
-                      aria-label={`${onShelf ? "移出书架" : userId ? bookshelfEnabled ? "加入书架" : "书架暂未开放" : "登录后加入书架"}：${title}`}
-                      disabled={!accountInitialized || Boolean(userId && (!flagsInitialized || !bookshelfEnabled)) || shelfBusyKey === `book:${book.id}`}
+                      aria-label={`${onShelf ? "移出书架" : userId ? "加入书架" : "登录后加入书架"}：${title}`}
+                      disabled={!accountInitialized || shelfBusyKey === `book:${book.id}`}
                       onClick={() => void toggleSingleBookShelf(book)}
                     >
-                      {!accountInitialized || shelfBusyKey === `book:${book.id}` ? "处理中…" : onShelf ? "已在书架" : userId ? !flagsInitialized ? "检查权限…" : bookshelfEnabled ? "+ 书架" : "暂未开放" : "登录后加入"}
+                      {!accountInitialized || shelfBusyKey === `book:${book.id}` ? "处理中…" : onShelf ? "已在书架" : userId ? "+ 书架" : "登录后加入"}
                     </button>
                   ) : null}
                 </article>
@@ -405,11 +399,11 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
                   <button
                     type="button"
                     className={`shelf-toggle${onShelf ? " is-shelved" : ""}`}
-                    aria-label={`${onShelf ? "移出书架" : userId ? bookshelfEnabled ? "加入书架" : "书架暂未开放" : "登录后加入书架"}：${title}`}
-                    disabled={!accountInitialized || Boolean(userId && (!flagsInitialized || !bookshelfEnabled)) || shelfBusyKey === busyKey}
+                    aria-label={`${onShelf ? "移出书架" : userId ? "加入书架" : "登录后加入书架"}：${title}`}
+                    disabled={!accountInitialized || shelfBusyKey === busyKey}
                     onClick={() => void toggleSourceShelf(source)}
                   >
-                    {!accountInitialized || shelfBusyKey === busyKey ? "处理中…" : onShelf ? "已在书架" : userId ? !flagsInitialized ? "检查权限…" : bookshelfEnabled ? "+ 书架" : "暂未开放" : "登录后加入"}
+                    {!accountInitialized || shelfBusyKey === busyKey ? "处理中…" : onShelf ? "已在书架" : userId ? "+ 书架" : "登录后加入"}
                   </button>
                 </article>
               );

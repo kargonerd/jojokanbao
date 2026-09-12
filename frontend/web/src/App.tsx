@@ -1,9 +1,7 @@
 import { Fragment, lazy, Suspense, useEffect, type ReactNode } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Layout } from "./archive/components/Layout";
-import { HomePage as ArchiveHomePage } from "./archive/pages/HomePage";
 import { SearchPage } from "./archive/pages/SearchPage";
-import { SupportPage } from "./archive/pages/SupportPage";
 import { PUBLICATIONS, PUBLICATION_NAMES } from "./archive/publications";
 import { NotFoundPage } from "./NotFoundPage";
 import { AppLayout } from "./shell/AppLayout";
@@ -11,17 +9,19 @@ import { HomePage } from "./home/HomePage";
 import { LibraryPage } from "./library/LibraryPage";
 import { NotificationsPage } from "./notifications/NotificationsPage";
 import { PERIODICALS } from "./library/catalog";
-import { rollout } from "./rollout";
 import { ARCHIVE_ROOT, defaultArchiveIssuePath } from "./routes";
-import { refreshFeatureFlags } from "./featureFlags";
 import { AccountEntry } from "./account/AccountEntry";
 import { TimesSourceSettingsPage } from "./account/pages/TimesSourceSettingsPage";
 import { startAccountSessionSync, useAccountSessionStore } from "./account/session";
+import { AnalyticsRuntime } from "./analytics/AnalyticsRuntime";
 
 const AccountConfirmation = lazy(() => import("./account/AccountConfirmation"));
 // Keep the client download adapter out of the Web entry bundle.
 const BookshelfPage = lazy(() =>
   import("./library/BookshelfPage").then(({ BookshelfPage }) => ({ default: BookshelfPage })),
+);
+const SupportPage = lazy(() =>
+  import("./archive/pages/SupportPage").then(({ SupportPage }) => ({ default: SupportPage })),
 );
 const LaunchCommemoration = lazy(() =>
   import("./home/LaunchCommemoration").then(({ LaunchCommemoration }) => ({ default: LaunchCommemoration })),
@@ -44,8 +44,7 @@ const OpenSourceLicensesPage = lazy(() =>
   import("./archive/pages/OpenSourceLicensesPage").then(({ OpenSourceLicensesPage }) => ({ default: OpenSourceLicensesPage })),
 );
 
-const legacyArchivePaths = [...PUBLICATION_NAMES, "search", "support"] as const;
-const redesignedArchivePaths = [...PUBLICATION_NAMES] as const;
+const archivePaths = [...PUBLICATION_NAMES] as const;
 const archivePublications = Object.values(PUBLICATIONS);
 
 function ArchiveRedirect({ stripPrefix = "" }: { stripPrefix?: string }) {
@@ -59,12 +58,7 @@ function LazyRoute({ children }: { children: ReactNode }) {
 }
 
 function RuntimeBootstrap() {
-  const accountInitialized = useAccountSessionStore((state) => state.initialized);
-  const userId = useAccountSessionStore((state) => state.userId);
   useEffect(() => startAccountSessionSync(), []);
-  useEffect(() => {
-    if (accountInitialized) void refreshFeatureFlags();
-  }, [accountInitialized, userId]);
   return null;
 }
 
@@ -90,10 +84,10 @@ function AccountRoute() {
   );
 }
 
-function archiveRoute(platformRedesign: boolean) {
+function archiveRoute() {
   return (
-    <Route path={ARCHIVE_ROOT} element={<Layout platformRedesign={platformRedesign} />}>
-      <Route index element={platformRedesign ? <Navigate to="/library" replace /> : <ArchiveHomePage />} />
+    <Route path={ARCHIVE_ROOT} element={<Layout />}>
+      <Route index element={<Navigate to="/library" replace />} />
       {archivePublications.map((publication) => (
         <Fragment key={publication.name}>
           <Route
@@ -106,35 +100,16 @@ function archiveRoute(platformRedesign: boolean) {
           />
         </Fragment>
       ))}
-      <Route path="search" element={<SearchPage platformRedesign={platformRedesign} />} />
-      <Route path="support" element={<SupportPage platformRedesign={platformRedesign} />} />
+      <Route path="search" element={<SearchPage />} />
+      <Route path="support" element={<LazyRoute><SupportPage /></LazyRoute>} />
       <Route path="support/licenses" element={<LazyRoute><OpenSourceLicensesPage /></LazyRoute>} />
     </Route>
   );
 }
 
-function LegacyRoutes() {
-  return (
-    <Routes>
-      <Route path="/" element={<Navigate to={ARCHIVE_ROOT} replace />} />
-      <Route path="/download" element={<AppLayout><LazyRoute><DownloadPage /></LazyRoute></AppLayout>} />
-      <Route path="/download/iphone" element={<AppLayout><LazyRoute><IphoneInstallPage /></LazyRoute></AppLayout>} />
-      {archiveRoute(false)}
-      <Route path="/reader/*" element={<ArchiveRedirect stripPrefix="/reader" />} />
-
-      {legacyArchivePaths.map((path) => (
-        <Route key={path} path={`/${path}/*`} element={<ArchiveRedirect />} />
-      ))}
-
-      <Route path="*" element={<NotFoundPage />} />
-    </Routes>
-  );
-}
-
-function RedesignedRoutes() {
+function MainRoutes() {
   return (
     <>
-      <RuntimeBootstrap />
       <Routes>
         <Route path="/account" element={<AccountRoute />} />
         <Route path="/account/times-sources" element={<AuthenticatedRoute><AppLayout><TimesSourceSettingsPage /></AppLayout></AuthenticatedRoute>} />
@@ -146,10 +121,10 @@ function RedesignedRoutes() {
           <Route path="bookshelf" element={<LazyRoute><BookshelfPage /></LazyRoute>} />
           <Route path="library" element={<LibraryPage periodicals={PERIODICALS} />} />
           <Route path="library/:datasetId" element={<LibraryPage periodicals={PERIODICALS} />} />
-          <Route path="search" element={<div className="h-[calc(100vh-64px)] overflow-hidden"><SearchPage platformRedesign /></div>} />
+          <Route path="search" element={<div className="h-[calc(100vh-64px)] overflow-hidden"><SearchPage /></div>} />
           <Route path="download" element={<LazyRoute><DownloadPage /></LazyRoute>} />
           <Route path="download/iphone" element={<LazyRoute><IphoneInstallPage /></LazyRoute>} />
-          <Route path="support" element={<SupportPage platformRedesign />} />
+          <Route path="support" element={<LazyRoute><SupportPage /></LazyRoute>} />
           <Route path="support/licenses" element={<LazyRoute><OpenSourceLicensesPage /></LazyRoute>} />
           <Route path="notifications" element={<NotificationsPage />} />
           <Route path="rag/*" element={<AuthenticatedRoute><LazyRoute><RagRoutes /></LazyRoute></AuthenticatedRoute>} />
@@ -157,11 +132,11 @@ function RedesignedRoutes() {
         </Route>
 
         <Route path="/book/:notebookId/:sourceId" element={<LazyRoute><BookReaderPage /></LazyRoute>} />
-        {archiveRoute(true)}
+        {archiveRoute()}
         <Route path="/reader/*" element={<ArchiveRedirect stripPrefix="/reader" />} />
         <Route path="/legacy/*" element={<Navigate to="/" replace />} />
 
-        {redesignedArchivePaths.map((path) => (
+        {archivePaths.map((path) => (
           <Route key={path} path={`/${path}/*`} element={<ArchiveRedirect />} />
         ))}
 
@@ -171,8 +146,8 @@ function RedesignedRoutes() {
   );
 }
 
-export function AppRoutes({ platformRedesign = rollout.platformRedesign }: { platformRedesign?: boolean }) {
-  return platformRedesign ? <RedesignedRoutes /> : <LegacyRoutes />;
+export function AppRoutes() {
+  return <><RuntimeBootstrap /><AnalyticsRuntime /><MainRoutes /></>;
 }
 
 export function App() {

@@ -70,7 +70,6 @@ class Settings:
     supabase_url: str | None
     supabase_publishable_key: str | None
     auth_timeout_seconds: float
-    tts_enabled: bool = True
     mimo_api_key: str | None = field(default=None, repr=False)
     mimo_api_keys: tuple[str, ...] = field(default=(), repr=False)
     speech_cache_path: str | None = None
@@ -110,11 +109,6 @@ class Settings:
                 os.getenv("JOJO_AUTH_TIMEOUT_SECONDS"),
                 default=5.0,
                 name="JOJO_AUTH_TIMEOUT_SECONDS",
-            ),
-            tts_enabled=_boolean(
-                os.getenv("JOJO_TTS_ENABLED"),
-                default=environment != "production",
-                name="JOJO_TTS_ENABLED",
             ),
             mimo_api_key=((os.getenv("MIMO_API_KEY") or "").strip() or None)
             if os.getenv("MIMO_API_KEYS") is None else None,

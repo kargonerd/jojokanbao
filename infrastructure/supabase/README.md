@@ -85,11 +85,15 @@ each new account. Open registration ignores submitted invitation codes and
 does not consume allocations or change existing redemption history. Email
 confirmation and password requirements remain enabled.
 
-To restore invitations, open JOJO 管理台 → 功能开关 → `auth.signup` → 注册设置,
+Before the PostHog runtime-config migration, restore invitations through JOJO 管理台 → 功能开关 → `auth.signup` → 注册设置,
 enable **注册需要邀请码**, enter a reason, and publish. This reuses Operator
 authorization, revision conflict checks, history, and rollback. The setting
 applies to all new accounts independently of rollout rules. The migration
 records the former required state as revision 1 and the open state as revision 2.
+
+After `202609120001_posthog_runtime_config.sql`, edit `auth_signup_config` in
+PostHog instead. Its `invitationRequired` value takes effect after successful
+server synchronization; the local admin displays the synchronized value/history.
 
 `public.signup_invitation_required()` exposes only this boolean to clients.
 Web/Desktop and Mobile refresh it when the account page or registration form
@@ -130,7 +134,28 @@ Supabase dashboard and OAuth identities. Keep those signup paths disabled
 while invitations are required unless they supply an invitation. An invitation is redeemed
 when the Auth user is created, before the reader confirms their email.
 
+## Retired product rollouts
+
+Bookshelf, shared annotations and listening are regular authenticated features.
+Apply the PostHog migrations in order, ending with
+`202609120002_retire_product_flags.sql`. The SQL gates require login; ownership,
+content visibility, moderation and quotas remain independently enforced.
+
+The retirement migration hides obsolete operator controls for
+`library.bookshelf`, `reader.speech`, `rag.workspace` and `olds.workspace`.
+`reader.annotations` keeps its runtime parameters. Every stored rule, config,
+revision and history is preserved, and old clients can still call
+`get_my_feature_flags`. Current clients do not read product rollout flags or
+select a flag provider. See [the PostHog guide](../../docs/posthog.md).
+
 ## Runtime configuration reuse
+
+`202609120001_posthog_runtime_config.sql` 将 `auth.signup`、`reader.annotations`、
+`ai.usage_limits`、`ops.email_quota` 四组已有参数的编辑源迁到 PostHog Remote config。
+以下存储与读取边界仍适用：业务读取现有数据库 `config` 缓存，`tools/posthog` 异步同步，
+管理台只读显示当前值、同步时间和历史。QQ群号由客户端读取公开 `support_config`。
+首次绑定必须匹配线上值；网络失败或非法配置保留缓存，不能取消限额或清空状态。
+迁移、版本校验、启用和回退步骤见 [PostHog 运行配置](../../docs/posthog.md#小型远程配置)。
 
 少量、由管理员调整的运行参数优先复用 `private.feature_flags.config` 和现有
 JOJO 管理台。新增配置前先查已有 key、读取函数和编辑界面；同一功能的参数放在
@@ -154,7 +179,7 @@ JOJO 管理台。新增配置前先查已有 key、读取函数和编辑界面�
 `rules` 与 `config` 是两个独立概念；同一 key 的配置是统一参数，不会自动按用户或
 灰度规则产生不同值。业务代码需要明确它们的关系。例如
 `ai.usage_limits` 始终对所有账号执行，读取 `config` 决定限额，不受规则开关控制；
-管理台因此只显示其参数编辑器。不要把必须执行的限额随灰度规则一起关闭。
+管理台因此只显示其参数（尚未迁移时可编辑）。不要把必须执行的限额随灰度规则一起关闭。
 
 ### 现有配置示例
 

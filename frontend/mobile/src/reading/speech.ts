@@ -2,11 +2,11 @@ import { speechSegments } from "@jojo/content";
 import { createSpeechClient } from "@jojo/content/speech";
 import * as Crypto from "expo-crypto";
 import { Parser } from "htmlparser2";
-import { mobileSpeechAllowed } from "./featureFlag";
+import { useMobileAuthStore } from "../account/auth";
 
 const apiBase = process.env.EXPO_PUBLIC_READER_API_BASE?.replace(/\/$/u, "") || "https://beta.jojokanbao.cn";
 export const mobileSpeechClient = createSpeechClient({
-  allowed: mobileSpeechAllowed,
+  allowed: () => Boolean(useMobileAuthStore.getState().user?.id),
   apiUrl: (path) => `${apiBase}${path}`,
   digest: (value) => Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, value),
 });

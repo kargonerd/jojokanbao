@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { analytics } from "@jojo/analytics";
 import { Link } from "react-router-dom";
 import { FaWindows } from "react-icons/fa";
 import { LuBookOpen } from "react-icons/lu";
@@ -50,7 +51,8 @@ function PlatformCard({ option, loading }: { option: PlatformOption; loading: bo
       {option.version ? <small>v{option.version}</small> : null}
       {option.artifacts.length ? <div className="client-platform-actions">
         {option.artifacts.map((artifact) => (
-          <a key={artifact.id} href={artifact.url} download aria-label={`${option.label} ${actionLabel(option, artifact)}`}>
+          <a key={artifact.id} href={artifact.url} download aria-label={`${option.label} ${actionLabel(option, artifact)}`}
+            onClick={() => analytics.track("download_clicked", { target_platform: option.key, available_version: option.version ?? "unknown" })}>
             <span>{actionLabel(option, artifact)}</span>
             <small>{formatReleaseSize(artifact.size)}</small>
           </a>

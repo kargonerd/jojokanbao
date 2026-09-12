@@ -1,4 +1,6 @@
 begin;
+-- Exercise legacy Operator quota editing; PostHog ownership/sync is covered in tools/posthog/runtime-config-sql.test.mjs.
+update private.feature_flags set config_provider = 'supabase' where key = 'ai.usage_limits';
 create extension if not exists pgtap with schema extensions;
 select extensions.plan(41);
 

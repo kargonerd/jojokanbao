@@ -7,6 +7,7 @@ on:
       - "frontend/homepage/**"
       - "content/blog/**"
       - "frontend/packages/ui/**"
+      - "frontend/packages/analytics/**"
       - "package.json"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
@@ -40,6 +41,10 @@ jobs:
       EDGEONE_DEPLOY_ENV: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'production' }}
       EDGEONE_UPLOAD_FROM_PATH: ./frontend/homepage/dist/
       HOMEPAGE_BASE_URL: ${{ vars.EDGEONE_HOMEPAGE_BASE_URL || 'https://jojokanbao.cn' }}
+      PUBLIC_POSTHOG_TOKEN: ${{ vars.POSTHOG_PROJECT_TOKEN }}
+      PUBLIC_POSTHOG_HOST: ${{ vars.POSTHOG_API_HOST }}
+      PUBLIC_APP_VERSION: ${{ github.sha }}
+      PUBLIC_RELEASE_CHANNEL: ${{ github.event_name == 'workflow_dispatch' && inputs.environment == 'preview' && 'preview' || 'stable' }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 

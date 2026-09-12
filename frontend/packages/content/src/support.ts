@@ -1,7 +1,15 @@
 export const DONATION_RECORDS_URL = "https://docs.qq.com/sheet/DZlhxZUdmalFBUUFQ?tab=BB08J2";
 
-// TODO(config-migration): 配置系统迁移完成后接入新的统一配置，展示与复制继续共用同一个群号。
+// First launch / unavailable remote config fallback, shared by display and copy.
 export const FEEDBACK_QQ_GROUP = "974380749";
+export const SUPPORT_CONFIG_KEY = "support_config";
+export interface SupportConfig { qqGroup: string }
+export const DEFAULT_SUPPORT_CONFIG: SupportConfig = { qqGroup: FEEDBACK_QQ_GROUP };
+export function parseSupportConfig(value: unknown): SupportConfig | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const qqGroup = (value as Record<string, unknown>).qqGroup;
+  return typeof qqGroup === "string" && /^[1-9][0-9]{4,11}$/.test(qqGroup) ? { qqGroup } : undefined;
+}
 export const FEEDBACK_BILIBILI_URL = "https://space.bilibili.com/571556400";
 
 export const PROJECT_COPYRIGHT_NOTICES = [

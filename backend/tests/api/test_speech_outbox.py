@@ -53,7 +53,7 @@ def test_upload_outage_does_not_hold_synthesis_and_restart_never_resynthesizes(m
     args = SimpleNamespace(plan=plan, output=output, rpm=80, start_concurrency=2, max_concurrency=2, accounts=1)
     settings = Settings(environment="test", allowed_origins=(), supabase_url=None,
                         supabase_publishable_key=None, auth_timeout_seconds=1,
-                        speech_storage="b2", mimo_api_key="test", tts_enabled=True)
+                        speech_storage="b2", mimo_api_key="test")
     client = Mock()
     client.meta.config = Config()
     objects, prepared, commits, manifests = {}, [], [], []
@@ -152,7 +152,7 @@ def test_resume_uploads_durable_audio_before_blocked_earlier_cache_lookups(monke
     monkeypatch.setattr(pool, "prepare_audio", prepare)
     settings = Settings(environment="test", allowed_origins=(), supabase_url=None,
                         supabase_publishable_key=None, auth_timeout_seconds=1,
-                        speech_storage="b2", mimo_api_key="test", tts_enabled=True)
+                        speech_storage="b2", mimo_api_key="test")
     args = SimpleNamespace(plan=plan_path, output=output, accounts=1, rpm=80, start_concurrency=2,
                            max_concurrency=2, upload_workers=64)
     async def run():
