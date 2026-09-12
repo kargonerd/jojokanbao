@@ -458,7 +458,7 @@ export function createBookReaderBridgeScript(
           currentSpread = Math.min(spreadCount - 1, restoreSpread);
           restoreSpread = null;
         } else if (restoreChapterProgress !== null) {
-          currentSpread = Math.min(spreadCount - 1, Math.floor(restoreChapterProgress * spreadCount));
+          currentSpread = Math.min(spreadCount - 1, Math.round(restoreChapterProgress * (spreadCount - 1)));
           restoreChapterProgress = null;
         } else {
           currentSpread = Math.min(spreadCount - 1, Math.floor(oldPageStart / pagesPerSpread));

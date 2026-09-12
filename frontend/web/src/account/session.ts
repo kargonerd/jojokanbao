@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { startWebReadingHistorySync } from "../library/readingHistorySync";
 import { clearCachedDisplayName, readCachedDisplayName, writeCachedDisplayName } from "./profileCache";
 
 interface AccountSessionState {
@@ -30,6 +31,7 @@ export function startAccountSessionSync(): () => void {
   let active = true;
   let stopAuthSync = () => {};
   let unsubscribe = () => {};
+  const stopReadingSync = startWebReadingHistorySync();
 
   void authModule!.then(({ startAuthSync, useAuthStore }) => {
     if (!active) return;
@@ -54,6 +56,7 @@ export function startAccountSessionSync(): () => void {
     active = false;
     unsubscribe();
     stopAuthSync();
+    stopReadingSync();
   };
 }
 

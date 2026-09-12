@@ -95,9 +95,10 @@ describe("BookReader", () => {
     focus?: { anchorId?: string; text?: string },
     strict = false,
     activeChapterId = "chapter-1",
+    position?: number,
   ) {
     const reader = (
-      <MemoryRouter initialEntries={["/book/test-books/test-books:full-book"]}>
+      <MemoryRouter initialEntries={[`/book/test-books/test-books:full-book${position === undefined ? "" : `?chapter=${activeChapterId}&position=${position}`}`]}>
         <BookReader
           bookTitle="测试书"
           datasetId="test-books"
@@ -189,9 +190,19 @@ describe("BookReader", () => {
       itemKey: "full-book",
       title: "测试书",
       subtitle: "第二章",
-      href: "/book/test-books/full-book?chapter=chapter-2",
+      href: expect.stringContaining("/book/test-books/full-book?chapter=chapter-2&position="),
     }));
     expect(useRecentReadingStore.getState().items[0]?.progress).toBeGreaterThanOrEqual(50);
+  });
+
+  it("restores a synced chapter position before saving the new reading session", async () => {
+    window.localStorage.setItem("jojo-reader-mode", "scroll");
+    const view = renderReader(vi.fn(), vi.fn(), undefined, false, "chapter-2", 0.75);
+    const surface = view.container.querySelector("[data-book-reading-surface]")!;
+    Object.defineProperty(surface, "scrollHeight", { configurable: true, value: 1400 });
+    Object.defineProperty(surface, "clientHeight", { configurable: true, value: 400 });
+    await waitFor(() => expect(useRecentReadingStore.getState().items[0]?.chapterProgress).toBe(0.75));
+    expect(surface.scrollTo).toHaveBeenCalledWith({ top: 750 });
   });
 
   it("switches to scrolling mode and remembers the choice", async () => {

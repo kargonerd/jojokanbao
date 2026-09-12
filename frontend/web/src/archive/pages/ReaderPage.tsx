@@ -289,13 +289,14 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
     const issueHref = archiveIssuePath(name, routeId);
     const href = currentPage > 1 ? `${issueHref}#page-${currentPage}` : issueHref;
     rememberRecentReading({
-      id: `periodical:${name}`,
+      id: `periodical:${name}:${routeId}`,
       kind: "periodical",
       publicationId: name,
       title: config.label,
       subtitle: `${formatArchiveIssueLabel(routeId)}${currentPage > 1 ? ` · 第 ${currentPage} 页` : ""}`,
       href,
       progress: 0,
+      totalPages: numPages,
     });
   }, [config.label, currentPage, name, numPages, rememberRecentReading, routeId]);
 
