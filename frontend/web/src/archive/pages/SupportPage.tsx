@@ -3,7 +3,6 @@ import { DONATION_RECORDS_URL, FEEDBACK_BILIBILI_URL, PROJECT_COPYRIGHT_NOTICES 
 import { useSupportConfig } from "../../supportConfig";
 import weixinImg from "../../../../packages/content/assets/support/weixin.png";
 import zfbImg from "../../../../packages/content/assets/support/zfb.png";
-import { rollout } from "../../rollout";
 import { Link, Navigate, useLocation } from "react-router-dom";
 import "./support.css";
 import { AnalyticsPreference } from "../../analytics/AnalyticsPreference";
@@ -32,14 +31,11 @@ const downloads = [
   ]},
 ];
 
-function SupportPageFrame({ children, platformRedesign }: { children: ReactNode; platformRedesign: boolean }) {
+function SupportPageFrame({ children }: { children: ReactNode }) {
   return (
-    <div className={`support-page h-full overflow-y-auto ${platformRedesign ? "bg-[var(--app-canvas)]" : "bg-paper"}`}>
+    <div className="support-page h-full overflow-y-auto bg-[var(--app-canvas)]">
       <div className="max-w-[960px] mx-auto px-5 py-7 md:px-10">
-        <div className={platformRedesign
-          ? "border border-rule border-t-[3px] border-t-red bg-paper p-8 shadow-[4px_4px_0_rgba(139,26,26,.08)] md:p-10"
-          : "p-8 md:p-10 border-4 border-red shadow-[inset_0_0_0_8px_var(--color-paper),inset_0_0_0_10px_var(--color-red)]"
-        }>
+        <div className="border border-rule border-t-[3px] border-t-red bg-paper p-8 shadow-[4px_4px_0_rgba(139,26,26,.08)] md:p-10">
           {children}
         </div>
       </div>
@@ -70,14 +66,14 @@ function DonationContent() {
 
 export function DonationPage() {
   return (
-    <SupportPageFrame platformRedesign>
+    <SupportPageFrame>
       <h1 className="mb-4 text-2xl font-bold tracking-wider text-ink">支持我们</h1>
       <DonationContent />
     </SupportPageFrame>
   );
 }
 
-export function SupportPage({ platformRedesign = rollout.platformRedesign }: { platformRedesign?: boolean }) {
+export function SupportPage() {
   const { qqGroup } = useSupportConfig();
   const { hash } = useLocation();
   let sectionId = "";
@@ -86,7 +82,7 @@ export function SupportPage({ platformRedesign = rollout.platformRedesign }: { p
   } catch {
     // Ignore invalid hashes while keeping the About page available.
   }
-  const redirectsDonation = platformRedesign && sectionId === "捐助";
+  const redirectsDonation = sectionId === "捐助";
 
   useLayoutEffect(() => {
     if (!sectionId || redirectsDonation) return;
@@ -96,10 +92,10 @@ export function SupportPage({ platformRedesign = rollout.platformRedesign }: { p
   if (redirectsDonation) return <Navigate to="/donate" replace />;
 
   return (
-    <SupportPageFrame platformRedesign={platformRedesign}>
+    <SupportPageFrame>
 
           {/* 关于与反馈 */}
-          <h1 id="关于" className="mb-4 scroll-mt-20 text-2xl font-bold tracking-wider text-ink">{platformRedesign ? "关于 JOJO 看报" : "反馈"}</h1>
+          <h1 id="关于" className="mb-4 scroll-mt-20 text-2xl font-bold tracking-wider text-ink">关于 JOJO 看报</h1>
           <p className="text-ink/80 leading-8">
             网站为业余时间开发制作，因此较为粗糙，如果网站有任何问题，或者希望对网站提出建议，可以进入QQ群:
             <strong className="text-red"> {qqGroup} </strong> 进行反馈，也可以在B站
@@ -147,7 +143,7 @@ export function SupportPage({ platformRedesign = rollout.platformRedesign }: { p
 
           <Link
             id="开源软件许可"
-            to={platformRedesign ? "/support/licenses" : "/archive/support/licenses"}
+            to="/support/licenses"
             className="support-license-link mt-8 flex min-h-14 scroll-mt-20 items-center justify-between gap-5 border-t border-rule pt-5 font-bold"
           >
             <span>

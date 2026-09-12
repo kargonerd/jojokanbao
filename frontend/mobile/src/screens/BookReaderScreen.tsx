@@ -28,7 +28,6 @@ import { useMobileOfflineBooksStore } from "../offline/books";
 import { useReadingProgress } from "../reading/useReadingProgress";
 import { NativeSpeechPlayer } from "../reading/SpeechPlayer";
 import { mobileSpeechSegments } from "../reading/speech";
-import { useMobileFeatureFlag, useSpeechFlagStore } from "../reading/featureFlag";
 import { useBookReadingTime } from "../reading/useBookReadingTime";
 import { useReaderBrightness } from "../reading/useReaderBrightness";
 import { bookTocEntries, type BookTocEntry } from "../lib/bookToc";
@@ -207,12 +206,11 @@ export function BookReaderScreen({ route, navigation }: Props) {
   const { brightness, changeBrightness } = useReaderBrightness(setReaderNotice);
   const [onBookshelf, setOnBookshelf] = useState<boolean>();
   const [bookshelfBusy, setBookshelfBusy] = useState(false);
-  const bookshelfEnabled = useMobileFeatureFlag("library.bookshelf");
   const [legacyResume, setLegacyResume] = useState<{ chapterId: string; chapterProgress: number }>();
   const readerReadyChapterRef = useRef("");
   const readingChapterRef = useRef(activeChapterId);
   readingChapterRef.current = activeChapterId;
-  const speechEnabled = useSpeechFlagStore((state) => state.enabled && state.userId === user?.id);
+  const speechAvailable = Boolean(user);
   const [speechCover, setSpeechCover] = useState<string>();
   const speechPositionSequence = useRef(0);
   const pendingSpeechPosition = useRef<{ id: number; resolve: (value: SpeechReadingPosition) => void; reject: () => void } | null>(null);
@@ -264,9 +262,9 @@ export function BookReaderScreen({ route, navigation }: Props) {
   useEffect(() => {
     let active = true;
     setSpeechCover(undefined);
-    if (loaded && speechEnabled) void loadMobileBookCover(loaded.book, itemKey).then((uri) => { if (active) setSpeechCover(uri); }).catch(() => undefined);
+    if (loaded && speechAvailable) void loadMobileBookCover(loaded.book, itemKey).then((uri) => { if (active) setSpeechCover(uri); }).catch(() => undefined);
     return () => { active = false; };
-  }, [loaded, itemKey, speechEnabled]);
+  }, [loaded, itemKey, speechAvailable]);
   const loadSpeechChapter = useCallback(async (id: string) => {
     if (!loaded) throw new Error("书籍尚未加载");
     const { fragment } = scrollChaptersRef.current.get(id) ?? await loadMobileBookChapter(loaded, id, false);
@@ -283,7 +281,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
   useEffect(() => () => cancelAgentRef.current?.(), []);
 
   useEffect(() => {
-    if (!loaded || !user || !bookshelfEnabled) {
+    if (!loaded || !user) {
       setOnBookshelf(undefined);
       return undefined;
     }
@@ -293,7 +291,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
       .then((value) => { if (active) setOnBookshelf(value); })
       .catch(() => { if (active) setReaderNotice("书架状态暂时无法读取，点击书架按钮重试。"); });
     return () => { active = false; };
-  }, [datasetId, loaded, user, bookshelfEnabled]);
+  }, [datasetId, loaded, user]);
 
   useEffect(() => {
     let active = true;
@@ -964,7 +962,6 @@ export function BookReaderScreen({ route, navigation }: Props) {
   }
 
   async function toggleBookshelf() {
-    if (!bookshelfEnabled) return;
     if (!user) { navigation.navigate("Account"); return; }
     if (!loaded || bookshelfBusy) return;
     setBookshelfBusy(true);

@@ -1,8 +1,8 @@
-import { FLAG_REFRESH_INTERVAL_MS, type FlagSession } from "./flags";
+import { CONFIG_REFRESH_INTERVAL_MS, type ConfigSession } from "./config";
 
 /** Start from SDK disk cache; validate before publishing any new remote payload. */
 export function startConfigSync<T>(options: {
-  open(): Promise<FlagSession<unknown>>;
+  open(): Promise<ConfigSession>;
   parse(value: unknown): T | undefined;
   publish(value: T): void;
   foreground(): boolean;
@@ -10,7 +10,7 @@ export function startConfigSync<T>(options: {
 }) {
   let stopped = false;
   let opening = false;
-  let session: FlagSession<unknown> | undefined;
+  let session: ConfigSession | undefined;
   let unsubscribe: (() => void) | undefined;
   let refreshedAt: number | undefined;
   let writes = Promise.resolve();
@@ -44,7 +44,7 @@ export function startConfigSync<T>(options: {
     try { session.refresh(); } catch { /* Retain the last validated value. */ }
   };
   void refresh();
-  const timer = setInterval(() => { void refresh(); }, FLAG_REFRESH_INTERVAL_MS);
+  const timer = setInterval(() => { void refresh(); }, CONFIG_REFRESH_INTERVAL_MS);
   return {
     refresh: () => { void refresh(); },
     stop: () => { stopped = true; clearInterval(timer); unsubscribe?.(); session?.dispose(); },

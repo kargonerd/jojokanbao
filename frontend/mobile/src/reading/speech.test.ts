@@ -1,6 +1,7 @@
+vi.mock("../account/auth", () => ({ useMobileAuthStore: { getState: () => ({ user: null }) } }));
 import { describe, expect, it, vi } from "vitest";
 vi.mock("expo-crypto", () => ({}));
-vi.mock("./featureFlag", () => ({ mobileSpeechAllowed: () => false }));
+
 import { mobileSpeechSegments, nativeSpeechHtmlBlocks, speechTime } from "./speech";
 
 describe("native speech text", () => {

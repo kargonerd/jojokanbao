@@ -43,8 +43,4 @@ function resolveAnalyticsConfig(mobileRoot, environment = process.env) {
     host: (environment.EXPO_PUBLIC_POSTHOG_HOST || environment.VITE_POSTHOG_HOST || values.EXPO_PUBLIC_POSTHOG_HOST || values.VITE_POSTHOG_HOST || "").trim(),
   };
 }
-function resolveFeatureFlagProvider(mobileRoot, environment = process.env) {
-  const values = resolveBuildValues(mobileRoot, environment);
-  return (environment.EXPO_PUBLIC_FEATURE_FLAG_PROVIDER || environment.VITE_FEATURE_FLAG_PROVIDER || values.EXPO_PUBLIC_FEATURE_FLAG_PROVIDER || values.VITE_FEATURE_FLAG_PROVIDER) === "posthog" ? "posthog" : "supabase";
-}
-module.exports = { resolveAccountConfig, resolveAnalyticsConfig, resolveFeatureFlagProvider };
+module.exports = { resolveAccountConfig, resolveAnalyticsConfig };

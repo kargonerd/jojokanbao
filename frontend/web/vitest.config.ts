@@ -3,9 +3,6 @@ import react from "@vitejs/plugin-react";
 import { resolve } from "path";
 
 export default defineConfig({
-  define: {
-    "import.meta.env.VITE_ENABLE_PLATFORM_REDESIGN": JSON.stringify("true"),
-  },
   plugins: [react()],
   resolve: {
     alias: { "@": resolve(__dirname, "src") },

@@ -1,7 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SelectableAnnotationArticle } from "../src/annotations/SelectableAnnotationArticle";
-import { useFeatureFlagStore } from "../src/featureFlags";
 import { useAccountSessionStore } from "../src/account/session";
 import type { AnnotationThread } from "../src/annotations/types";
 
@@ -54,7 +53,7 @@ describe("SelectableAnnotationArticle", () => {
   });
   beforeEach(() => {
     vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
-    useFeatureFlagStore.setState({ initialized: true, revision: "test", flags: { "reader.speech": false, "library.bookshelf": false, "reader.annotations": true } });
+
     useAccountSessionStore.setState({ initialized: true, userId: "user-1", displayName: "报刊读者-ABC" });
     annotationApi.loadAnnotationThreads.mockResolvedValue([]);
     annotationApi.createAnnotation.mockResolvedValue({
@@ -128,8 +127,7 @@ describe("SelectableAnnotationArticle", () => {
     }
   });
 
-  it("offers AI explanation independently from the annotation feature flag", async () => {
-    useFeatureFlagStore.setState({ initialized: true, revision: "test", flags: { "reader.speech": false, "library.bookshelf": false, "reader.annotations": false } });
+  it("offers AI explanation alongside annotations for signed-in readers", async () => {
     const onExplain = vi.fn();
     render(<SelectableAnnotationArticle subject={{ contentType: "newspaper", contentId: "news-1", sectionId: "body", contentTitle: "新闻标题" }} onExplain={onExplain}><p>图表中的红色曲线</p></SelectableAnnotationArticle>);
     const paragraph = screen.getByText("图表中的红色曲线");

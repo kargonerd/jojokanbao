@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { startConfigSync } from "../src/config-sync";
-import type { FlagSession } from "../src/flags";
+import type { ConfigSession } from "../src/config";
 
 let stop: (() => void) | undefined;
 beforeEach(() => { vi.useFakeTimers(); });
@@ -46,7 +46,7 @@ it("rejects malformed SDK cache and remote responses, persists only valid update
 });
 
 it("disposes a late SDK initialization after unmount without publishing or starting a request", async () => {
-  let resolve!: (session: FlagSession<unknown>) => void;
+  let resolve!: (session: ConfigSession) => void;
   const session = {cached: vi.fn(), subscribe: vi.fn(), refresh: vi.fn(), dispose: vi.fn()};
   const sync = startConfigSync({open: () => new Promise(done => { resolve = done; }), parse,
     publish: vi.fn(), foreground: () => true, cache: {read: async () => null, write: vi.fn()}});

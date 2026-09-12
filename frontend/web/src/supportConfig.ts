@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { create } from "zustand";
 import { DEFAULT_SUPPORT_CONFIG, SUPPORT_CONFIG_KEY, parseSupportConfig, type SupportConfig } from "@jojo/content";
 import { startConfigSync } from "@jojo/analytics/config-sync";
-import { flagStorageNamespace } from "@jojo/analytics/flags";
+import { configStorageNamespace } from "@jojo/analytics/config";
 
 export const useSupportConfigStore = create<SupportConfig>(() => ({ ...DEFAULT_SUPPORT_CONFIG }));
 export function useSupportConfig() {
@@ -10,10 +10,10 @@ export function useSupportConfig() {
     const token = import.meta.env.VITE_POSTHOG_TOKEN;
     const host = import.meta.env.VITE_POSTHOG_HOST;
     if (!token) return;
-    const key = flagStorageNamespace(token, host || "https://us.i.posthog.com", "validated-support-config");
+    const key = `${configStorageNamespace(token, host || "https://us.i.posthog.com")}.validated`;
     const sync = startConfigSync({
       open: async () => {
-        const { openBrowserConfigSession } = await import("@jojo/analytics/browser-flags");
+        const { openBrowserConfigSession } = await import("@jojo/analytics/browser-config");
         return openBrowserConfigSession({ token, host, key: SUPPORT_CONFIG_KEY });
       },
       parse: parseSupportConfig,

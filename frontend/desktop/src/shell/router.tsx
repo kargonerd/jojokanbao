@@ -32,7 +32,6 @@ import {
   TimesRoutes,
   TimesSourceSettingsPage,
   defaultArchiveIssuePath,
-  startFeatureFlagSync,
   startAccountSessionSync,
   useAccountSessionStore,
 } from '@jojo/web/desktop';
@@ -46,7 +45,6 @@ function DesktopRuntime() {
   const userId = useAccountSessionStore((state) => state.userId);
 
   useEffect(() => { startOfflineAccountSync(); return startAccountSessionSync(); }, []);
-  useEffect(() => startFeatureFlagSync(), []);
   useEffect(() => {
     if (accountInitialized) {
       const authenticated = Boolean(userId);
@@ -113,7 +111,6 @@ function DesktopArchiveLayout() {
       className="desktop-shell"
       headerActions={<DesktopSettingsAction />}
       navigationItems={useDesktopNavigation()}
-      platformRedesign
     />
   );
 }
@@ -177,9 +174,9 @@ export function createDesktopRoutes(): RouteObject[] {
             { path: 'library/:datasetId', element: <LibraryPage periodicals={PERIODICALS} /> },
             {
               path: 'search',
-              element: <div className="h-[calc(100vh-64px)] overflow-hidden"><SearchPage openResultsInNewTab={false} platformRedesign /></div>,
+              element: <div className="h-[calc(100vh-64px)] overflow-hidden"><SearchPage openResultsInNewTab={false} /></div>,
             },
-            { path: 'support', element: <SupportPage platformRedesign /> },
+            { path: 'support', element: <SupportPage /> },
             { path: 'donate', element: <DonationPage /> },
             {
               path: 'support/licenses',

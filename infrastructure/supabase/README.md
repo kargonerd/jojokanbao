@@ -134,23 +134,19 @@ Supabase dashboard and OAuth identities. Keep those signup paths disabled
 while invitations are required unless they supply an invitation. An invitation is redeemed
 when the Auth user is created, before the reader confirms their email.
 
-## PostHog product rollouts
+## Retired product rollouts
 
-`202609110001_posthog_product_flags.sql` moves the three client rollout gates
-(`library.bookshelf`, `reader.annotations`, `reader.speech`) to PostHog. Export
-live rules/config/history from the updated local admin before cutover and follow
-[the PostHog migration guide](../../docs/posthog.md#feature-flags-迁移与回退).
+Bookshelf, shared annotations and listening are regular authenticated features.
+Apply the PostHog migrations in order, ending with
+`202609120002_retire_product_flags.sql`. The SQL gates require login; ownership,
+content visibility, moderation and quotas remain independently enforced.
 
-PostHog rejects dots in flag keys. Its matching keys are `library_bookshelf`,
-`reader_annotations`, and `reader_speech`; the client adapter maps these to the
-unchanged application/database keys above.
-
-The migration preserves every flag row. These three SQL gates require login;
-existing ownership, visibility and quota checks remain server enforced. Old
-clients still evaluate the preserved Supabase rules. Runtime parameters remain
-in `private.feature_flags.config`; the following runtime-config migration makes
-those rows a durable server cache for PostHog, retaining Operator revision/history.
-Do not enable the PostHog client provider until the project and database are ready.
+The retirement migration hides obsolete operator controls for
+`library.bookshelf`, `reader.speech`, `rag.workspace` and `olds.workspace`.
+`reader.annotations` keeps its runtime parameters. Every stored rule, config,
+revision and history is preserved, and old clients can still call
+`get_my_feature_flags`. Current clients do not read product rollout flags or
+select a flag provider. See [the PostHog guide](../../docs/posthog.md).
 
 ## Runtime configuration reuse
 

@@ -2,13 +2,6 @@ import { enableDesktopOfflineBooks } from "./offline/platform";
 
 enableDesktopOfflineBooks();
 
-export {
-  refreshFeatureFlags,
-  startFeatureFlagSync,
-  useFeatureFlag,
-  useFeatureFlagStore,
-  type FeatureFlagKey,
-} from "./featureFlags";
 export { startAccountSessionSync, useAccountSessionStore } from "./account/session";
 export { AnalyticsRuntime } from "./analytics/AnalyticsRuntime";
 export { AnalyticsPreference } from "./analytics/AnalyticsPreference";
@@ -29,7 +22,6 @@ export { OpenSourceLicensesPage, type OpenSourceLicenseData } from "./archive/pa
 export { ReaderPage as ArchiveReaderPage } from "./archive/pages/ReaderPage";
 export { PUBLICATIONS, PUBLICATION_NAMES } from "./archive/publications";
 export { defaultArchiveIssuePath } from "./routes";
-export { rollout } from "./rollout";
 export { default as RagRoutes } from "./rag/RagRoutes";
 export { ReaderPage as BookReaderPage } from "./rag/pages/ReaderPage";
 export { AccountEntry } from "./account/AccountEntry";

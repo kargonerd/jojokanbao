@@ -10,7 +10,6 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { useMobileAuthStore } from "../account/auth";
 import { mobileTheme, type MobileTheme } from "../theme/tokens";
-import { useSpeechFlagStore } from "./featureFlag";
 import { speechTime } from "./speech";
 import { useSpeechPlayback, type SpeechPlaybackProps } from "./useSpeechPlayback";
 import { SpeechLoading } from "./SpeechLoading";
@@ -26,10 +25,9 @@ type Props = Omit<SpeechPlaybackProps, "userId"> & {
 
 export function NativeSpeechPlayer(props: Props) {
   const userId = useMobileAuthStore((state) => state.user?.id);
-  const flag = useSpeechFlagStore();
   const focused = useIsFocused();
-  // Unmount the native player on logout, rollout rollback, or leaving this reader.
-  if (!focused || !userId || flag.userId !== userId || !flag.enabled) return null;
+  // Unmount the native player on logout or leaving this reader.
+  if (!focused || !userId) return null;
   return <ActiveSpeechPlayer key={`${userId}:${props.documentId}`} {...props} userId={userId} />;
 }
 

@@ -63,8 +63,8 @@ select extensions.throws_ok(
 
 select extensions.is(
   jsonb_array_length(public.operator_list_feature_flags(repeat('o', 32))),
-  (select count(*)::integer from private.feature_flags),
-  'the configured operator token can list flags'
+  (select count(*)::integer from private.feature_flags where key not in ('library.bookshelf', 'reader.speech', 'rag.workspace', 'olds.workspace')),
+  'the configured operator token lists active runtime controls'
 );
 
 select extensions.is(
