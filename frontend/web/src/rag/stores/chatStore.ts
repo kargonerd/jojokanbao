@@ -4,7 +4,7 @@ import {
   notebookApi,
 } from "../api";
 import { localConversationApi } from "../local-conversations";
-import { allSourcesSelected, scopeNotebooks, type RagContentType } from "../scope";
+import { allSourcesSelected, scopeNotebooks, selectedContentType, type RagContentType } from "../scope";
 import type {
   RagConversationSummary,
   RagMessage,
@@ -26,6 +26,7 @@ function freshScope(datasetIds: string[], contentType: RagContentType = "all") {
 }
 
 interface ChatState {
+  /** Active picker tab; request content type is derived from the shared selection. */
   contentType: RagContentType;
   notebooks: RagNotebook[];
   selectedNotebookIds: string[];
@@ -164,13 +165,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (id && !scopeNotebooks(get().notebooks, get().contentType).some((item) => item.id === id)) return;
     localStorage.removeItem(LAST_CONVERSATION_KEY);
     const availableIds = scopeNotebooks(get().notebooks, get().contentType).map((item) => item.id);
-    set(freshScope(id ? [id] : allSourcesSelected(availableIds, get().selectedNotebookIds) ? [] : availableIds, get().contentType));
+    const selectedIds = get().selectedNotebookIds;
+    const nextIds = allSourcesSelected(availableIds, selectedIds)
+      ? selectedIds.filter((selectedId) => !availableIds.includes(selectedId))
+      : scopeNotebooks(get().notebooks, "all").map((item) => item.id)
+        .filter((selectedId) => selectedIds.includes(selectedId) || availableIds.includes(selectedId));
+    set(freshScope(id ? [id] : nextIds, get().contentType));
   },
 
   selectContentType: (contentType) => {
     if (get().streaming || get().historyLoading || contentType === get().contentType) return;
-    localStorage.removeItem(LAST_CONVERSATION_KEY);
-    set(freshScope(scopeNotebooks(get().notebooks, contentType).map((item) => item.id), contentType));
+    set({ contentType });
   },
 
   toggleNotebook: (id) => {
@@ -189,7 +194,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
   sendMessage: (question) => {
     const {
       notebooks,
-      contentType,
       selectedNotebookIds,
       messages,
       conversationId,
@@ -197,9 +201,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
       historyLoading,
     } = get();
     const trimmedQuestion = question.trim();
-    const availableIds = scopeNotebooks(notebooks, contentType).map((notebook) => notebook.id);
+    const availableIds = scopeNotebooks(notebooks, "all").map((notebook) => notebook.id);
     const datasetIds = selectedNotebookIds.filter((id) => availableIds.includes(id));
-    const scopeMode = allSourcesSelected(availableIds, datasetIds) ? "all" : "selected";
+    const contentType = selectedContentType(datasetIds);
+    const scopeMode = allSourcesSelected(scopeNotebooks(notebooks, contentType).map((item) => item.id), datasetIds) ? "all" : "selected";
     if (!trimmedQuestion || !datasetIds.length || streaming || historyLoading) return;
     const newMessages = [
       ...messages,

@@ -9,6 +9,12 @@ export function allSourcesSelected(availableIds: string[], selectedIds: string[]
   return availableIds.length > 0 && availableIds.every((id) => selectedIds.includes(id));
 }
 
+export function selectedContentType(selectedIds: string[]): RagContentType {
+  const hasPeriodicals = selectedIds.some((id) => JOJO_AI_PERIODICAL_IDS.some((paper) => paper === id));
+  const hasBooks = selectedIds.some((id) => !JOJO_AI_PERIODICAL_IDS.some((paper) => paper === id));
+  return hasBooks && hasPeriodicals ? "all" : hasBooks ? "book" : hasPeriodicals ? "periodical" : "all";
+}
+
 export function scopeNotebooks(notebooks: RagNotebook[], contentType: RagContentType): RagNotebook[] {
   const periodicals = JOJO_AI_PERIODICAL_IDS.map((id) => ({
     id, title: ARCHIVE_PUBLICATION_BY_ID[id].title, type: "newspaper",

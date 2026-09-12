@@ -3,7 +3,7 @@ import { AppShell } from "@jojo/ui";
 import { AiExperimentalNotice } from "../components/AiBetaNotice";
 import { ReferenceButtons } from "../components/ReferenceButtons";
 import { useChatStore } from "../stores/chatStore";
-import { ALL_RAG_SOURCES_LABEL, allSourcesSelected, scopeNotebooks } from "../scope";
+import { ALL_RAG_SOURCES_LABEL, allSourcesSelected, scopeNotebooks, selectedContentType } from "../scope";
 import { formatChatMarkdown } from "../utils/markdown";
 
 function conversationDate(timestamp?: number): string {
@@ -129,8 +129,9 @@ function ScopeSelector({ onClose }: { onClose?: () => void }) {
   const [query, setQuery] = useState("");
   const sourceLabel = contentType === "all" ? "资料" : contentType === "book" ? "书籍" : "报刊";
   const disabled = streaming || historyLoading;
-  const allSelected = allSourcesSelected(scopeNotebooks(notebooks, contentType).map((item) => item.id), selectedNotebookIds);
-  const partiallySelected = selectedNotebookIds.length > 0 && !allSelected;
+  const tabIds = scopeNotebooks(notebooks, contentType).map((item) => item.id);
+  const allSelected = allSourcesSelected(tabIds, selectedNotebookIds);
+  const partiallySelected = tabIds.some((id) => selectedNotebookIds.includes(id)) && !allSelected;
   const visibleNotebooks = useMemo(() => {
     const candidates = scopeNotebooks(notebooks, contentType);
     const normalized = query.trim().toLocaleLowerCase("zh-CN");
@@ -243,7 +244,6 @@ const assistantTextClass = [
 export function ChatPage() {
   const {
     notebooks,
-    contentType,
     selectedNotebookIds,
     messages,
     conversationId,
@@ -265,14 +265,15 @@ export function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, streamContent, streamStatus]);
 
-  const availableNotebooks = scopeNotebooks(notebooks, contentType);
+  const contentType = selectedContentType(selectedNotebookIds);
+  const availableNotebooks = scopeNotebooks(notebooks, "all");
   const selectedTitles = selectedNotebookIds.map((id) => {
     const notebook = availableNotebooks.find((candidate) => candidate.id === id);
     return notebook?.title || notebook?.name || "";
   }).filter(Boolean);
   const scopeLabel = selectedTitles.length === 0
     ? "未选择资料"
-    : allSourcesSelected(availableNotebooks.map((item) => item.id), selectedNotebookIds)
+    : allSourcesSelected(scopeNotebooks(notebooks, contentType).map((item) => item.id), selectedNotebookIds)
       ? (contentType === "all" ? ALL_RAG_SOURCES_LABEL : contentType === "book" ? "全部书籍" : "报刊 · 人民日报")
       : selectedTitles.length === 1
         ? `仅《${selectedTitles[0]}》`

@@ -150,17 +150,23 @@ export function AiScreen() {
   const allScopeItems = useMemo(() => [...periodicalItems, ...books], [books]);
   const scopeItems = contentType === "all" ? allScopeItems : contentType === "book" ? books : periodicalItems;
   const allSelected = scopeItems.length > 0 && scopeItems.every((item) => selectedDatasetIds.includes(item.datasetId));
+  const selectedItems = allScopeItems.filter((item) => selectedDatasetIds.includes(item.datasetId));
+  const hasBooks = books.some((item) => selectedDatasetIds.includes(item.datasetId));
+  const hasPeriodicals = periodicalItems.some((item) => selectedDatasetIds.includes(item.datasetId));
+  const selectedType = hasBooks && hasPeriodicals ? "all" : hasBooks ? "book" : hasPeriodicals ? "periodical" : "all";
+  const availableItems = selectedType === "all" ? allScopeItems : selectedType === "book" ? books : periodicalItems;
+  const selectionIsAll = availableItems.length > 0 && availableItems.every((item) => selectedDatasetIds.includes(item.datasetId));
   const selectedTitles = selectedDatasetIds.flatMap((id) => {
-    const book = scopeItems.find((candidate) => candidate.datasetId === id);
+    const book = allScopeItems.find((candidate) => candidate.datasetId === id);
     return book ? [book.title] : [];
   });
   const scopeLabel = selectedTitles.length === 0
     ? "未选择资料"
-    : allSelected
-      ? (contentType === "all" ? "全部报刊 + 书籍" : contentType === "book" ? "全部书籍" : "报刊 · 人民日报")
+    : selectionIsAll
+      ? (selectedType === "all" ? "全部报刊 + 书籍" : selectedType === "book" ? "全部书籍" : "报刊 · 人民日报")
       : selectedTitles.length === 1
         ? `仅《${selectedTitles[0]}》`
-        : `限定 ${selectedTitles.length} ${contentType === "all" ? "份资料" : contentType === "book" ? "本书" : "种报刊"}`;
+        : `限定 ${selectedTitles.length} ${selectedType === "all" ? "份资料" : selectedType === "book" ? "本书" : "种报刊"}`;
   const visibleBooks = useMemo(() => {
     const needle = scopeQuery.trim().toLocaleLowerCase("zh-CN");
     return needle ? scopeItems.filter((item) => item.title.toLocaleLowerCase("zh-CN").includes(needle)) : scopeItems;
@@ -255,8 +261,8 @@ export function AiScreen() {
   function sendMessage() {
     const question = input.trim();
     if (!question || !canSend || !ownerId) return;
-    const datasetIds = selectedDatasetIds.filter((id) => scopeItems.some((item) => item.datasetId === id));
-    const scopeMode = allSelected ? "all" : "selected";
+    const datasetIds = selectedItems.map((item) => item.datasetId);
+    const scopeMode = selectionIsAll ? "all" : "selected";
     const previousMessages = messages;
     const nextMessages = [...messages, { role: "user" as const, content: question }];
     setInput("");
@@ -269,7 +275,7 @@ export function AiScreen() {
     void (async () => {
       let itemIds: string[] | undefined;
       let manifestObjects: string[] | undefined;
-      if (contentType === "book" && selectedDatasetIds.length === 1) {
+      if (selectedType === "book" && selectedDatasetIds.length === 1) {
         const book = books.find((candidate) => candidate.datasetId === selectedDatasetIds[0]);
         if (book) {
           try {
@@ -285,7 +291,7 @@ export function AiScreen() {
       }
       let answer = "";
       cancelRef.current = askMobileLibraryAgent({
-        contentType,
+        contentType: selectedType,
         question,
         datasetIds,
         scopeMode,
@@ -307,7 +313,7 @@ export function AiScreen() {
           const now = Date.now();
           const previous = conversations.find((candidate) => candidate.id === nextConversationId);
           upsertConversation({
-            contentType,
+            contentType: selectedType,
             scopeMode,
             id: nextConversationId,
             ownerId,
@@ -515,8 +521,6 @@ export function AiScreen() {
                 disabled={streaming}
                 onPress={() => {
                   if (streaming || contentType === type) return;
-                  const available = type === "all" ? allScopeItems : type === "book" ? books : periodicalItems;
-                  chooseScope(available.map((item) => item.datasetId));
                   setContentType(type);
                   setScopeQuery("");
                 }}
@@ -542,7 +546,7 @@ export function AiScreen() {
             keyboardShouldPersistTaps="handled"
             renderItem={({ item }) => {
               const selected = item.datasetId ? selectedDatasetIds.includes(item.datasetId) : allSelected;
-              const partial = !item.datasetId && selectedTitles.length > 0 && !allSelected;
+              const partial = !item.datasetId && scopeItems.some((candidate) => selectedDatasetIds.includes(candidate.datasetId)) && !allSelected;
               return (
                 <Pressable
                   accessibilityRole="checkbox"
@@ -550,7 +554,9 @@ export function AiScreen() {
                   accessibilityState={{ checked: partial ? "mixed" : selected }}
                   disabled={streaming}
                   onPress={() => {
-                    if (!item.datasetId) chooseScope(allSelected ? [] : scopeItems.map((candidate) => candidate.datasetId));
+                    if (!item.datasetId) chooseScope(allSelected
+                      ? selectedDatasetIds.filter((id) => !scopeItems.some((candidate) => candidate.datasetId === id))
+                      : [...new Set([...selectedDatasetIds, ...scopeItems.map((candidate) => candidate.datasetId)])]);
                     else chooseScope(selected
                       ? selectedDatasetIds.filter((id) => id !== item.datasetId)
                       : [...selectedDatasetIds, item.datasetId]);
