@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
+  channel: "production-eink" as string | null,
   preferences: { analyticsEnabled: true }, hydrated: false,
   auth: { initialized: false, user: null as null | { id: string; user_metadata?: Record<string, unknown> } },
   hydrate: [] as Array<() => void>, preferencesChanged: [] as Array<() => void>, authChanged: [] as Array<() => void>,
@@ -11,6 +12,7 @@ vi.mock("@react-native-async-storage/async-storage", () => ({ default: { getItem
 vi.mock("expo-application", () => ({ nativeApplicationVersion: "0.0.3" }));
 vi.mock("expo-constants", () => ({ default: { expoConfig: { extra: { analytics: { token: "phc_test", host: "https://us.i.posthog.com" } } } } }));
 vi.mock("expo-crypto", () => ({ randomUUID: () => "new-installation" }));
+vi.mock("expo-updates", () => ({ get channel() { return mocks.channel; } }));
 vi.mock("react-native", () => ({ Platform: { OS: "android" }, AppState: { currentState: "active", addEventListener: vi.fn() } }));
 vi.mock("../config/appVariant", () => ({ IS_EINK_RELEASE: true }));
 vi.mock("../account/auth", () => ({ useMobileAuthStore: { getState: () => mocks.auth, subscribe: (callback: () => void) => { mocks.authChanged.push(callback); } } }));
@@ -23,6 +25,7 @@ beforeEach(() => {
   vi.resetModules(); vi.clearAllMocks(); vi.stubGlobal("__DEV__", false);
   vi.stubEnv("EXPO_PUBLIC_POSTHOG_TOKEN", ""); vi.stubEnv("EXPO_PUBLIC_POSTHOG_HOST", "");
   mocks.preferences.analyticsEnabled = true; mocks.hydrated = false; mocks.auth = { initialized: false, user: null };
+  mocks.channel = "production-eink";
   mocks.hydrate = []; mocks.authChanged = []; mocks.preferencesChanged = [];
 });
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
@@ -60,4 +63,15 @@ it("does not instantiate the SDK in development", async () => {
   vi.stubGlobal("__DEV__", true);
   await (await import("./runtime")).initializeMobileAnalytics();
   expect(mocks.construct).not.toHaveBeenCalled();
+});
+
+it.each([
+  [null, "preview"], ["preview", "preview"], ["test-build", "preview"],
+  ["production-standard", "stable"], ["production-eink", "stable"],
+] as const)("labels the %s update channel as %s", async (channel, releaseChannel) => {
+  mocks.channel = channel;
+  mocks.hydrated = true;
+  mocks.auth = { initialized: true, user: null };
+  await (await import("./runtime")).initializeMobileAnalytics();
+  expect(mocks.sdk.capture).toHaveBeenCalledWith("app_started", expect.objectContaining({ release_channel: releaseChannel }));
 });

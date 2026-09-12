@@ -9,6 +9,24 @@ const context = { client: "desktop" as const, platform: "win32", app_version: "0
 beforeEach(() => { vi.resetModules(); vi.clearAllMocks(); localStorage.clear(); delete (window as unknown as Record<string, unknown>).ReactNativeWebView; });
 
 describe("browser initialization", () => {
+  it("keeps opt-out effective when localStorage rejects writes", async () => {
+    localStorage.setItem("jojo.analytics.enabled.v1", "true");
+    localStorage.setItem("jojo.analytics.installation.v1", "saved-installation");
+    const { initializeBrowserAnalytics, setBrowserAnalyticsEnabled, browserAnalyticsEnabled } = await import("../src/browser");
+    const { analytics } = await import("../src/index");
+    analytics.setIdentity({ initialized: true, userId: null });
+    await initializeBrowserAnalytics({ token: "phc_test", host: "https://us.i.posthog.com", production: true, context });
+    const write = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new DOMException("Full", "QuotaExceededError"); });
+    try {
+      setBrowserAnalyticsEnabled(false);
+      window.dispatchEvent(new Event("storage"));
+      expect(browserAnalyticsEnabled()).toBe(false);
+      expect(analytics.enabled).toBe(false);
+      sdk.capture.mockClear();
+      analytics.track("search_started");
+      expect(sdk.capture).not.toHaveBeenCalled();
+    } finally { write.mockRestore(); }
+  });
   it("does not load the SDK without configuration or in development", async () => {
     const { initializeBrowserAnalytics } = await import("../src/browser");
     await initializeBrowserAnalytics({ production: true, context });

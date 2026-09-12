@@ -23,7 +23,7 @@ VITE_POSTHOG_HOST=https://us.i.posthog.com
 
 Mobile 的现有配置解析器也读取这两个值，或优先使用 `EXPO_PUBLIC_POSTHOG_TOKEN/HOST`，只把允许的公开字段放入 `extra.analytics`。官网从仓库 `.env` 读取 `PUBLIC_POSTHOG_TOKEN/HOST`。Token 和 Host 必须同时设置；Host 必须为 HTTPS。`pnpm dev` / Expo 开发模式始终关闭，不因填写变量而发送。
 
-Web 保留原有 `stable` / `beta` 发布渠道，分析正式用户时过滤 `release_channel=stable`。官网 preview 构建关闭采集。需要测试环境数据时使用单独的 PostHog 项目，不在生产看板混入测试事件。
+Web 保留原有 `stable` / `beta` 发布渠道，分析正式用户时过滤 `release_channel=stable`。移动端按实际 EAS Update channel 标记：`production-standard` / `production-eink` 为 `stable`，其他渠道和未配置渠道的内部构建为 `preview`，OTA 更新沿用安装包的渠道。官网 preview 构建关闭采集。需要测试环境数据时使用单独的 PostHog 项目，不在生产看板混入测试事件。
 
 ## 当前能回答的问题
 

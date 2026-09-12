@@ -99,6 +99,12 @@ test("shared UI and transitive workspace sources trigger all their consumers", (
   assertConsumers(result, true);
 });
 
+test("PostHog sync code and its workflow trigger Node checks", () => {
+  for (const file of ["tools/posthog/sync-runtime-config.mjs", "tools/posthog/runtime-config-sql.test.mjs", ".github/workflows/sync-runtime-config.yml"]) {
+    assert.equal(check([file]).flags.node, true, file);
+  }
+});
+
 test("lockfile-only transitive updates, including optional packages and peers, trigger native build", () => {
   for (const key of ["native@1.0.0", "peer@1.0.0"]) {
     const result = check(["pnpm-lock.yaml"], (after) => {

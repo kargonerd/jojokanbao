@@ -302,7 +302,7 @@ importers:
         version: 10.1.0
       posthog-react-native:
         specifier: 4.70.0
-        version: 4.70.0(@react-native-async-storage/async-storage@2.2.0(react-native@0.83.10(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0)))(@react-navigation/native@7.3.17(react-native@0.83.10(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0))(expo-application@55.0.19(expo@55.0.31))(expo-device@55.0.21(expo@55.0.31))(expo-file-system@55.0.26(expo@55.0.31)(react-native@0.83.10(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0)))(expo-localization@55.0.19(expo@55.0.31)(react@19.2.0))(expo-updates@55.0.30(expo@55.0.31)(react-native@0.83.10(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0))(react-native-safe-area-context@5.6.2(react-native@0.83.10(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0))
+        version: 4.70.0(@react-native-async-storage/async-storage@2.2.0(react-native@0.83.10(patch_hash=5dtbie6hwdh3ov3haesci2i5ha)(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0)))(@react-navigation/native@7.3.17(react-native@0.83.10(patch_hash=5dtbie6hwdh3ov3haesci2i5ha)(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0))(expo-application@55.0.19(expo@55.0.31))(expo-device@55.0.21(expo@55.0.31))(expo-file-system@55.0.26(expo@55.0.31)(react-native@0.83.10(patch_hash=5dtbie6hwdh3ov3haesci2i5ha)(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0)))(expo-localization@55.0.19(expo@55.0.31)(react@19.2.0))(expo-updates@55.0.30(expo@55.0.31)(react-native@0.83.10(patch_hash=5dtbie6hwdh3ov3haesci2i5ha)(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0))(react-native-safe-area-context@5.6.2(react-native@0.83.10(patch_hash=5dtbie6hwdh3ov3haesci2i5ha)(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0))
       react:
         specifier: 19.2.0
         version: 19.2.0
@@ -13590,7 +13590,7 @@ snapshots:
 
   expo-device@55.0.21(expo@55.0.31):
     dependencies:
-      expo: 55.0.31(@babel/core@7.29.0)(@expo/dom-webview@55.0.6)(@expo/metro-runtime@55.0.12)(react-dom@19.2.0(react@19.2.0))(react-native-webview@13.16.0(patch_hash=ypvsfyjpeb46epqo2rovpsrtby)(react-native@0.83.10(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0))(react-native@0.83.10(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0)(typescript@5.9.3)
+      expo: 55.0.31(@babel/core@7.29.0)(@expo/dom-webview@55.0.6)(@expo/metro-runtime@55.0.12)(react-dom@19.2.0(react@19.2.0))(react-native-webview@13.16.0(patch_hash=ypvsfyjpeb46epqo2rovpsrtby)(react-native@0.83.10(patch_hash=5dtbie6hwdh3ov3haesci2i5ha)(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0))(react-native@0.83.10(patch_hash=5dtbie6hwdh3ov3haesci2i5ha)(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0)(typescript@5.9.3)
       ua-parser-js: 0.7.41
 
   expo-doctor@1.20.2: {}
@@ -13622,7 +13622,7 @@ snapshots:
 
   expo-localization@55.0.19(expo@55.0.31)(react@19.2.0):
     dependencies:
-      expo: 55.0.31(@babel/core@7.29.0)(@expo/dom-webview@55.0.6)(@expo/metro-runtime@55.0.12)(react-dom@19.2.0(react@19.2.0))(react-native-webview@13.16.0(patch_hash=ypvsfyjpeb46epqo2rovpsrtby)(react-native@0.83.10(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0))(react-native@0.83.10(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0)(typescript@5.9.3)
+      expo: 55.0.31(@babel/core@7.29.0)(@expo/dom-webview@55.0.6)(@expo/metro-runtime@55.0.12)(react-dom@19.2.0(react@19.2.0))(react-native-webview@13.16.0(patch_hash=ypvsfyjpeb46epqo2rovpsrtby)(react-native@0.83.10(patch_hash=5dtbie6hwdh3ov3haesci2i5ha)(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0))(react-native@0.83.10(patch_hash=5dtbie6hwdh3ov3haesci2i5ha)(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0)(typescript@5.9.3)
       react: 19.2.0
       rtl-detect: 1.1.2
 
@@ -15934,19 +15934,19 @@ snapshots:
     transitivePeerDependencies:
       - preact-render-to-string
 
-  posthog-react-native@4.70.0(@react-native-async-storage/async-storage@2.2.0(react-native@0.83.10(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0)))(@react-navigation/native@7.3.17(react-native@0.83.10(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0))(expo-application@55.0.19(expo@55.0.31))(expo-device@55.0.21(expo@55.0.31))(expo-file-system@55.0.26(expo@55.0.31)(react-native@0.83.10(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0)))(expo-localization@55.0.19(expo@55.0.31)(react@19.2.0))(expo-updates@55.0.30(expo@55.0.31)(react-native@0.83.10(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0))(react-native-safe-area-context@5.6.2(react-native@0.83.10(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0)):
+  posthog-react-native@4.70.0(@react-native-async-storage/async-storage@2.2.0(react-native@0.83.10(patch_hash=5dtbie6hwdh3ov3haesci2i5ha)(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0)))(@react-navigation/native@7.3.17(react-native@0.83.10(patch_hash=5dtbie6hwdh3ov3haesci2i5ha)(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0))(expo-application@55.0.19(expo@55.0.31))(expo-device@55.0.21(expo@55.0.31))(expo-file-system@55.0.26(expo@55.0.31)(react-native@0.83.10(patch_hash=5dtbie6hwdh3ov3haesci2i5ha)(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0)))(expo-localization@55.0.19(expo@55.0.31)(react@19.2.0))(expo-updates@55.0.30(expo@55.0.31)(react-native@0.83.10(patch_hash=5dtbie6hwdh3ov3haesci2i5ha)(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0))(react-native-safe-area-context@5.6.2(react-native@0.83.10(patch_hash=5dtbie6hwdh3ov3haesci2i5ha)(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0)):
     dependencies:
       '@posthog/core': 1.53.2
       '@posthog/types': 1.411.1
     optionalDependencies:
-      '@react-native-async-storage/async-storage': 2.2.0(react-native@0.83.10(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))
-      '@react-navigation/native': 7.3.17(react-native@0.83.10(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0)
+      '@react-native-async-storage/async-storage': 2.2.0(react-native@0.83.10(patch_hash=5dtbie6hwdh3ov3haesci2i5ha)(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))
+      '@react-navigation/native': 7.3.17(react-native@0.83.10(patch_hash=5dtbie6hwdh3ov3haesci2i5ha)(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0)
       expo-application: 55.0.19(expo@55.0.31)
       expo-device: 55.0.21(expo@55.0.31)
-      expo-file-system: 55.0.26(expo@55.0.31)(react-native@0.83.10(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))
+      expo-file-system: 55.0.26(expo@55.0.31)(react-native@0.83.10(patch_hash=5dtbie6hwdh3ov3haesci2i5ha)(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))
       expo-localization: 55.0.19(expo@55.0.31)(react@19.2.0)
-      expo-updates: 55.0.30(expo@55.0.31)(react-native@0.83.10(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0)
-      react-native-safe-area-context: 5.6.2(react-native@0.83.10(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0)
+      expo-updates: 55.0.30(expo@55.0.31)(react-native@0.83.10(patch_hash=5dtbie6hwdh3ov3haesci2i5ha)(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0)
+      react-native-safe-area-context: 5.6.2(react-native@0.83.10(patch_hash=5dtbie6hwdh3ov3haesci2i5ha)(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0)
 
   postject@1.0.0-alpha.6:
     dependencies:
