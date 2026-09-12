@@ -214,7 +214,11 @@ export function createBookReaderBridgeScript(
         var chapterId = documentChapterId || (content && content.getAttribute("data-target-id"));
         if (chapterId) post({ type: "reader-ready", chapterId: chapterId });
       }
-      if (window.__jojoBookReaderInitialized) { reportReady(); return; }
+      if (window.__jojoBookReaderInitialized) {
+        reportReady();
+        if (window.__jojoReaderMeasurePages) window.__jojoReaderMeasurePages();
+        return;
+      }
       var paged = document.body && document.body.dataset.readingMode === "paged";
       var continuous = null;
       var startAtEnd = ${initialEdge === "end" ? "true" : "false"};
@@ -259,6 +263,7 @@ export function createBookReaderBridgeScript(
 
       function post(message) {
         if (window.ReactNativeWebView) {
+          if (window.__jojoReaderSessionId) message.readerSessionId = window.__jojoReaderSessionId;
           window.ReactNativeWebView.postMessage(JSON.stringify(message));
         }
       }

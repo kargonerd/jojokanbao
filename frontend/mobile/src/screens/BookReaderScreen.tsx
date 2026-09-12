@@ -188,8 +188,6 @@ export function BookReaderScreen({ route, navigation }: Props) {
   const [bookshelfBusy, setBookshelfBusy] = useState(false);
   const [legacyResume, setLegacyResume] = useState<{ chapterId: string; chapterProgress: number }>();
   const readerReadyChapterRef = useRef("");
-  const readerBootstrapTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(() => () => clearTimeout(readerBootstrapTimer.current), [chapter, textScale, bookLineHeight, bookFirstLineIndent, bookReadingMode, bookPaperColor]);
   const readingTime = useBookReadingTime(datasetId, itemKey, Boolean(chapter) && !loading && !error && !activeTool && !noteComposer && !activeAnnotationId && !expandedImageUri);
   useEffect(() => {
     noteContextRef.current = noteContext;
@@ -453,6 +451,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
     }
     setPageState(undefined);
     setChapterEntryEdge(entryEdge);
+    if (chapterId === activeChapterId) setChapterRetryToken((value) => value + 1);
     setActiveChapterId(chapterId);
   }
 
@@ -613,24 +612,10 @@ export function BookReaderScreen({ route, navigation }: Props) {
     pendingLocateRef.current = { chapterId, text: target };
     chooseChapter(chapterId);
   }
-  function handleReaderLoaded() {
-    if (!chapter || (bookReadingMode === "paged" && chapter.fragment.fragmentId !== activeChapterId)) return;
-    const documentId = chapter.fragment.fragmentId;
-    // The inline bootstrap normally runs first. Android's load callback is a
-    // second chance; a successful HTML load alone does not prove it ran.
-    webViewRef.current?.injectJavaScript(readerBridgeScript);
-    clearTimeout(readerBootstrapTimer.current);
-    readerBootstrapTimer.current = setTimeout(() => {
-      if (readerReadyChapterRef.current !== documentId) {
-        setError("阅读交互未能启动，请重新加载");
-      }
-    }, 3000);
-  }
   function handleReaderReady() {
     if (!chapter || (bookReadingMode === "paged" && chapter.fragment.fragmentId !== activeChapterId)) return;
     const documentId = chapter.fragment.fragmentId;
     if (readerReadyChapterRef.current === documentId) return;
-    clearTimeout(readerBootstrapTimer.current);
     readerReadyChapterRef.current = documentId;
     if (bookReadingMode === "scroll") for (const value of scrollChaptersRef.current.values()) if (value.fragment.fragmentId !== documentId) insertScrollChapter(value);
     webViewRef.current?.injectJavaScript(createBookReaderMeasureScript());
@@ -878,7 +863,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
         {chapter && (bookReadingMode === "scroll" || chapter.fragment.fragmentId === activeChapterId) ? (
           <BookReaderWebView
             ref={webViewRef}
-            key={`${chapter.fragment.fragmentId}:${textScale}:${bookLineHeight}:${bookFirstLineIndent}:${bookReadingMode}:${bookPaperColor}`}
+            key={`${chapter.fragment.fragmentId}:${chapterRetryToken}:${textScale}:${bookLineHeight}:${bookFirstLineIndent}:${bookReadingMode}:${bookPaperColor}`}
             html={document}
             bootstrapScript={readerBridgeScript}
             originWhitelist={["about:blank", "data:*"]}
@@ -887,7 +872,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
             domStorageEnabled={false}
             cacheEnabled={false}
             onLoadStart={() => { readerReadyChapterRef.current = ""; }}
-            onLoadEnd={handleReaderLoaded}
+            onInitializationError={() => { setChapterLoading(false); setError("阅读页面未能就绪，请重新加载"); }}
             onError={() => { setChapterLoading(false); setError("章节显示失败，请重新加载"); }}
             onRenderProcessGone={() => { setChapterLoading(false); setError("阅读页面已被系统回收，请重新加载"); }}
             onContentProcessDidTerminate={() => { setChapterLoading(false); setError("阅读页面已被系统回收，请重新加载"); }}

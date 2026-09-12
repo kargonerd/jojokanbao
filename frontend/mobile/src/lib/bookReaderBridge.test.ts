@@ -28,7 +28,7 @@ describe("book reader bridge", () => {
     };
     const window = { innerWidth: 100, innerHeight: 100, getSelection: () => ({ toString: () => "" }),
       ReactNativeWebView: { postMessage: (message: string) => messages.push(JSON.parse(message)) },
-      requestAnimationFrame() {}, setTimeout() {}, addEventListener() {} };
+      requestAnimationFrame() {}, setTimeout() {}, clearTimeout() {}, addEventListener() {} };
     const context = { document, window };
     const script = createBookReaderBridgeScript("start");
     runInNewContext(script, context);
@@ -40,6 +40,9 @@ describe("book reader bridge", () => {
     expect(messages).toEqual([{ type: "reader-ready", chapterId: "chapter:11" }, { type: "reader-ready", chapterId: "chapter:11" }]);
     handlers.get("click")![0]!({ target: { closest: () => null }, clientX: 50, clientY: 50 });
     expect(messages.at(-1)).toEqual({ type: "reader-tap" });
+    Object.assign(window, { __jojoReaderSessionId: "view:2" });
+    handlers.get("click")![0]!({ target: { closest: () => null }, clientX: 50, clientY: 50 });
+    expect(messages.at(-1)).toEqual({ type: "reader-tap", readerSessionId: "view:2" });
   });
 
   it("reports long-press selection immediately and clears it without a later stale toolbar", () => {

@@ -115,12 +115,22 @@ async function press(label: string) {
   await act(async () => view.root.findByProps({ accessibilityLabel: label }).props.onPress());
 }
 async function readerTap() {
-  await act(async () => view.root.findByProps({ testID: "reader-webview" }).props.onMessage({ nativeEvent: { data: JSON.stringify({ type: "reader-tap" }) } }));
+  await readerMessage({ type: "reader-tap" });
+}
+async function readerMessage(data: object) {
+  const reader = view.root.findByProps({ testID: "reader-webview" });
+  const readerSessionId = JSON.parse(reader.props.injectedJavaScript.match(/__jojoReaderSessionId = (.*);\n/)[1]);
+  await act(async () => reader.props.onMessage({ nativeEvent: { data: JSON.stringify({ ...data, readerSessionId }) } }));
 }
 async function tick() { await act(async () => { vi.advanceTimersByTime(4000); }); }
-async function renderReader() {
+async function renderReader(initialized = true) {
   const props = { route: { params: { datasetId: "books", itemKey: "book", title: "测试书" } }, navigation: { navigate: mocks.navigate } } as unknown as ComponentProps<typeof BookReaderScreen>;
   await act(async () => { view = create(<BookReaderScreen {...props} />); });
+  if (initialized) {
+    const paged = mocks.state.bookReadingMode === "paged";
+    await readerMessage({ type: "reader-ready", chapterId: "c1" });
+    await readerMessage({ type: "reader-page", chapterId: "c1", paged, spreadIndex: 0, spreadCount: paged ? 10 : 1, pageStart: 1, pageEnd: 1, pageCount: paged ? 10 : 1, pagesPerSpread: 1, scrollProgress: 0 });
+  }
 }
 
 beforeEach(() => {
@@ -143,7 +153,7 @@ afterEach(async () => { if (view) await act(async () => view.unmount()); vi.useR
 
 describe("book thought integration", () => {
   const composer = () => view.root.findByProps({ testID: "thought-composer" });
-  const message = (data: unknown) => act(async () => view.root.findByProps({ testID: "reader-webview" }).props.onMessage({ nativeEvent: { data: JSON.stringify(data) } }));
+  const message = readerMessage;
   const tool = (label: string) => view.root.findAllByType("button").find((button) => button.findAllByType("span").some((span) => span.props.children === label))!;
   async function compose() {
     await message({ type: "reader-selection", chapterId: "c1", text: "所选正文", start: 4, end: 8, prefix: "前文", suffix: "后文" });
@@ -248,7 +258,7 @@ describe("book thought integration", () => {
 describe("continuous chapter reading", () => {
   beforeEach(() => { mocks.state.bookReadingMode = "scroll"; });
   const reader = () => view.root.findByProps({ testID: "reader-webview" });
-  const message = (data: unknown) => act(async () => reader().props.onMessage({ nativeEvent: { data: JSON.stringify(data) } }));
+  const message = readerMessage;
   const page = (chapterId: string, scrollProgress: number) => ({ type: "reader-page", chapterId, paged: false, spreadIndex: 0, spreadCount: 1, pageStart: 1, pageEnd: 1, pageCount: 1, pagesPerSpread: 1, scrollProgress });
 
   it("appends without replacing the WebView and persists the real chapter when scrolling both ways", async () => {
@@ -355,7 +365,7 @@ describe.each([false, true])("reader listening visibility (eInk=%s)", (eInk) => 
     expect(mocks.playback.open).toHaveBeenLastCalledWith(false);
   });
   it("boots inside the document, keeps its source stable, and reports a missing bridge instead of a frozen page", async () => {
-    await renderReader();
+    await renderReader(false);
     const reader = () => view.root.findByProps({ testID: "reader-webview" });
     const source = reader().props.source;
     expect(source.html).toContain("<script>");
@@ -364,15 +374,14 @@ describe.each([false, true])("reader listening visibility (eInk=%s)", (eInk) => 
     expect(reader().props.source).toBe(source);
     await act(async () => reader().props.onLoadEnd());
     expect(mocks.injectJavaScript).toHaveBeenCalledWith(expect.stringContaining("__jojoBookReaderInitialized"));
-    await act(async () => { vi.advanceTimersByTime(3000); });
-    expect(view.root.findByProps({ accessibilityRole: "alert" }).props.children).toContain("阅读交互未能启动");
+    await act(async () => { vi.advanceTimersByTime(6000); });
+    await act(async () => { vi.advanceTimersByTime(6000); });
+    expect(view.root.findByProps({ accessibilityRole: "alert" }).props.children).toContain("阅读页面未能就绪");
   });
 
   it("accepts the current document's ready acknowledgement and keeps chrome hidden across chapters", async () => {
     await renderReader();
-    const message = async (data: unknown) => act(async () => {
-      view.root.findByProps({ testID: "reader-webview" }).props.onMessage({ nativeEvent: { data: JSON.stringify(data) } });
-    });
+    const message = readerMessage;
     await act(async () => view.root.findByProps({ testID: "reader-webview" }).props.onLoadEnd());
     await message({ type: "reader-ready", chapterId: "c1" });
     await act(async () => { vi.advanceTimersByTime(3000); });
@@ -411,13 +420,20 @@ describe.each([false, true])("reader listening visibility (eInk=%s)", (eInk) => 
     expect(onSpeechLocation).toHaveBeenLastCalledWith(null, true);
   });
 
+  it("rebuilds the current chapter when it is selected again", async () => {
+    await renderReader();
+    const source = view.root.findByProps({ testID: "reader-webview" }).props.source;
+    await readerMessage({ type: "reader-internal-link", chapterId: "c1" });
+    expect(mocks.loadChapter).toHaveBeenCalledTimes(2);
+    expect(mocks.loadChapter).toHaveBeenLastCalledWith(expect.anything(), "c1", true, expect.any(AbortSignal));
+    expect(view.root.findByProps({ testID: "reader-webview" }).props.source).not.toBe(source);
+  });
+
   it("coalesces saved progress and flushes on exit without restoring the removed header progress", async () => {
     await renderReader();
-    const page = async (spreadIndex: number) => act(async () => {
-      view.root.findByProps({ testID: "reader-webview" }).props.onMessage({ nativeEvent: { data: JSON.stringify({
+    const page = (spreadIndex: number) => readerMessage({
         type: "reader-page", paged: true, spreadIndex, spreadCount: 10,
         pageStart: spreadIndex + 1, pageEnd: spreadIndex + 1, pageCount: 10, pagesPerSpread: 1, scrollProgress: 0,
-      }) } });
     });
     await page(1); await page(2); await page(3);
     expect(mocks.state.rememberBook).not.toHaveBeenCalled();
@@ -441,7 +457,7 @@ describe.each([false, true])("reader listening visibility (eInk=%s)", (eInk) => 
     await act(async () => slider.props.onSlidingComplete(62.5));
     expect(view.root.findByProps({ accessibilityLabel: "全书阅读进度" })).toBeTruthy();
     expect(mocks.loadChapter).toHaveBeenLastCalledWith(expect.anything(), "c2", true, expect.any(AbortSignal));
-    await act(async () => view.root.findByProps({ testID: "reader-webview" }).props.onMessage({ nativeEvent: { data: JSON.stringify({ type: "reader-ready", chapterId: "c2" }) } }));
+    await readerMessage({ type: "reader-ready", chapterId: "c2" });
     await act(async () => { vi.advanceTimersByTime(80); });
     expect(mocks.injectJavaScript).toHaveBeenCalledWith("window.__jojoReaderGoToChapterProgress && window.__jojoReaderGoToChapterProgress(0.5); true;");
     expect(view.root.findByProps({ accessibilityLabel: "全书阅读进度" })).toBeTruthy();
@@ -452,16 +468,13 @@ describe.each([false, true])("reader listening visibility (eInk=%s)", (eInk) => 
     expect(mocks.prefetch).toHaveBeenCalledWith(expect.anything(), "c1", expect.any(AbortSignal));
     let finish!: (value: unknown) => void;
     mocks.loadChapter.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
-    const jump = async (id: string) => {
-      await act(async () => view.root.findByProps({ testID: "reader-webview" }).props.onMessage({ nativeEvent: {
-        data: JSON.stringify({ type: "reader-internal-link", chapterId: id }),
-      } }));
-    };
-    const message = view.root.findByProps({ testID: "reader-webview" }).props.onMessage;
+    const jump = (id: string) => readerMessage({ type: "reader-internal-link", chapterId: id });
     await jump("c2");
     expect(view.root.findAllByType("span").some((node) => node.props.children === "正在读取章节")).toBe(true);
     const signal = mocks.loadChapter.mock.calls.at(-1)![3] as AbortSignal;
-    await act(async () => message({ nativeEvent: { data: JSON.stringify({ type: "reader-internal-link", chapterId: "c1" }) } }));
+    const progress = view.root.findAllByType("button").find((node) => node.findAllByType("span").some((text) => text.props.children === "进度"));
+    await act(async () => progress!.props.onPress());
+    await press("上一章");
     expect(signal.aborted).toBe(true);
     await act(async () => finish({ assetUrls: {}, fragment: { fragmentId: "c2", title: "旧请求" } }));
     expect(view.root.findAllByType("span").some((node) => node.props.children === "正在读取章节")).toBe(false);
@@ -496,7 +509,7 @@ describe.each([false, true])("reader listening visibility (eInk=%s)", (eInk) => 
 
   it("closes image previews from the full image surface or Android back without changing reader chrome", async () => {
     await renderReader();
-    const openImage = async () => act(async () => view.root.findByProps({ testID: "reader-webview" }).props.onMessage({ nativeEvent: { data: JSON.stringify({ type: "reader-image", assetId: "portrait" }) } }));
+    const openImage = () => readerMessage({ type: "reader-image", assetId: "portrait" });
     await openImage();
     const surface = view.root.findByProps({ accessibilityLabel: "关闭图片预览" });
     expect(surface.props.style).toMatchObject({ flex: 1 });
