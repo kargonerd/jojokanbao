@@ -42,6 +42,7 @@
   box-shadow: -18px 0 44px rgba(32, 32, 32, .18);
   font-family: "Noto Serif SC", serif;
 }
+.annotation-panel__body { display: contents; }
 .annotation-panel__header {
   position: relative;
   display: flex;
@@ -58,7 +59,7 @@
 .annotation-panel__header button { border: 0; padding: 0; color: inherit; background: transparent; font-size: 28px; cursor: pointer; }
 .annotation-highlight-summary { position: relative; margin: 20px 24px 16px; padding: 20px 18px 14px; overflow: hidden; border-top: 1px solid var(--color-rule, #d2d0c9); border-bottom: 1px solid var(--color-rule, #d2d0c9); background: rgba(139, 26, 26, .035); }
 .annotation-highlight-summary__quote { position: absolute; top: 6px; left: 13px; color: var(--color-red); font: 52px/.9 Georgia, serif; opacity: .25; }
-.annotation-highlight-summary blockquote { position: relative; margin: 0; padding: 12px 2px 14px 25px; border: 0; font-size: 16px; line-height: 2; }
+.annotation-highlight-summary blockquote { position: relative; max-height: min(24vh, 220px); margin: 0; padding: 12px 2px 14px 25px; overflow-y: auto; overscroll-behavior: contain; border: 0; font-size: 16px; line-height: 2; }
 .annotation-panel__meta { display: flex; align-items: center; gap: 12px; padding-top: 11px; border-top: 1px solid rgba(139, 26, 26, .16); color: var(--color-muted, #777); font: 10px/1.5 sans-serif; }
 .annotation-panel__meta b { display: inline-flex; align-items: center; gap: 7px; color: var(--color-ink); font-size: 12px; }
 .annotation-panel__meta i { width: 7px; height: 7px; background: var(--color-red); }
@@ -113,13 +114,21 @@
 .annotation-composer__toolbar > button:disabled { opacity: .4; cursor: default; }
 .annotation-composer > p { margin: 9px 0 0; color: var(--color-red); font: 11px/1.5 sans-serif; }
 
-@media (max-width: 560px) {
-  .annotation-panel { inset: auto 0 0; width: 100%; height: min(78vh, 720px); border-top: 1px solid var(--color-rule, #d2d0c9); border-left: 0; box-shadow: 0 -18px 44px rgba(32, 32, 32, .2); }
+@media (max-width: 767px) {
+  .annotation-panel { --annotation-panel-height: min(78vh, 720px, var(--annotation-viewport-height, 100dvh)); inset: auto 0 auto; top: calc(var(--annotation-viewport-top, 0px) + var(--annotation-viewport-height, 100dvh) - var(--annotation-panel-height)); grid-template-rows: auto minmax(0, 1fr) auto; width: 100%; height: var(--annotation-panel-height); overflow: hidden; border-top: 1px solid var(--color-rule, #d2d0c9); border-left: 0; box-shadow: 0 -18px 44px rgba(32, 32, 32, .2); }
+  .annotation-panel__body { display: block; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
   .annotation-panel__header { padding-top: 26px; }
   .annotation-panel__header::before { position: absolute; top: 9px; left: 50%; width: 36px; height: 2px; transform: translateX(-50%); background: var(--color-rule, #aaa); content: ""; }
   .annotation-highlight-summary { margin-top: 14px; }
-  .annotation-composer { padding-inline: 18px; }
-  .annotation-composer__toolbar { align-items: flex-end; }
+  .annotation-highlight-summary blockquote { max-height: min(24vh, 160px); }
+  .annotation-comments { overflow: visible; }
+  .annotation-composer { box-sizing: border-box; max-height: calc(var(--annotation-viewport-height, 100dvh) * .65); padding: 12px 18px max(14px, env(safe-area-inset-bottom)); overflow-y: auto; overscroll-behavior: contain; }
+  .annotation-composer .annotation-composer__input,
+  .annotation-report-form .annotation-report-form__details textarea { font-size: 16px; }
+  .annotation-composer__toolbar { flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+  .annotation-composer__toolbar .annotation-visibility { flex-wrap: wrap; gap: 10px; }
+  .annotation-composer__toolbar .annotation-visibility__label { display: none; }
+  .annotation-composer__toolbar > button { margin-left: auto; }
 }
 .annotation-delete-mark { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; border: 0; padding: 4px 0; background: transparent; color: var(--color-red); font: inherit; cursor: pointer; }
 .annotation-delete-mark svg { width: 18px; height: 18px; }

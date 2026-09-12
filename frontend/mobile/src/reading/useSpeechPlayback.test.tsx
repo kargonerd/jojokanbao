@@ -2,10 +2,11 @@ import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useSpeechPlayback } from "./useSpeechPlayback";
 import { NativeSpeechPlayer } from "./SpeechPlayer";
+import { SpeechLoading } from "./SpeechLoading";
 
 const mocks = vi.hoisted(() => ({
   listeners: new Set<(status: Record<string, unknown>) => void>(),
-  getItem: vi.fn(), setItem: vi.fn(), request: vi.fn(),
+  getItem: vi.fn(), setItem: vi.fn(), request: vi.fn(), providers: vi.fn(),
   preload: vi.fn(async () => undefined), clearPreloadedSource: vi.fn(async () => undefined),
   player: { pause: vi.fn(), play: vi.fn(), replace: vi.fn(), seekTo: vi.fn(), setPlaybackRate: vi.fn(), setActiveForLockScreen: vi.fn(), addListener: vi.fn() },
 }));
@@ -27,9 +28,10 @@ vi.mock("../config/appVariant", () => ({ IS_EINK_RELEASE: false }));
 vi.mock("react-native-safe-area-context", () => ({ SafeAreaView: "main" }));
 vi.mock("../account/auth", () => ({ useMobileAuthStore: (select: (state: unknown) => unknown) => select({ user: { id: "reader" } }) }));
 vi.mock("./featureFlag", () => ({ useSpeechFlagStore: () => ({ userId: "reader", enabled: true }) }));
+vi.mock("./SpeechLoading", () => ({ SpeechLoading: "speech-loading-bars" }));
 vi.mock("expo-crypto", async () => { const { createHash } = await import("node:crypto"); return { CryptoDigestAlgorithm: { SHA256: "sha256" }, digestStringAsync: async (_: string, text: string) => createHash("sha256").update(text).digest("hex") }; });
 vi.mock("./speech", () => ({ speechTime: (value: number) => String(value), mobileSpeechClient: {
-  loadSpeechProviders: async () => ({ defaultProvider: "auto", defaultVoice: "male", cdnBase: "https://blacknews.jojokanbao.cn", providers: [{ id: "auto", cacheVersion: "test", available: true, streaming: true, voices: [{ id: "male" }, { id: "female" }] }] }),
+  loadSpeechProviders: mocks.providers,
   requestSpeech: mocks.request, loadCachedSpeechDurations: async () => ({ 0: 20, 1: 20 }),
 } }));
 
@@ -44,6 +46,75 @@ async function emit(values: Record<string, unknown> = {}) {
 async function play() { await act(async () => state.toggle()); await emit(); await emit({ playing: true }); }
 
 describe("native listening lifecycle", () => {
+  it("autoplays when the visible retry button reloads failed voices", async () => {
+    await act(async () => view.unmount());
+    mocks.providers.mockRejectedValueOnce(new Error("声音加载失败，请重试"));
+    await act(async () => { view = create(<NativeSpeechPlayer {...props} onRead={() => {}} />); });
+    await act(async () => view.root.findByProps({ accessibilityLabel: "打开听读播放器" }).props.onPress());
+    expect(view.root.findAllByType(SpeechLoading)).toHaveLength(0);
+    await act(async () => view.root.findByProps({ accessibilityLabel: "重试听读" }).props.onPress());
+    await emit();
+    expect(mocks.player.play).toHaveBeenCalledOnce();
+    await emit({ playing: true });
+    expect(view.root.findAllByProps({ accessibilityLabel: "重试听读" })).toHaveLength(0);
+  });
+
+  it("leaves loading after voice discovery fails and retries on play", async () => {
+    mocks.providers.mockRejectedValueOnce(new Error("声音加载失败，请重试"));
+    await act(async () => state.open(true));
+    expect(state.busy).toBe(false);
+    expect(state.error).toBe("声音加载失败，请重试");
+    expect(mocks.request).not.toHaveBeenCalled();
+    await act(async () => state.toggle());
+    expect(mocks.providers).toHaveBeenCalledTimes(2);
+    await emit();
+    await emit({ playing: true });
+    expect(state.error).toBe("");
+    expect(state.busy).toBe(false);
+    expect(state.playing).toBe(true);
+  });
+
+  it("autoplays on entry and keeps loading until native playback starts", async () => {
+    await act(async () => state.open(true));
+    expect(mocks.player.replace).toHaveBeenCalledOnce();
+    expect(state.busy).toBe(true);
+    await emit();
+    expect(mocks.player.play).toHaveBeenCalledOnce();
+    expect(state.busy).toBe(true);
+    await emit({ isBuffering: true });
+    expect(state.busy).toBe(true);
+    await emit({ playing: true, isBuffering: false });
+    expect(state.busy).toBe(false);
+    expect(state.playing).toBe(true);
+    await act(async () => state.halt());
+    await act(async () => state.open());
+    expect(mocks.player.play).toHaveBeenCalledOnce();
+  });
+
+  it("handles a cached source that reports loaded synchronously during replacement", async () => {
+    mocks.player.replace.mockImplementationOnce(() => {
+      for (const listener of mocks.listeners) listener({ isLoaded: true, playing: false, currentTime: 0, duration: 20, didJustFinish: false });
+    });
+    await act(async () => state.open(true));
+    expect(mocks.player.play).toHaveBeenCalledOnce();
+    await emit({ playing: true });
+    expect(state.playing).toBe(true);
+    expect(state.busy).toBe(false);
+  });
+
+  it("keeps the original autoplay request when the player is reopened during startup", async () => {
+    let finish!: (value: { url: string; duration: number }) => void;
+    mocks.request.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    await act(async () => { void state.open(true); });
+    await act(async () => state.open());
+    expect(mocks.request).toHaveBeenCalledOnce();
+    await act(async () => finish({ url: "https://example.test/start.mp3", duration: 20 }));
+    await emit();
+    expect(mocks.player.play).toHaveBeenCalledOnce();
+    await emit({ playing: true });
+    expect(state.playing).toBe(true);
+  });
+
   it("starts unknown-duration streaming audio without seeking or letting prefetch compete for startup", async () => {
     const url = "https://beta.jojokanbao.cn/api/v1/speech/stream?ticket=test";
     mocks.request.mockResolvedValueOnce({ url, duration: 0, streaming: true });
@@ -119,6 +190,7 @@ describe("native listening lifecycle", () => {
   beforeEach(async () => {
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
     vi.clearAllMocks(); mocks.listeners.clear();
+    mocks.providers.mockReset().mockResolvedValue({ defaultProvider: "auto", defaultVoice: "male", cdnBase: "https://blacknews.jojokanbao.cn", providers: [{ id: "auto", cacheVersion: "test", available: true, streaming: true, voices: [{ id: "male" }, { id: "female" }] }] });
     mocks.getItem.mockResolvedValue(null); mocks.setItem.mockResolvedValue(undefined);
     mocks.player.seekTo.mockResolvedValue(undefined);
     // Match the native Android bridge, rather than accepting invalid null sources.
@@ -137,7 +209,7 @@ describe("native listening lifecycle", () => {
     if (loading) mocks.request.mockImplementationOnce(() => new Promise((resolve) => { finish = () => resolve({ url: "https://example.test/late.mp3", duration: 20 }); }));
     await act(async () => { view = create(<><article>新闻正文</article><NativeSpeechPlayer {...props} news documentId="news:test" onRead={() => {}} /></>); });
     const press = async (label: string) => act(async () => view.root.findByProps({ accessibilityLabel: label }).props.onPress());
-    await press("打开听读播放器"); await press("开始听读");
+    await press("打开听读播放器");
     if (!loading) await emit({ playing: true });
     await press("收起播放器"); await press("关闭听读");
     if (finish) await act(async () => finish!());

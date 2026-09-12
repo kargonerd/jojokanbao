@@ -47,6 +47,25 @@ const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) =>
 }));
 
 describe("reader speech", () => {
+  it.each(["play", "voice"])("retries failed voice loading from the %s control and automatically plays", async (control) => {
+    const providerResponses = vi.fn().mockResolvedValueOnce(new Response(null, { status: 503 }))
+      .mockImplementation(async () => Response.json(capabilities));
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => String(input).includes("/providers")
+      ? providerResponses() : new Response(new Blob(["audio"]), { headers: { "Content-Type": "audio/mpeg" } })));
+    render(<SpeechPlayer segments={["正文。"]} label="听本章" />);
+    fireEvent.click(screen.getByRole("button", { name: "打开听本章播放器" }));
+    await waitFor(() => expect(screen.getByText("声音加载失败，请重试")).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "取消加载" })).toBeNull();
+    expect(AudioMock.instances).toHaveLength(0);
+    if (control === "voice") {
+      fireEvent.click(screen.getByRole("button", { name: "选择听读声音" }));
+      fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    } else fireEvent.click(screen.getByRole("button", { name: "开始听读" }));
+    await waitFor(() => expect(AudioMock.instances[0]?.play).toHaveBeenCalledOnce());
+    expect(providerResponses).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText("声音加载失败，请重试")).toBeNull();
+  });
+
   it("plays an unknown-duration stream and resolves complete audio for a paused seek", async () => {
     const text = "这是一段需要流式播放的正文。";
     const key = await speechKey("mimo", "stream-test", "白桦", text);
@@ -63,7 +82,6 @@ describe("reader speech", () => {
     }));
     render(<SpeechPlayer segments={[text]} label="听本章" />);
     fireEvent.click(screen.getByRole("button", { name: "打开听本章播放器" }));
-    fireEvent.click(screen.getByRole("button", { name: "开始听读" }));
     await waitFor(() => expect(AudioMock.instances[0]?.play).toHaveBeenCalled());
     expect(AudioMock.instances[0]!.duration).toBe(Infinity);
     act(() => { AudioMock.instances[0]!.currentTime = 3; AudioMock.instances[0]!.ontimeupdate?.(); });
@@ -88,7 +106,6 @@ describe("reader speech", () => {
       <SpeechPlayer label="听本章" segments={segments} activeQueueId="one" />
     </ReadingBookshelfContext.Provider>);
     fireEvent.click(screen.getByRole("button", { name: "打开听本章播放器" }));
-    fireEvent.click(screen.getByRole("button", { name: "开始听读" }));
     await waitFor(() => expect(AudioMock.instances[0]?.play).toHaveBeenCalled());
     fireEvent.click(screen.getByRole("button", { name: "收起听读播放器" }));
     await waitFor(() => expect(showSpeechLocation).toHaveBeenLastCalledWith({ chapterId: "one", segments, index: 0 }, true));
@@ -113,7 +130,6 @@ describe("reader speech", () => {
       queueItems={[{ id: "one", title: "第一章" }, { id: "two", title: "第二章" }]}
       loadQueueItem={loadQueueItem} onQueueItemChange={browse} /></ReadingBookshelfContext.Provider>);
     fireEvent.click(screen.getByRole("button", { name: "打开听本章播放器" }));
-    fireEvent.click(screen.getByRole("button", { name: "开始听读" }));
     await waitFor(() => expect(AudioMock.instances[0]?.play).toHaveBeenCalled());
     act(() => AudioMock.instances[0]!.onended?.());
     await waitFor(() => expect(AudioMock.instances[1]?.play).toHaveBeenCalled());
@@ -135,7 +151,6 @@ describe("reader speech", () => {
     </ReadingBookshelfContext.Provider>;
     const view = render(content("one", ["第一章", "前页。当前句子。接着朗读。"]));
     fireEvent.click(screen.getByRole("button", { name: "打开听本章播放器" }));
-    fireEvent.click(screen.getByRole("button", { name: "开始听读" }));
     await waitFor(() => expect(AudioMock.instances[0]?.play).toHaveBeenCalled());
     expect(fetchMock.mock.calls.filter(([url]) => url === "/api/v1/speech").map(([, init]) => JSON.parse(String(init!.body)).text)).toEqual(["接着朗读。"]);
     const audio = AudioMock.instances[0]!;
@@ -157,7 +172,6 @@ describe("reader speech", () => {
   it("plays the preloaded audio element at the next segment and releases it on close", async () => {
     render(<SpeechPlayer label="听本章" segments={["第一段。", "第二段。", "第三段。"]} />);
     fireEvent.click(screen.getByRole("button", { name: "打开听本章播放器" }));
-    fireEvent.click(screen.getByRole("button", { name: "开始听读" }));
     await waitFor(() => expect(AudioMock.instances).toHaveLength(2));
     const [first, second] = AudioMock.instances;
     expect(second!.load).toHaveBeenCalledOnce();
@@ -170,15 +184,15 @@ describe("reader speech", () => {
     fireEvent.click(screen.getByRole("button", { name: "关闭迷你播放器" }));
     expect(AudioMock.instances[2]!.src).toBe("");
   });
-  it("uses a delayed compact loading indicator without synthesis implementation copy", async () => {
+  it("shows the same loading bars immediately in the full and mini player and can cancel", async () => {
     fetchMock.mockImplementation(async (input) => input === "/api/v1/speech/providers?v=2"
       ? Response.json(capabilities) : new Promise<Response>(() => undefined));
-    const { container } = render(<SpeechPlayer label="听本章" segments={["测试正文。"]} />);
+    render(<SpeechPlayer label="听本章" segments={["测试正文。"]} />);
     fireEvent.click(screen.getByRole("button", { name: "打开听本章播放器" }));
-    fireEvent.click(await screen.findByRole("button", { name: "开始听读" }));
     expect(screen.queryByText(/已有音频直接播放/u)).toBeNull();
-    expect(container.querySelector(".speech-loading")).toBeNull();
-    await waitFor(() => expect(document.querySelector(".speech-loading")).not.toBeNull());
+    expect(document.querySelectorAll(".speech-loading i")).toHaveLength(3);
+    fireEvent.click(screen.getByRole("button", { name: "收起听读播放器" }));
+    expect(document.querySelectorAll(".speech-mini .speech-loading i")).toHaveLength(3);
     fireEvent.click(screen.getByRole("button", { name: "取消加载" }));
     await waitFor(() => expect(document.querySelector(".speech-loading")).toBeNull());
   });
@@ -241,7 +255,6 @@ describe("reader speech", () => {
   it("stops playback when the reader signs out", async () => {
     render(<SpeechPlayer segments={["正文"]} label="听本章" />);
     fireEvent.click(screen.getByRole("button", { name: "打开听本章播放器" }));
-    fireEvent.click(screen.getByRole("button", { name: "开始听读" }));
     await waitFor(() => expect(AudioMock.instances.at(-1)?.play).toHaveBeenCalled());
     const audio = AudioMock.instances.at(-1)!;
     act(() => useAccountSessionStore.setState({ userId: null }));
@@ -254,7 +267,6 @@ describe("reader speech", () => {
     fetchMock.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
     render(<SpeechPlayer segments={["正文"]} label="听本章" />);
     fireEvent.click(screen.getByRole("button", { name: "打开听本章播放器" }));
-    fireEvent.click(screen.getByRole("button", { name: "开始听读" }));
     expect(fetchMock.mock.calls.some(([url]) => url === "/api/v1/speech")).toBe(false);
     await act(async () => finish(Response.json(capabilities)));
     await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url === "/api/v1/speech")).toBe(true));
@@ -276,7 +288,6 @@ describe("reader speech", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "打开听本章播放器" }));
     expect(screen.getByRole("dialog", { name: "听本章播放器" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "开始听读" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/v1/speech", expect.objectContaining({
       method: "POST",
@@ -306,7 +317,7 @@ describe("reader speech", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "打开听本章播放器" }));
     expect(screen.queryByRole("complementary", { name: "章节列表" })).toBeNull();
-    expect(screen.getAllByText("准备播放").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("加载中").length).toBeGreaterThan(0);
     expect(screen.queryByText("在线生成")).toBeNull();
     const queueButton = screen.getByRole("button", { name: "打开章节列表" });
     fireEvent.click(queueButton);
@@ -349,7 +360,6 @@ describe("reader speech", () => {
     fireEvent.click(screen.getByRole("button", { name: "打开听本章播放器" }));
     fireEvent.click(screen.getByRole("button", { name: "选择听读声音" }));
     fireEvent.click(await screen.findByRole("button", { name: "冰糖 普通话女声" }));
-    fireEvent.click(screen.getByRole("button", { name: "开始听读" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/v1/speech", expect.objectContaining({
       body: JSON.stringify({ text: "测试原文", voice: "冰糖", provider: "mimo" }),
     })));
@@ -359,7 +369,6 @@ describe("reader speech", () => {
   it("does not restart playback on a parent rerender or a timer setting", async () => {
     const view = render(<SpeechPlayer segments={["测试原文"]} label="听本章" onQueueItemChange={() => undefined} />);
     fireEvent.click(screen.getByRole("button", { name: "打开听本章播放器" }));
-    fireEvent.click(screen.getByRole("button", { name: "开始听读" }));
     await waitFor(() => expect(AudioMock.instances.at(-1)?.play).toHaveBeenCalled());
     const audio = AudioMock.instances.at(-1)!;
     audio.currentTime = 5;
@@ -400,7 +409,6 @@ describe("reader speech", () => {
   it("keeps audio when collapsed and pauses/resumes from the mini player", async () => {
     render(<SpeechPlayer contentId="mini" segments={["测试正文"]} label="听新闻" />);
     fireEvent.click(screen.getByRole("button", { name: "打开听新闻播放器" }));
-    fireEvent.click(screen.getByRole("button", { name: "开始听读" }));
     await waitFor(() => expect(AudioMock.instances.at(-1)?.play).toHaveBeenCalled());
     const audio = AudioMock.instances.at(-1)!;
     audio.currentTime = 4;
@@ -422,7 +430,6 @@ describe("reader speech", () => {
     const player = <SpeechPlayer contentId="reader-chrome" segments={["测试正文"]} label="听本章" />;
     const view = render(<ReadingBookshelfContext.Provider value={controls}>{player}</ReadingBookshelfContext.Provider>);
     fireEvent.click(screen.getByRole("button", { name: "打开听本章播放器" }));
-    fireEvent.click(screen.getByRole("button", { name: "开始听读" }));
     await waitFor(() => expect(AudioMock.instances[0]?.play).toHaveBeenCalled());
     const audio = AudioMock.instances[0]!;
     fireEvent.click(screen.getByRole("button", { name: "收起听读播放器" }));
@@ -451,7 +458,6 @@ describe("reader speech", () => {
   it("stops playback when the rollout flag is disabled", async () => {
     render(<SpeechPlayer segments={["正文"]} label="听本章" />);
     fireEvent.click(screen.getByRole("button", { name: "打开听本章播放器" }));
-    fireEvent.click(screen.getByRole("button", { name: "开始听读" }));
     await waitFor(() => expect(AudioMock.instances.at(-1)?.play).toHaveBeenCalled());
     const audio = AudioMock.instances.at(-1)!;
     act(() => useFeatureFlagStore.setState((state) => ({ flags: { ...state.flags, "reader.speech": false } })));
@@ -474,7 +480,6 @@ describe("reader speech", () => {
     expect(within(footer).getByRole("button", { name: "打开听新闻播放器" }).closest(".speech-player")?.classList.contains("is-docked")).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "打开听新闻播放器" }));
     expect(within(screen.getByRole("region", { name: "文章正文" })).queryByRole("dialog")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "开始听读" }));
     await waitFor(() => expect(AudioMock.instances.at(-1)?.play).toHaveBeenCalled());
     const audio = AudioMock.instances.at(-1)!;
     fireEvent.click(screen.getByRole("button", { name: "收起听读播放器" }));
@@ -495,11 +500,10 @@ describe("reader speech", () => {
     expect(document.body.dataset.speechMini).toBeUndefined();
   });
 
-  it("restores listening position after remount without autoplay", async () => {
+  it("restores listening position after remount and starts only when the user opens listening", async () => {
     const props = { contentId: "resume-book", segments: ["正文"], label: "听本章", activeQueueId: "one" };
     const view = render(<SpeechPlayer {...props} />);
     fireEvent.click(screen.getByRole("button", { name: "打开听本章播放器" }));
-    fireEvent.click(screen.getByRole("button", { name: "开始听读" }));
     await waitFor(() => expect(AudioMock.instances.at(-1)?.play).toHaveBeenCalled());
     const audio = AudioMock.instances.at(-1)!;
     audio.currentTime = 6;
@@ -508,8 +512,7 @@ describe("reader speech", () => {
     render(<SpeechPlayer {...props} />);
     expect(AudioMock.instances).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: "打开听本章播放器" }));
-    expect(screen.getByText("从上次听到的位置继续")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "开始听读" }));
+    expect(screen.getByText("加载中")).toBeTruthy();
     await waitFor(() => expect(AudioMock.instances).toHaveLength(2));
     expect(AudioMock.instances.at(-1)?.currentTime).toBe(6);
   });
@@ -522,14 +525,14 @@ describe("reader speech", () => {
     fireEvent.click(screen.getByRole("button", { name: "打开听本章播放器" }));
     expect(change).toHaveBeenCalledWith("two");
     view.rerender(<SpeechPlayer contentId="book" segments={["第二章"]} label="听本章" activeQueueId="two" />);
-    expect(screen.getByText("从上次听到的位置继续")).toBeTruthy();
+    expect(screen.getByText("加载中")).toBeTruthy();
   });
 
   it("discards old progress when text changes or saved data is invalid", () => {
     saveSpeechProgress("updated", { fingerprint: speechFingerprint("旧内容"), segmentIndex: 0, fraction: .5, provider: "edge", voice: "zh-CN-XiaoxiaoNeural", updatedAt: Date.now() });
     render(<SpeechPlayer contentId="updated" segments={["新内容"]} label="听本章" />);
     fireEvent.click(screen.getByRole("button", { name: "打开听本章播放器" }));
-    expect(screen.getByText("准备播放")).toBeTruthy();
+    expect(screen.getByText("加载中")).toBeTruthy();
     localStorage.setItem("jojo-speech-progress:v1", '{"invalid":{"fraction":2}}');
     expect(readSpeechProgress("invalid")).toBeUndefined();
   });
@@ -560,6 +563,6 @@ describe("reader speech", () => {
     expect(ambience.querySelector("img")?.getAttribute("src")).toBe("/logo.png");
     fireEvent.error(document.querySelector(".speech-mini__cover img")!);
     expect(document.querySelector(".speech-mini__ambience")).toBeNull();
-    expect(screen.getByRole("button", { name: "继续听读" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "取消加载" })).toBeTruthy();
   });
 });

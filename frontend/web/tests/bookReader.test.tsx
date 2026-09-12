@@ -1,4 +1,4 @@
-import { StrictMode } from "react";
+import { StrictMode, useState } from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -10,6 +10,7 @@ import { useRecentReadingStore } from "../src/library/recentReadingStore";
 
 const annotationApi = vi.hoisted(() => ({
   loadAnnotationThreads: vi.fn(async () => []),
+  loadMyBookAnnotations: vi.fn(async () => []),
   createAnnotation: vi.fn(),
   addAnnotationComment: vi.fn(),
   reportAnnotationComment: vi.fn(),
@@ -62,6 +63,7 @@ describe("BookReader", () => {
     });
     useAccountSessionStore.setState({ initialized: true, userId: "11111111-1111-4111-8111-111111111111", displayName: "测试读者-ABC" });
     annotationApi.loadAnnotationThreads.mockResolvedValue([]);
+    annotationApi.loadMyBookAnnotations.mockResolvedValue([]);
     annotationApi.createAnnotation.mockReset();
     annotationApi.addAnnotationComment.mockReset();
     annotationApi.reportAnnotationComment.mockReset();
@@ -76,6 +78,7 @@ describe("BookReader", () => {
     Object.defineProperty(HTMLDialogElement.prototype, "close", { configurable: true, value: function (this: HTMLDialogElement) { this.open = false; } });
     Object.defineProperty(HTMLElement.prototype, "scrollTo", { configurable: true, value: vi.fn() });
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
+    Object.defineProperty(HTMLElement.prototype, "setPointerCapture", { configurable: true, value: vi.fn() });
     Object.defineProperty(Range.prototype, "getBoundingClientRect", {
       configurable: true,
       value: () => ({ left: 240, right: 420, top: 220, bottom: 250, width: 180, height: 30, x: 240, y: 220, toJSON: () => ({}) }),
@@ -111,6 +114,7 @@ describe("BookReader", () => {
           chapters={[{ id: "chapter-1", title: "第一章" }, { id: "chapter-2", title: "第二章" }]}
           toc={[
             { id: "toc-1", targetId: "chapter-1", title: "第一章", depth: 0 },
+            { id: "toc-1-section", targetId: "chapter-1", anchorId: "citation-target", title: "小节 · 正文", depth: 1 },
             { id: "toc-2", targetId: "chapter-2", title: "第二章", depth: 0 },
           ]}
           activeChapterId={activeChapterId}
@@ -122,6 +126,7 @@ describe("BookReader", () => {
           onLocate={vi.fn()}
           onInternalLink={onInternalLink}
           onSearch={vi.fn(async () => [])}
+          onDownload={vi.fn()}
           speechControl={<SpeechPlayer label="听本章" segments={["这是正文。"]} />}
         >
           <h1>第一章</h1>
@@ -137,8 +142,47 @@ describe("BookReader", () => {
     return { ...view, onChapterChange, onInternalLink };
   }
 
-  it.each([390, 1200])("does not auto-hide listening at viewport width %s; mobile mini follows explicit reader taps", async (width) => {
-    window.innerWidth = width;
+  async function renderContinuousReader(position?: number) {
+    window.localStorage.setItem("jojo-reader-mode", "scroll");
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      const scroll = document.querySelector<HTMLElement>("[data-book-reading-surface]");
+      const section = this.matches("[data-book-chapter-id]") ? this : this.closest("[data-book-chapter-id]");
+      const sections = Array.from(document.querySelectorAll("[data-book-chapter-id]"));
+      const index = section ? sections.indexOf(section) : -1;
+      const top = index < 0 ? 0 : index * 1000 - (scroll?.scrollTop ?? 0);
+      const height = this === scroll ? 200 : index < 0 ? sections.length * 1000 : 1000;
+      return { x: 0, y: top, top, bottom: top + height, left: 0, right: 600, width: 600, height, toJSON() {} };
+    });
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (this: HTMLElement) { return this.hasAttribute("data-book-chapter-id") ? 1000 : 200; });
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(200);
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(() => document.querySelectorAll("[data-book-chapter-id]").length * 1000);
+    const chapters = [{ id: "chapter-1", title: "第一章" }, { id: "chapter-2", title: "第二章" }];
+    const loadChapter = vi.fn(async (id: string) => <>
+      <h1>{id === "chapter-1" ? "第一章" : "第二章"}</h1>
+      <p>{id} 连续正文。</p>
+      <a href="#repeated-note">[1]</a>
+      <p id="repeated-note">{id} 的脚注</p>
+    </>);
+    const onChapterChange = vi.fn();
+    const onVisibleChapterChange = vi.fn();
+    function Harness() {
+      const [activeChapterId, setActiveChapterId] = useState("chapter-1");
+      return <MemoryRouter initialEntries={[`/book/test-books/full-book${position === undefined ? "" : `?chapter=chapter-1&position=${position}`}`]}><BookReader bookTitle="测试书" datasetId="test-books" itemId="test-books:full-book"
+        itemKey="full-book" manifestObject="test-books/manifest.jox" characterCount={2000}
+        chapters={chapters} toc={[]} activeChapterId={activeChapterId} chapterKey={activeChapterId}
+        backHref="/library" onChapterChange={onChapterChange} onLocate={vi.fn()} onSearch={async () => []}
+        loadChapter={loadChapter} onVisibleChapterChange={(id) => { onVisibleChapterChange(id); setActiveChapterId(id); }}
+      ><p>初始占位</p></BookReader></MemoryRouter>;
+    }
+    const view = render(<Harness />);
+    await screen.findByText("chapter-1 连续正文。");
+    const scroll = view.container.querySelector<HTMLElement>("[data-book-reading-surface]")!;
+    if (position === undefined) act(() => { scroll.scrollTop = 650; fireEvent.scroll(scroll); });
+    await screen.findByText("chapter-2 连续正文。");
+    return { ...view, scroll, loadChapter, onChapterChange, onVisibleChapterChange };
+  }
+
+  it("keeps desktop listening open until explicitly collapsed and retains the mini player", async () => {
     vi.useFakeTimers();
     vi.stubGlobal("fetch", vi.fn(async () => Response.json({ defaultProvider: "auto", providers: [
       { id: "auto", label: "朗读", available: true, voices: [{ id: "male", label: "男声" }] },
@@ -150,13 +194,7 @@ describe("BookReader", () => {
     fireEvent.click(screen.getByRole("button", { name: "收起听读播放器" }));
     await act(async () => { vi.advanceTimersByTime(5000); });
     expect(screen.getByRole("region", { name: "迷你听读播放器" })).toBeTruthy();
-    fireEvent.click(screen.getByText("这是正文。", { selector: "p" }), { clientX: width / 2, detail: 1 });
-    if (width < 768) {
-      expect(screen.queryByRole("region", { name: "迷你听读播放器" })).toBeNull();
-      await act(async () => { vi.advanceTimersByTime(5000); });
-      expect(screen.queryByRole("region", { name: "迷你听读播放器" })).toBeNull();
-      fireEvent.click(screen.getByText("这是正文。", { selector: "p" }), { clientX: width / 2, detail: 1 });
-    }
+    fireEvent.click(screen.getByText("这是正文。", { selector: "p" }), { clientX: 600, detail: 1 });
     expect(screen.getByRole("region", { name: "迷你听读播放器" })).toBeTruthy();
   });
 
@@ -173,11 +211,11 @@ describe("BookReader", () => {
     expect(bookshelfButton.closest("header")).not.toBeNull();
     expect(screen.queryByRole("button", { name: /账号菜单/ })).toBeNull();
     expect(screen.queryByText("测试读者-ABC")).toBeNull();
-    expect(screen.getByRole<HTMLButtonElement>("button", { name: "切换阅读模式" }).dataset.readerMode).toBe("paged");
     expect(screen.queryByRole("button", { name: "阅读设置" })).toBeNull();
-    expect(screen.getByRole("button", { name: "调整字号" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "选择纸张颜色" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "切换纸张纹理" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "文字设置" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "调整字号" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "选择纸张颜色" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "切换纸张纹理" })).toBeNull();
     expect(screen.queryByText("上一节")).toBeNull();
     expect(screen.queryByText(/按 ← →/)).toBeNull();
   });
@@ -208,25 +246,27 @@ describe("BookReader", () => {
 
   it("switches to scrolling mode and remembers the choice", async () => {
     renderReader();
-    fireEvent.click(screen.getByRole("button", { name: "切换阅读模式" }));
+    fireEvent.click(screen.getByRole("button", { name: "文字设置" }));
+    fireEvent.click(screen.getByRole("button", { name: "滚动" }));
     expect(screen.queryByText(/\/ 1 页/)).toBeNull();
     await waitFor(() => expect(window.localStorage.getItem("jojo-reader-mode")).toBe("scroll"));
   });
 
-  it("uses a plain mode label and a minimal font-size slider", () => {
+  it("groups mode choices and the font-size slider in the desktop text panel", () => {
     renderReader();
-    expect(screen.getByRole("button", { name: "切换阅读模式" }).textContent).toContain("双页");
-    fireEvent.click(screen.getByRole("button", { name: "调整字号" }));
+    fireEvent.click(screen.getByRole("button", { name: "文字设置" }));
+    expect(screen.getByRole("button", { name: "翻页" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: "滚动" })).toBeTruthy();
     expect(screen.getByRole("slider", { name: "字号" }).className).toContain("book-reader-range");
   });
 
-  it("groups the mobile reader into four primary tools with search inside the directory", () => {
+  it("groups the mobile reader into five primary tools with search inside the directory", () => {
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 390, writable: true });
     const { container } = renderReader();
     const toolbar = container.querySelector<HTMLElement>("[data-reader-mobile-toolbar]");
 
     expect(toolbar).not.toBeNull();
-    expect(within(toolbar!).getAllByRole("button")).toHaveLength(4);
+    expect(within(toolbar!).getAllByRole("button")).toHaveLength(5);
     expect(within(toolbar!).getByRole("button", { name: "打开目录" })).toBeTruthy();
     expect(within(toolbar!).queryByRole("button", { name: "搜索全书" })).toBeNull();
     fireEvent.click(within(toolbar!).getByRole("button", { name: "打开目录" }));
@@ -236,8 +276,75 @@ describe("BookReader", () => {
     expect(screen.getByRole("complementary", { name: "目录面板" })).toBeTruthy();
     expect(within(toolbar!).getByRole("button", { name: "打开书内 AI" })).toBeTruthy();
     expect(within(toolbar!).getByRole("button", { name: "阅读进度" })).toBeTruthy();
-    expect(within(toolbar!).getByRole("button", { name: "显示设置" })).toBeTruthy();
+    expect(within(toolbar!).getByRole("button", { name: "阅读笔记" })).toBeTruthy();
+    expect(within(toolbar!).getByRole("button", { name: "文字设置" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "切换纸张纹理" })).toBeNull();
+  });
+
+  it.each([390, 767, 768, 1200])("shares five tools and keeps listening floating on mobile and in the desktop toolbar at %spx", (width) => {
+    window.innerWidth = width;
+    renderReader();
+    const toolbar = screen.getByRole("navigation", { name: "阅读工具" });
+    expect(within(toolbar).getAllByRole("button").slice(0, 5).map((button) => button.getAttribute("aria-label"))).toEqual([
+      "打开目录", "打开书内 AI", "阅读进度", "阅读笔记", "文字设置",
+    ]);
+    expect(within(toolbar).getAllByRole("button")).toHaveLength(width < 768 ? 5 : 7);
+    const listeningButton = screen.getByRole("button", { name: "打开听本章播放器" });
+    expect(toolbar.contains(listeningButton)).toBe(width >= 768);
+    expect(Boolean(screen.queryByRole("button", { name: "下载整本 EPUB" }))).toBe(width >= 768);
+    expect(within(document.querySelector("header")!).queryByText(/全书|%/)).toBeNull();
+    fireEvent.click(within(toolbar).getByRole("button", { name: "打开目录" }));
+    fireEvent.click(screen.getByRole("tab", { name: "⌕ 搜本书" }));
+    expect(screen.getByRole("textbox", { name: "搜索全书正文" })).toBeTruthy();
+  });
+
+  it("keeps the listening player mounted when moving between mobile and desktop widths", () => {
+    window.innerWidth = 390;
+    useAccountSessionStore.setState({ userId: null });
+    renderReader();
+    fireEvent.click(screen.getByRole("button", { name: "打开听本章播放器" }));
+    const dialog = screen.getByRole("dialog", { name: "登录后听读" });
+
+    for (const width of [1200, 390]) {
+      window.innerWidth = width;
+      fireEvent.resize(window);
+      expect(screen.getByRole("dialog", { name: "登录后听读" })).toBe(dialog);
+      const launcher = screen.getByRole("button", { name: "打开听本章播放器" });
+      expect(screen.getByRole("navigation", { name: "阅读工具" }).contains(launcher)).toBe(width >= 768);
+    }
+    fireEvent.click(screen.getByRole("button", { name: "暂不登录" }));
+    expect(screen.queryByRole("dialog", { name: "登录后听读" })).toBeNull();
+    expect(screen.getByRole("button", { name: "打开听本章播放器" })).toBeTruthy();
+  });
+
+  it.each([390, 1200])("respects the listening feature flag at %spx", (width) => {
+    window.innerWidth = width;
+    useFeatureFlagStore.setState({ flags: { ...useFeatureFlagStore.getState().flags, "reader.speech": false } });
+    renderReader();
+    expect(screen.queryByRole("button", { name: "打开听本章播放器" })).toBeNull();
+  });
+
+  it.each([390, 1200])("keeps tool panels draggable only on mobile at %spx", (width) => {
+    window.innerWidth = width;
+    renderReader();
+    for (const [tool, label] of [
+      ["打开目录", "目录面板"], ["打开书内 AI", "AI面板"], ["阅读进度", "阅读进度面板"],
+      ["阅读笔记", "阅读笔记面板"], ["文字设置", "文字设置面板"],
+    ]) {
+      fireEvent.click(screen.getByRole("button", { name: tool }));
+      const sheet = screen.getByRole("complementary", { name: label });
+      const handle = within(sheet).queryByRole("button", { name: "调整书内导航高度" });
+      if (width < 768) {
+        expect(handle).not.toBeNull();
+        fireEvent.pointerDown(handle!, { clientY: 200 });
+        fireEvent.pointerMove(handle!, { clientY: 300 });
+        fireEvent.pointerUp(handle!, { clientY: 300 });
+      } else {
+        expect(handle).toBeNull();
+        fireEvent.click(within(sheet).getByRole("button", { name: /^关闭/ }));
+      }
+      expect(screen.queryByRole("complementary", { name: label })).toBeNull();
+    }
   });
 
   it("keeps book search usable as the keyboard opens, pans, and closes", async () => {
@@ -249,6 +356,8 @@ describe("BookReader", () => {
     fireEvent.click(screen.getByRole("button", { name: "打开目录" }));
     fireEvent.click(screen.getByRole("tab", { name: "⌕ 搜本书" }));
     const input = screen.getByRole<HTMLInputElement>("textbox", { name: "搜索全书正文" });
+    expect(document.activeElement).not.toBe(input);
+    input.focus();
     fireEvent.change(input, { target: { value: "正文" } });
     expect(document.activeElement).toBe(input);
 
@@ -296,11 +405,11 @@ describe("BookReader", () => {
     const { container } = renderReader();
     const paragraph = screen.getByText("这是正文。");
     const surface = container.querySelector("[data-book-reading-surface]");
-    expect(screen.getByRole("button", { name: "打开听本章播放器" })).toBeTruthy();
+    expect(screen.getByRole("navigation", { name: "阅读工具" })).toBeTruthy();
 
     fireEvent.click(paragraph, { clientX: 195, detail: 1 });
     expect(screen.queryByRole("navigation", { name: "阅读工具" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "打开听本章播放器" })).toBeNull();
+    expect(screen.queryByRole("navigation", { name: "阅读工具" })).toBeNull();
     expect(screen.getByRole("link", { name: "返回上一页" })).toBeTruthy();
     expect(within(container.querySelector("header")!).getByText("测试书")).toBeTruthy();
     expect(container.querySelector("header")?.hasAttribute("data-reader-chrome")).toBe(false);
@@ -311,7 +420,7 @@ describe("BookReader", () => {
 
     fireEvent.click(paragraph, { clientX: 195, detail: 1 });
     expect(screen.getByRole("navigation", { name: "阅读工具" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "打开听本章播放器" })).toBeTruthy();
+    expect(screen.getByRole("navigation", { name: "阅读工具" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "返回上一页" })).toBeTruthy();
     expect(container.querySelector("[data-reader-mobile-toolbar]")?.hasAttribute("inert")).toBe(false);
   });
@@ -362,12 +471,12 @@ describe("BookReader", () => {
     if (gesture === "longpress") clock.mockReturnValue(1700);
     fireEvent.pointerUp(paragraph);
     fireEvent.click(paragraph);
-    expect(screen.getByRole("button", { name: "打开听本章播放器" })).toBeTruthy();
+    expect(screen.getByRole("navigation", { name: "阅读工具" })).toBeTruthy();
 
     fireEvent.pointerDown(paragraph, { clientX: 195, clientY: 160 });
     fireEvent.pointerUp(paragraph);
     fireEvent.click(paragraph);
-    expect(screen.queryByRole("button", { name: "打开听本章播放器" })).toBeNull();
+    expect(screen.queryByRole("navigation", { name: "阅读工具" })).toBeNull();
   });
 
   it("does not hide mobile chrome when selecting text or dismissing a selection", () => {
@@ -380,42 +489,48 @@ describe("BookReader", () => {
     window.getSelection()?.addRange(range);
     fireEvent(document, new Event("selectionchange"));
     fireEvent.click(paragraph);
-    expect(screen.getByRole("button", { name: "打开听本章播放器" })).toBeTruthy();
+    expect(screen.getByRole("navigation", { name: "阅读工具" })).toBeTruthy();
     fireEvent.pointerDown(paragraph);
     window.getSelection()?.removeAllRanges();
     fireEvent(document, new Event("selectionchange"));
     fireEvent.pointerUp(paragraph);
     fireEvent.click(paragraph);
-    expect(screen.getByRole("button", { name: "打开听本章播放器" })).toBeTruthy();
+    expect(screen.getByRole("navigation", { name: "阅读工具" })).toBeTruthy();
   });
 
   it("preserves mobile links and image actions and restores chrome on desktop resize", () => {
     window.innerWidth = 390;
     renderReader();
     fireEvent.click(screen.getByRole("link", { name: "[1]" }));
-    expect(screen.getByRole("button", { name: "打开听本章播放器" })).toBeTruthy();
+    expect(screen.getByRole("navigation", { name: "阅读工具" })).toBeTruthy();
     fireEvent.click(screen.getByRole("img", { name: "测试插图" }));
     expect(screen.getByRole("dialog", { name: "图片预览" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "关闭图片预览" }));
     fireEvent.click(screen.getByText("这是正文。"));
-    expect(screen.queryByRole("button", { name: "打开听本章播放器" })).toBeNull();
+    expect(screen.queryByRole("navigation", { name: "阅读工具" })).toBeNull();
     window.innerWidth = 1200;
     fireEvent(window, new Event("resize"));
-    expect(screen.getByRole("button", { name: "打开听本章播放器" })).toBeTruthy();
+    expect(screen.getByRole("navigation", { name: "阅读工具" })).toBeTruthy();
     fireEvent.click(screen.getByText("这是正文。"));
     expect(screen.getByRole("navigation", { name: "阅读工具" })).toBeTruthy();
   });
 
-  it("puts mobile typography, paper, texture, and reading mode in one display sheet", async () => {
-    Object.defineProperty(window, "innerWidth", { configurable: true, value: 390, writable: true });
+  it.each([390, 1200])("applies paper, texture, and mode and dismisses settings after each choice at %spx", async (width) => {
+    window.innerWidth = width;
+    window.localStorage.setItem("jojo-reader-mode", "scroll");
     renderReader();
 
-    fireEvent.click(screen.getByRole("button", { name: "显示设置" }));
-    expect(screen.getByRole("region", { name: "显示设置面板" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "文字设置" }));
+    expect(screen.getByRole("complementary", { name: "文字设置面板" })).toBeTruthy();
     expect(screen.getByRole("slider", { name: "字号" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "夜间" }));
+    expect(screen.queryByRole("complementary", { name: "文字设置面板" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "文字设置" }));
     fireEvent.click(screen.getByRole("button", { name: "纸张纹理" }));
+    expect(screen.queryByRole("complementary", { name: "文字设置面板" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "文字设置" }));
     fireEvent.click(screen.getByRole("button", { name: "翻页" }));
+    expect(screen.queryByRole("complementary", { name: "文字设置面板" })).toBeNull();
 
     await waitFor(() => {
       expect(window.localStorage.getItem("jojo-reader-paper-color")).toBe("dark");
@@ -424,21 +539,189 @@ describe("BookReader", () => {
     });
   });
 
-  it("shows a dedicated mobile progress sheet", () => {
-    Object.defineProperty(window, "innerWidth", { configurable: true, value: 390, writable: true });
+  it.each([390, 1200])("previews font changes throughout a drag and dismisses settings only on release at %spx", (width) => {
+    window.innerWidth = width;
     renderReader();
+    fireEvent.click(screen.getByRole("button", { name: "文字设置" }));
+    const slider = screen.getByRole<HTMLInputElement>("slider", { name: "字号" });
+    fireEvent.pointerDown(slider, { clientX: 100 });
+    fireEvent.change(slider, { target: { value: "20" } });
+    expect(screen.getByRole("complementary", { name: "文字设置面板" })).toBeTruthy();
+    expect(slider.value).toBe("20");
+    fireEvent.pointerMove(slider, { clientX: 140 });
+    fireEvent.change(slider, { target: { value: "22" } });
+    expect(screen.getByRole("slider", { name: "字号" })).toBe(slider);
+    fireEvent.pointerUp(slider, { clientX: 140 });
+    expect(screen.queryByRole("complementary", { name: "文字设置面板" })).toBeNull();
+    expect(window.localStorage.getItem("jojo-reader-font-size")).toBe("22");
+    fireEvent.click(screen.getByRole("button", { name: "文字设置" }));
+    expect(screen.getByRole<HTMLInputElement>("slider", { name: "字号" }).value).toBe("22");
+  });
 
+  it.each([390, 1200])("keeps font settings open until a keyboard adjustment completes at %spx", (width) => {
+    window.innerWidth = width;
+    renderReader();
+    fireEvent.click(screen.getByRole("button", { name: "文字设置" }));
+    const slider = screen.getByRole<HTMLInputElement>("slider", { name: "字号" });
+    fireEvent.keyDown(slider, { key: "ArrowRight" });
+    fireEvent.change(slider, { target: { value: "21" } });
+    expect(screen.getByRole("complementary", { name: "文字设置面板" })).toBeTruthy();
+    fireEvent.keyUp(slider, { key: "Shift" });
+    expect(screen.getByRole("slider", { name: "字号" })).toBe(slider);
+    fireEvent.keyUp(slider, { key: "ArrowRight" });
+    expect(screen.queryByRole("complementary", { name: "文字设置面板" })).toBeNull();
+    expect(window.localStorage.getItem("jojo-reader-font-size")).toBe("21");
+  });
+
+  it.each([390, 1200])("shows book-wide progress and previews another chapter until the slider is released at %spx", async (width) => {
+    window.innerWidth = width;
+    const { onChapterChange } = renderReader();
     fireEvent.click(screen.getByRole("button", { name: "阅读进度" }));
-    expect(screen.getByRole("region", { name: "阅读进度面板" })).toBeTruthy();
-    expect(screen.getByRole("slider", { name: "本章进度" })).toBeTruthy();
-    expect(screen.getByText("全书进度")).toBeTruthy();
+    const sheet = screen.getByRole("complementary", { name: "阅读进度面板" });
+    const slider = within(sheet).getByRole<HTMLInputElement>("slider", { name: "全书进度" });
+    expect(within(sheet).getByText("阅读时长")).toBeTruthy();
+    expect(within(sheet).getByText(/后读完|已读完/)).toBeTruthy();
+    await waitFor(() => expect(within(sheet).getByRole("button", { name: /0\s*条\s*笔记/ })).toBeTruthy());
+    expect(within(sheet).queryByText("—", { exact: true })).toBeNull();
+    expect(sheet.textContent).not.toMatch(/本设备|每分钟\s*500|500\s*字/);
+    fireEvent.pointerDown(slider);
+    fireEvent.change(slider, { target: { value: "75" } });
+    expect(slider.getAttribute("aria-valuetext")).toContain("75.0%，第二章");
+    expect(within(sheet).getByText("第二章")).toBeTruthy();
+    expect(onChapterChange).not.toHaveBeenCalled();
+    fireEvent.pointerUp(slider);
+    expect(onChapterChange).toHaveBeenCalledExactlyOnceWith("chapter-2");
+    expect(screen.getByRole("complementary", { name: "阅读进度面板" })).toBe(sheet);
+  });
+
+  it("leaves scroll-mode edge gestures to the continuous document without changing chapters", () => {
+    window.localStorage.setItem("jojo-reader-mode", "scroll");
+    const { container, onChapterChange } = renderReader();
+    const scroll = container.querySelector<HTMLElement>("[data-book-reading-surface]")!;
+    Object.defineProperties(scroll, { scrollHeight: { value: 1000 }, clientHeight: { value: 400 } });
+    scroll.scrollTop = 600;
+    fireEvent.scroll(scroll);
+    fireEvent.wheel(scroll, { deltaY: 120 });
+    fireEvent.touchStart(scroll, { touches: [{ clientX: 200, clientY: 500 }] });
+    fireEvent.touchEnd(scroll, { changedTouches: [{ clientX: 200, clientY: 200 }] });
+    expect(onChapterChange).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: /下一章|上一章/ })).toBeNull();
+  });
+
+  it("keeps continuous chapter DOM and scroll position through visible chapter updates", async () => {
+    const { scroll, onChapterChange, onVisibleChapterChange, loadChapter } = await renderContinuousReader();
+    const first = screen.getByText("chapter-1 连续正文。");
+    const second = screen.getByText("chapter-2 连续正文。");
+    act(() => { scroll.scrollTop = 1125; fireEvent.scroll(scroll); });
+    await waitFor(() => expect(onVisibleChapterChange).toHaveBeenLastCalledWith("chapter-2"));
+    expect(scroll.scrollTop).toBe(1125);
+    expect(screen.getByText("chapter-1 连续正文。")).toBe(first);
+    expect(screen.getByText("chapter-2 连续正文。")).toBe(second);
+    act(() => { scroll.scrollTop = 125; fireEvent.scroll(scroll); });
+    await waitFor(() => expect(onVisibleChapterChange).toHaveBeenLastCalledWith("chapter-1"));
+    expect(scroll.scrollTop).toBe(125);
+    expect(loadChapter).toHaveBeenCalledTimes(2);
+    expect(onChapterChange).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: /下一章|上一章/ })).toBeNull();
+  });
+
+  it("restores synced progress within its chapter when adjacent chapters are loaded", async () => {
+    const { scroll } = await renderContinuousReader(0.75);
+    await waitFor(() => expect(useRecentReadingStore.getState().items[0]?.chapterProgress).toBe(0.75));
+    // The reading line is 60px below the viewport top, within the 1000px chapter.
+    expect(scroll.scrollTop).toBe(690);
+    expect(screen.getByText("chapter-1 连续正文。")).toBeTruthy();
+    expect(screen.getByText("chapter-2 连续正文。")).toBeTruthy();
+    expect(useRecentReadingStore.getState().items[0]?.href).toContain("chapter=chapter-1&position=0.75");
+  });
+
+  it("resolves repeated footnote ids within the chapter containing the clicked link", async () => {
+    const { container } = await renderContinuousReader();
+    const first = container.querySelector<HTMLElement>('[data-book-chapter-id="chapter-1"]')!;
+    const second = container.querySelector<HTMLElement>('[data-book-chapter-id="chapter-2"]')!;
+    fireEvent.click(within(second).getByRole("link", { name: "[1]" }));
+    const target = within(second).getByText("chapter-2 的脚注");
+    expect(target.getAttribute("data-book-jump-target")).toBe("true");
+    expect(within(first).getByText("chapter-1 的脚注").hasAttribute("data-book-jump-target")).toBe(false);
+    expect(vi.mocked(HTMLElement.prototype.scrollIntoView).mock.contexts.at(-1)).toBe(target);
+  });
+
+  it("saves a selection from a loaded neighboring chapter under that chapter", async () => {
+    annotationApi.createAnnotation.mockImplementation(async (subject, anchor) => ({
+      ...subject, ...anchor, id: "neighbor-note", authorId: "11111111-1111-4111-8111-111111111111",
+      authorName: "测试读者", createdAt: "2026-09-12T00:00:00Z", comments: [],
+    }));
+    const { onVisibleChapterChange } = await renderContinuousReader();
+    expect(onVisibleChapterChange).not.toHaveBeenCalledWith("chapter-2");
+    const paragraph = screen.getByText("chapter-2 连续正文。");
+    const range = document.createRange();
+    range.selectNodeContents(paragraph);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+    fireEvent(document, new Event("selectionchange"));
+    fireEvent.click(await screen.findByRole("button", { name: "写想法" }));
+    fireEvent.change(screen.getByPlaceholderText("写下此刻的想法……"), { target: { value: "第二章想法" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(annotationApi.createAnnotation).toHaveBeenCalledWith(
+      expect.objectContaining({ sectionId: "chapter-2", contentTitle: "测试书 · 第二章" }),
+      expect.objectContaining({ quote: "chapter-2 连续正文。", startOffset: 3 }), "第二章想法", "public", "11111111-1111-4111-8111-111111111111",
+    ));
+    expect((await screen.findByRole("complementary", { name: "划线详情" })).textContent).toContain("chapter-2 连续正文。");
+  });
+
+  it("shows a friendly notes failure and retries without exposing the backend SQL error", async () => {
+    await act(async () => { renderReader(); });
+    const rawError = 'SQLSTATE 42702: column reference "id" is ambiguous in SELECT private.annotation_threads.id';
+    annotationApi.loadMyBookAnnotations.mockReset().mockRejectedValueOnce(new Error(rawError)).mockResolvedValue([]);
+    fireEvent.click(screen.getByRole("button", { name: "阅读笔记" }));
+    const panel = screen.getByRole("complementary", { name: "阅读笔记面板" });
+    const alert = await within(panel).findByRole("alert");
+    expect(alert.textContent).toContain("笔记暂时无法读取，请重试。");
+    expect(panel.textContent).not.toMatch(/SQLSTATE|42702|SELECT|private\.annotation_threads|ambiguous/);
+    expect(within(panel).queryByText("还没有笔记。选中正文，可以划线或写下想法。")).toBeNull();
+    expect(annotationApi.loadMyBookAnnotations).toHaveBeenCalledExactlyOnceWith(
+      "test-books:test-books:full-book",
+      ["chapter-1", "chapter-2"],
+      "11111111-1111-4111-8111-111111111111",
+      { signal: expect.any(AbortSignal), onProgress: expect.any(Function) },
+    );
+    fireEvent.click(within(alert).getByRole("button", { name: "重试" }));
+    expect(await within(panel).findByText("还没有笔记。选中正文，可以划线或写下想法。")).toBeTruthy();
+    expect(within(panel).queryByRole("alert")).toBeNull();
+    expect(annotationApi.loadMyBookAnnotations).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not turn the background book with arrow keys while a tool sheet is open", () => {
+    const { onChapterChange } = renderReader();
+    fireEvent.click(screen.getByRole("button", { name: "打开目录" }));
+    fireEvent.keyDown(window, { key: "ArrowRight" });
+    expect(onChapterChange).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "关闭书内导航" }));
+    fireEvent.keyDown(window, { key: "ArrowRight" });
+    expect(onChapterChange).toHaveBeenCalledWith("chapter-2");
+  });
+
+  it("cancels a progress drag without changing chapters and commits keyboard navigation", () => {
+    const { onChapterChange } = renderReader();
+    fireEvent.click(screen.getByRole("button", { name: "阅读进度" }));
+    const slider = screen.getByRole<HTMLInputElement>("slider", { name: "全书进度" });
+    const original = slider.value;
+    fireEvent.change(slider, { target: { value: "80" } });
+    fireEvent.pointerCancel(slider);
+    expect(slider.value).toBe(original);
+    expect(onChapterChange).not.toHaveBeenCalled();
+    fireEvent.change(slider, { target: { value: "100" } });
+    fireEvent.keyUp(slider, { key: "End" });
+    expect(onChapterChange).toHaveBeenCalledExactlyOnceWith("chapter-2");
   });
 
   it("stores paper color and texture independently", async () => {
     renderReader();
-    fireEvent.click(screen.getByRole("button", { name: "选择纸张颜色" }));
+    fireEvent.click(screen.getByRole("button", { name: "文字设置" }));
     fireEvent.click(screen.getByRole("button", { name: "夜间" }));
-    fireEvent.click(screen.getByRole("button", { name: "切换纸张纹理" }));
+    expect(screen.queryByRole("complementary", { name: "文字设置面板" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "文字设置" }));
+    fireEvent.click(screen.getByRole("button", { name: "纸张纹理" }));
     await waitFor(() => {
       expect(window.localStorage.getItem("jojo-reader-paper-color")).toBe("dark");
       expect(window.localStorage.getItem("jojo-reader-paper-texture")).toBe("false");
@@ -447,7 +730,9 @@ describe("BookReader", () => {
 
   it("jumps to footnotes instantly and marks the destination", () => {
     renderReader();
-    fireEvent.click(screen.getByRole("button", { name: "切换阅读模式" }));
+    fireEvent.click(screen.getByRole("button", { name: "文字设置" }));
+    fireEvent.click(screen.getByRole("button", { name: "滚动" }));
+    expect(screen.queryByRole("complementary", { name: "文字设置面板" })).toBeNull();
     fireEvent.click(screen.getByRole("link", { name: "[1]" }));
     const target = screen.getByText("这是注释。");
     expect(target.getAttribute("data-book-jump-target")).toBe("true");
@@ -499,14 +784,14 @@ describe("BookReader", () => {
     expect(onChapterChange).toHaveBeenCalledWith("chapter-2");
   });
 
-  it("uses a brief content fade without delaying the next page", () => {
+  it("turns immediately on a page-button click without animating the content", () => {
     vi.useFakeTimers();
     vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false })));
     const onChapterChange = vi.fn();
     const { container } = renderReader(onChapterChange);
     fireEvent.click(screen.getByRole("button", { name: "下一页" }));
     expect(onChapterChange).toHaveBeenCalledWith("chapter-2");
-    expect(container.querySelector(".book-page-content-arrive")).not.toBeNull();
+    expect(container.querySelector(".book-page-content-arrive")).toBeNull();
     expect(container.querySelector(".book-page-turn-stage")).toBeNull();
     act(() => vi.advanceTimersByTime(160));
     expect(container.querySelector(".book-page-content-arrive")).toBeNull();
@@ -519,13 +804,28 @@ describe("BookReader", () => {
     fireEvent.click(screen.getByRole("button", { name: "打开目录" }));
     expect(screen.getByText(/40 章/)).toBeTruthy();
     const drawer = document.querySelector("aside");
-    expect(drawer?.className).toContain("right-0");
-    expect(drawer?.className).not.toContain("left-0");
+    expect(drawer?.className).toContain("book-navigation-sheet");
     const search = screen.getByRole("textbox", { name: "搜索目录" });
     expect(search.className).toContain("book-toc-search");
-    expect(search.closest("label")?.className).toContain("border-b");
+    expect(search.closest("label")?.className).toContain("book-toc-filter");
+    expect(screen.getByRole("button", { name: "小节 · 正文" }).closest("li")?.style.paddingLeft).toBe("20px");
+    expect(within(drawer!).queryByText(/^(01|02)$/)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "第二章" }));
     expect(onChapterChange).toHaveBeenCalledWith("chapter-2");
+  });
+
+  it("centers the current chapter when reopening the directory instead of starting at its first entry", async () => {
+    renderReader(vi.fn(), vi.fn(), undefined, false, "chapter-2");
+    fireEvent.click(screen.getByRole("button", { name: "打开目录" }));
+    const current = screen.getByRole("button", { name: /第二章.*当前读到/ });
+    expect(current.getAttribute("aria-current")).toBe("location");
+    await waitFor(() => expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledWith({ block: "center" }));
+    expect(vi.mocked(HTMLElement.prototype.scrollIntoView).mock.contexts.at(-1)).toBe(current);
+    fireEvent.click(screen.getByRole("button", { name: "关闭书内导航" }));
+    vi.mocked(HTMLElement.prototype.scrollIntoView).mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "打开目录" }));
+    await waitFor(() => expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledWith({ block: "center" }));
+    expect(vi.mocked(HTMLElement.prototype.scrollIntoView).mock.contexts.at(-1)).toBe(screen.getByRole("button", { name: /第二章.*当前读到/ }));
   });
 
   it.each([390, 1200])("keeps the current chapter when it is selected again at %ipx", (width) => {
@@ -533,7 +833,7 @@ describe("BookReader", () => {
     const { onChapterChange } = renderReader();
 
     fireEvent.click(screen.getByRole("button", { name: "打开目录" }));
-    fireEvent.click(screen.getByRole("button", { name: "第一章" }));
+    fireEvent.click(screen.getByRole("button", { name: /第一章/ }));
 
     expect(screen.queryByRole("complementary", { name: "目录面板" })).toBeNull();
     expect(onChapterChange).not.toHaveBeenCalled();
@@ -672,6 +972,7 @@ describe("BookReader", () => {
       expect.objectContaining({ quote: "这是正文。" }),
       "值得继续讨论",
       "public",
+      "11111111-1111-4111-8111-111111111111",
     ));
     expect(await screen.findByRole("complementary", { name: "划线详情" })).toBeTruthy();
     expect(screen.queryByRole("dialog", { name: "写想法" })).toBeNull();
@@ -688,7 +989,7 @@ describe("BookReader", () => {
     expect(screen.getByRole("button", { name: "打开听本章播放器" })).toBe(launcher);
     fireEvent.click(screen.getByRole("button", { name: "打开目录" }));
     expect(screen.queryByRole("button", { name: "打开听本章播放器" })).toBeNull();
-    fireEvent.click(screen.getAllByRole("button", { name: width < 768 ? "关闭书内导航" : "关闭目录" })[0]!);
+    fireEvent.click(screen.getAllByRole("button", { name: "关闭书内导航" })[0]!);
     expect(screen.getByRole("button", { name: "打开听本章播放器" })).toBe(launcher);
   });
 
@@ -733,7 +1034,7 @@ describe("BookReader", () => {
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
     expect((await screen.findByRole("alert")).textContent).toBe("暂时无法保存");
     expect((screen.getByRole("textbox", { name: "想法内容" }) as HTMLTextAreaElement).value).toBe("只给自己看的想法");
-    expect(annotationApi.createAnnotation).toHaveBeenCalledWith(expect.any(Object), expect.objectContaining({ quote: "这是正文。" }), "只给自己看的想法", "private");
+    expect(annotationApi.createAnnotation).toHaveBeenCalledWith(expect.any(Object), expect.objectContaining({ quote: "这是正文。" }), "只给自己看的想法", "private", "11111111-1111-4111-8111-111111111111");
     fireEvent(screen.getByRole("dialog", { name: "写想法" }), new Event("cancel", { cancelable: true }));
     expect(screen.queryByRole("dialog", { name: "写想法" })).toBeNull();
   });
@@ -790,6 +1091,7 @@ describe("BookReader", () => {
       expect.objectContaining({ quote: "这是正文。" }),
       undefined,
       "public",
+      "11111111-1111-4111-8111-111111111111",
     ));
     expect(screen.queryByRole("complementary", { name: "划线详情" })).toBeNull();
     expect(screen.getByText("已划线")).toBeTruthy();
@@ -800,7 +1102,7 @@ describe("BookReader", () => {
     const toolbar = screen.getByRole("toolbar", { name: "划线工具" });
     fireEvent.click(within(toolbar).getByRole("button", { name: "删除划线" }));
     await waitFor(() => expect(container.querySelector("mark[data-content-annotation]")).toBeNull());
-    expect(annotationApi.deleteMyAnnotationMark).toHaveBeenLastCalledWith("annotation-underline-1");
+    expect(annotationApi.deleteMyAnnotationMark).toHaveBeenLastCalledWith("annotation-underline-1", "11111111-1111-4111-8111-111111111111");
   });
 
   it("keeps AI available while hiding bookshelf and annotation writes when their flags are off", async () => {

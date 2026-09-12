@@ -23,8 +23,9 @@ export function AccountEntry() {
         <p className="mb-5 text-sm leading-7 text-muted">
           当前无法连接登录服务，请稍后再试。
         </p>
-        <div className="flex gap-5 text-sm font-bold text-red">
+        <div className="flex flex-col items-start gap-5 text-sm font-bold text-red">
           <Link to="/">返回首页 →</Link>
+          <Link to="/donate">支持 JOJO 看报 →</Link>
           <Link to="/support">关于 JOJO 看报 →</Link>
         </div>
       </div>

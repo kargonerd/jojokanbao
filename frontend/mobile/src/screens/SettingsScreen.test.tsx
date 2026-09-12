@@ -35,13 +35,12 @@ beforeEach(async () => {
 });
 afterEach(async () => { await act(async () => view.unmount()); });
 
-it("copies the displayed shared group and opens the support page", async () => {
+it("copies the displayed shared group without nesting support in about", async () => {
   const shown = view.root.findAllByType("span").find((node) => node.props.selectable && node.props.children?.includes?.(FEEDBACK_QQ_GROUP));
   expect(shown).toBeDefined();
   await act(async () => button("复制群号").props.onPress());
   expect(mocks.copy).toHaveBeenLastCalledWith(FEEDBACK_QQ_GROUP);
-  await act(async () => button("支持 JOJO 看报").props.onPress());
-  expect(mocks.navigate).toHaveBeenCalledExactlyOnceWith("Support");
+  expect(button("支持 JOJO 看报")).toBeUndefined();
 });
 
 it("keeps manual copy and Bilibili feedback available if clipboard copying fails", async () => {

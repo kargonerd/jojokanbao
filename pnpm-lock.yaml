@@ -362,6 +362,9 @@ importers:
       fflate:
         specifier: ^0.8.2
         version: 0.8.3
+      pinyin-pro:
+        specifier: 3.28.1
+        version: 3.28.1
     devDependencies:
       '@jojo/tsconfig':
         specifier: workspace:*

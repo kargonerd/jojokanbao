@@ -37,7 +37,7 @@ describe("SelectableAnnotationArticle", () => {
     fireEvent.click(within(toolbar).getByRole("button", { name: "删除划线" }));
     await waitFor(() => expect(container.querySelector("mark")).toBeNull());
     expect(screen.getByText("报刊正文")).toBeTruthy();
-    expect(annotationApi.deleteMyAnnotationMark).toHaveBeenLastCalledWith(ownThread.id);
+    expect(annotationApi.deleteMyAnnotationMark).toHaveBeenLastCalledWith(ownThread.id, "user-1");
   });
 
   it("does not offer deletion for another reader's public underline", async () => {
@@ -82,6 +82,7 @@ describe("SelectableAnnotationArticle", () => {
       expect.objectContaining({ quote: "报刊正文" }),
       "报刊评论",
       "public",
+      "user-1",
     ));
   });
 

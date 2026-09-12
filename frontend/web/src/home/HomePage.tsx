@@ -75,7 +75,8 @@ export function HomePage({ periodicals = [] }: { periodicals?: readonly Periodic
   const [books, setBooks] = useState<RagNotebook[]>([]);
   const [catalogStatus, setCatalogStatus] = useState<"loading" | "ready" | "error">("loading");
   const [catalogRequest, setCatalogRequest] = useState(0);
-  const resultsRef = useRef<HTMLDivElement>(null);
+  const [resultsOpen, setResultsOpen] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
   const accountInitialized = useAccountSessionStore((state) => state.initialized);
   const userId = useAccountSessionStore((state) => state.userId);
   const signedIn = Boolean(userId);
@@ -113,6 +114,17 @@ export function HomePage({ periodicals = [] }: { periodicals?: readonly Periodic
     return () => { active = false; };
   }, [catalogRequest]);
 
+  useEffect(() => {
+    if (!resultsOpen) return;
+    function dismissOutside(event: PointerEvent) {
+      if (event.target instanceof Node && !searchRef.current?.contains(event.target)) {
+        setResultsOpen(false);
+      }
+    }
+    document.addEventListener("pointerdown", dismissOutside);
+    return () => document.removeEventListener("pointerdown", dismissOutside);
+  }, [resultsOpen]);
+
   const matches = useMemo(() => {
     if (!query.trim()) return [];
     return visibleBooks
@@ -125,30 +137,44 @@ export function HomePage({ periodicals = [] }: { periodicals?: readonly Periodic
 
   function submitSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (query.trim()) resultsRef.current?.focus();
+    setResultsOpen(Boolean(query.trim()));
+    searchRef.current?.querySelector("input")?.blur();
   }
 
   return (
     <main className="app-home">
       <section className="home-search" aria-labelledby="home-search-title">
         <h1 id="home-search-title">今天读什么？</h1>
-        <div className="home-book-search">
+        <div
+          ref={searchRef}
+          className="home-book-search"
+          onBlur={(event) => {
+            if (event.relatedTarget instanceof Node && !event.currentTarget.contains(event.relatedTarget)) setResultsOpen(false);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              setResultsOpen(false);
+              searchRef.current?.querySelector("input")?.blur();
+            }
+          }}
+        >
           <form className="app-search-box" onSubmit={submitSearch} role="search">
             <label className="sr-only" htmlFor="app-home-search">搜索书名</label>
             <input
               id="app-home-search"
               type="search"
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(event) => { setQuery(event.target.value); setResultsOpen(true); }}
+              onFocus={() => setResultsOpen(true)}
               placeholder="搜索书名"
               autoComplete="off"
               required
               aria-controls="home-book-results"
+              aria-expanded={resultsOpen && Boolean(query.trim() || catalogStatus === "error")}
             />
-            <Button type="submit">找书</Button>
           </form>
-          {(query.trim() || catalogStatus === "error") && (
-            <div id="home-book-results" ref={resultsRef} className="home-book-results" role="region" aria-label="书名匹配结果" tabIndex={-1}>
+          {resultsOpen && (query.trim() || catalogStatus === "error") && (
+            <div id="home-book-results" className="home-book-results" role="region" aria-label="书名匹配结果">
               {catalogStatus === "loading" ? <p role="status">正在载入书籍目录…</p> : catalogStatus === "error" ? <>
                 <p role="alert">书籍目录暂时无法载入，请重试。</p>
                 <button type="button" onClick={() => setCatalogRequest((request) => request + 1)}>重新载入</button>

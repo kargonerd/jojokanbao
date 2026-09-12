@@ -1,5 +1,5 @@
-import { cleanup, render, screen } from '@testing-library/react';
-import { RouterProvider, createMemoryRouter } from 'react-router-dom';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { RouterProvider, createHashRouter, createMemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createDesktopRoutes } from './router';
 
@@ -15,6 +15,8 @@ describe('Desktop shell routes', () => {
     expect(navigation.querySelector('a[href="/library"]')).toHaveTextContent('资料库');
     expect(navigation.querySelector('a[href="/search"]')).toHaveTextContent('搜索');
     expect(navigation.querySelector('a[href="/support"]')).toHaveTextContent('关于');
+    expect(navigation.querySelector('a[href="/donate"]')).toHaveTextContent('支持 JOJO 看报');
+    expect(navigation.querySelector('a[href="/donate"]')?.nextElementSibling).toBe(navigation.querySelector('a[href="/support"]'));
     expect(navigation.querySelector('a[href="/rag"]')).toBeNull();
     expect(navigation.querySelector('a[href="/settings"]')).toBeNull();
     expect(screen.getByRole('link', { name: '设置' })).toHaveAttribute('href', '/settings');
@@ -39,6 +41,34 @@ describe('Desktop shell routes', () => {
     expect(screen.getByRole('link', { name: '关于' })).toHaveClass('is-active');
     expect(screen.getByRole('heading', { name: '关于 JOJO 看报' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: '版权说明' })).toBeInTheDocument();
+    expect(screen.queryByRole('img', { name: '微信捐助收款码' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'JOJO看报捐助列表' })).not.toBeInTheDocument();
+  });
+
+  it('opens the shared standalone Support page through desktop hash navigation', async () => {
+    window.history.replaceState({}, '', '/#/support');
+    const router = createHashRouter(createDesktopRoutes());
+    const view = render(<RouterProvider router={router} />);
+    try {
+      const navigation = screen.getByRole('navigation', { name: '主导航' });
+      const support = within(navigation).getByRole('link', { name: '支持 JOJO 看报' });
+      expect(support).toHaveAttribute('href', '#/donate');
+      expect(support.nextElementSibling).toBe(within(navigation).getByRole('link', { name: '关于' }));
+      fireEvent.click(support);
+
+      await waitFor(() => expect(window.location.hash).toBe('#/donate'));
+      expect(screen.getByRole('heading', { name: '支持 JOJO 看报' })).toBeInTheDocument();
+      expect(support).toHaveClass('is-active');
+      expect(within(navigation).getByRole('link', { name: '关于' })).not.toHaveClass('is-active');
+      expect(screen.getByRole('img', { name: '微信捐助收款码' })).toBeInTheDocument();
+      expect(screen.getByRole('img', { name: '支付宝捐助收款码' })).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'JOJO看报捐助列表' })).toHaveAttribute('target', '_blank');
+      expect(screen.queryByRole('heading', { name: '关于 JOJO 看报' })).not.toBeInTheDocument();
+    } finally {
+      view.unmount();
+      router.dispose();
+      window.history.replaceState({}, '', '/');
+    }
   });
 
   it('exposes desktop preferences as a normal settings page', () => {

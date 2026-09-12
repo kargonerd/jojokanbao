@@ -25,6 +25,7 @@ import {
   NotificationsPage,
   RagRoutes,
   SearchPage,
+  DonationPage,
   SupportPage,
   TimesRoutes,
   TimesSourceSettingsPage,
@@ -179,6 +180,7 @@ export function createDesktopRoutes(): RouteObject[] {
               element: <div className="h-[calc(100vh-64px)] overflow-hidden"><SearchPage openResultsInNewTab={false} platformRedesign /></div>,
             },
             { path: 'support', element: <SupportPage platformRedesign /> },
+            { path: 'donate', element: <DonationPage /> },
             {
               path: 'support/licenses',
               element: <Suspense fallback={null}><OpenSourceLicensesRoute /></Suspense>,

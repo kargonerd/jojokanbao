@@ -157,11 +157,11 @@ describe("SearchPage initial search", () => {
     expect(document.querySelector("[data-search-scroll-container]")?.classList.contains("bg-paper")).toBe(true);
   });
 
-  it("focuses the empty search box and ignores blank submissions", () => {
+  it("leaves the keyboard closed when opening search and ignores blank submissions", () => {
     renderSearch();
     const input = screen.getByPlaceholderText("在JOJO看报上搜索") as HTMLInputElement;
 
-    expect(document.activeElement).toBe(input);
+    expect(document.activeElement).not.toBe(input);
     fireEvent.change(input, { target: { value: "   " } });
     fireEvent.keyDown(input, { key: "Enter" });
     fireEvent.click(screen.getByRole("button", { name: "搜索" }));

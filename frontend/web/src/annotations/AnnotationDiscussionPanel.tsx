@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { type CSSProperties, useLayoutEffect, useRef, useState } from "react";
 import { CommentVisibilityControl } from "./CommentVisibilityControl";
 import { DeleteUnderlineIcon } from "./AnnotationMarkPopover";
 import { ANNOTATION_REPORT_LABELS, sortAnnotationComments, type AnnotationReportReason, type AnnotationThread, type AnnotationVisibility } from "./types";
@@ -18,7 +18,12 @@ function displayTime(value: string): string {
   return new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
 }
 
+function visibleViewport() {
+  return { top: window.visualViewport?.offsetTop ?? 0, height: window.visualViewport?.height ?? window.innerHeight };
+}
+
 export function AnnotationDiscussionPanel({ thread, currentUserId, onClose, onComment, onReport, onLike, onDeleteMark }: AnnotationDiscussionPanelProps) {
+  const [viewport, setViewport] = useState(visibleViewport);
   const [draft, setDraft] = useState("");
   const [visibility, setVisibility] = useState<AnnotationVisibility>("public");
   const [replyTo, setReplyTo] = useState<string>();
@@ -65,6 +70,20 @@ export function AnnotationDiscussionPanel({ thread, currentUserId, onClose, onCo
     }
   }
 
+  useLayoutEffect(() => {
+    const visual = window.visualViewport;
+    const measure = () => setViewport(visibleViewport());
+    measure();
+    visual?.addEventListener("resize", measure);
+    visual?.addEventListener("scroll", measure);
+    window.addEventListener("resize", measure);
+    return () => {
+      visual?.removeEventListener("resize", measure);
+      visual?.removeEventListener("scroll", measure);
+      window.removeEventListener("resize", measure);
+    };
+  }, []);
+
   async function submitComment() {
     if (!draft.trim() || busy) return;
     setBusy(true);
@@ -99,15 +118,19 @@ export function AnnotationDiscussionPanel({ thread, currentUserId, onClose, onCo
 
   return <>
     <button type="button" className="annotation-panel-backdrop" aria-label="关闭划线详情" onClick={onClose} />
-    <aside className="annotation-panel" aria-label="划线详情">
+    <aside className="annotation-panel" aria-label="划线详情" style={{
+      "--annotation-viewport-top": `${viewport.top}px`,
+      "--annotation-viewport-height": `${viewport.height}px`,
+    } as CSSProperties}>
       <header className="annotation-panel__header">
         <div><span>{thread.contentTitle}</span><h2>划线</h2></div>
         <button type="button" onClick={onClose} aria-label="关闭划线详情">×</button>
       </header>
 
+      <div className="annotation-panel__body">
       <section className="annotation-highlight-summary" aria-label="划线原文">
         <span className="annotation-highlight-summary__quote" aria-hidden="true">“</span>
-        <blockquote>{thread.quote}</blockquote>
+        <blockquote aria-label="划线原文内容" tabIndex={0}>{thread.quote}</blockquote>
         <div className="annotation-panel__meta">
           <b><i aria-hidden="true" />{underlineCount} 人划线</b>
           {thread.underlinedByMe && onDeleteMark ? <button type="button" className="annotation-delete-mark" disabled={removing} onClick={() => void removeMark()}><DeleteUnderlineIcon />{removing ? "删除中…" : "删除划线"}</button> : null}
@@ -164,6 +187,7 @@ export function AnnotationDiscussionPanel({ thread, currentUserId, onClose, onCo
         })}
         {thread.comments.length === 0 ? <li className="annotation-comments__empty">还没有想法。</li> : null}
       </ol>
+      </div>
 
       <footer className="annotation-composer">
         {reply ? <div className="annotation-composer__reply">回复 {reply.authorName}<button type="button" onClick={() => setReplyTo(undefined)}>取消</button></div> : null}

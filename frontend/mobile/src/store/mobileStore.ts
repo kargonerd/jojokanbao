@@ -9,6 +9,8 @@ export type BookPaperColor = "ivory" | "white" | "dark";
 
 export interface BookAnnotation {
   id: string;
+  /** Unowned entries are legacy/guest notes and never published automatically. */
+  ownerId?: string | null;
   datasetId: string;
   itemKey: string;
   chapterId: string;
@@ -16,6 +18,8 @@ export interface BookAnnotation {
   start: number;
   end: number;
   quote: string;
+  prefix?: string;
+  suffix?: string;
   note?: string;
   createdAt: number;
 }
@@ -72,6 +76,7 @@ interface MobileState {
   leftTapNext: boolean;
   recentIssues: RecentIssue[];
   recentBooks: RecentBook[];
+  bookReadingSeconds: Record<string, number>;
   historyOwnerId?: string | null;
   historyClearedAt: number;
   historyAccounts: Record<string, ReadingHistoryData>;
@@ -91,8 +96,10 @@ interface MobileState {
   setLeftTapNext: (enabled: boolean) => void;
   rememberIssue: (issue: RememberIssueInput) => void;
   rememberBook: (book: Omit<RecentBook, "updatedAt">) => void;
+  addBookReadingSeconds: (key: string, seconds: number) => void;
   addBookAnnotation: (annotation: BookAnnotationInput) => BookAnnotation;
   updateBookAnnotationNote: (id: string, note: string) => void;
+  claimLegacyBookAnnotations: (datasetId: string, itemKey: string, ownerId: string) => void;
   removeBookAnnotation: (id: string) => void;
   upsertAiConversation: (conversation: MobileAiConversation) => void;
   removeAiConversation: (id: string, ownerId: string) => void;
@@ -119,6 +126,7 @@ export const useMobileStore = create<MobileState>()(
       leftTapNext: false,
       recentIssues: [],
       recentBooks: [],
+      bookReadingSeconds: {},
       historyClearedAt: 0,
       historyAccounts: {},
       bookAnnotations: [],
@@ -170,6 +178,13 @@ export const useMobileStore = create<MobileState>()(
           ].slice(0, 8),
         };
       }),
+      addBookReadingSeconds: (key, seconds) => {
+        if (!Number.isFinite(seconds) || seconds <= 0) return;
+        set((state) => ({ bookReadingSeconds: {
+          ...state.bookReadingSeconds,
+          [key]: (state.bookReadingSeconds[key] ?? 0) + seconds,
+        } }));
+      },
       addBookAnnotation: (annotation) => {
         const created: BookAnnotation = {
           ...annotation,
@@ -184,6 +199,13 @@ export const useMobileStore = create<MobileState>()(
           annotation.id === id ? { ...annotation, note: note.trim() || undefined } : annotation
         )),
       })),
+      claimLegacyBookAnnotations: (datasetId, itemKey, ownerId) => {
+        if (!ownerId) return;
+        set((state) => ({ bookAnnotations: state.bookAnnotations.map((annotation) => (
+          annotation.ownerId == null && annotation.datasetId === datasetId && annotation.itemKey === itemKey
+            ? { ...annotation, ownerId } : annotation
+        )) }));
+      },
       removeBookAnnotation: (id) => set((state) => ({
         bookAnnotations: state.bookAnnotations.filter((annotation) => annotation.id !== id),
       })),
@@ -235,7 +257,7 @@ export const useMobileStore = create<MobileState>()(
     {
       name: "jojo-mobile-preferences-v1",
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: ({ hapticsEnabled, textScale, bookLineHeight, bookReadingMode, bookPaperColor, bookFirstLineIndent, keepScreenAwake, allowLandscape, leftTapNext, recentIssues, recentBooks, historyOwnerId, historyClearedAt, historyAccounts, bookAnnotations, aiConversations, timesLanguage, timesReadArticleIds, timesDisabledSourceIds }) => ({
+      partialize: ({ hapticsEnabled, textScale, bookLineHeight, bookReadingMode, bookPaperColor, bookFirstLineIndent, keepScreenAwake, allowLandscape, leftTapNext, recentIssues, recentBooks, historyOwnerId, historyClearedAt, historyAccounts, bookReadingSeconds, bookAnnotations, aiConversations, timesLanguage, timesReadArticleIds, timesDisabledSourceIds }) => ({
         historyOwnerId, historyClearedAt, historyAccounts,
         hapticsEnabled,
         textScale,
@@ -248,6 +270,7 @@ export const useMobileStore = create<MobileState>()(
         leftTapNext,
         recentIssues,
         recentBooks,
+        bookReadingSeconds,
         bookAnnotations,
         aiConversations,
         timesLanguage,

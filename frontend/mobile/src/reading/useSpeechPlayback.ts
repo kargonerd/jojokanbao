@@ -36,6 +36,7 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
   const mounted = useRef(true);
   const session = useRef(new AbortController());
   const epoch = useRef(0);
+  const openingEpoch = useRef<number | undefined>(undefined);
   const operation = useRef(0);
   const wanted = useRef(false);
   const ready = useRef(false);
@@ -57,14 +58,16 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
 
   function halt() {
     wanted.current = false;
+    mediaDeadline.current = 0;
     player.pause();
-    setPlaying(false);
+    setPlaying(false); setBusy(false);
     persist();
   }
 
   function close() {
     wanted.current = false;
     epoch.current++; operation.current++;
+    openingEpoch.current = undefined;
     session.current.abort(); session.current = new AbortController();
     sources.current.clear(); pending.current = undefined; activePart.current = undefined;
     prefetch.current.retain();
@@ -93,10 +96,9 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
         void seek.then(() => {
           if (!mounted.current || load.operation !== operation.current) return;
           ready.current = true;
-          mediaDeadline.current = 0;
-          setBusy(false);
           player.setPlaybackRate(latest.current.rate);
           if (wanted.current) player.play();
+          else { mediaDeadline.current = 0; setBusy(false); }
           prefetchNext(activePart.current!, load.operation, load.url);
         }).catch(() => { if (mounted.current && load.operation === operation.current) { setError("音频定位失败，请重试"); setBusy(false); } });
       }
@@ -104,6 +106,10 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
       const time = Number.isFinite(status.currentTime) ? status.currentTime : 0;
       setSeconds(time);
       setPlaying(status.playing);
+      if (status.playing) mediaDeadline.current = 0;
+      // Loaded metadata is not playback. Retain the loading bars until the
+      // native player actually starts, including its initial buffering period.
+      setBusy(wanted.current && (status.isBuffering || (!status.playing && mediaDeadline.current > 0)));
       if (bookmark.current) bookmark.current.seconds = time;
       if (Number.isFinite(status.duration) && status.duration > 0) setDurations((known) => known[activePart.current!] === status.duration ? known : { ...known, [activePart.current!]: status.duration });
       if (status.didJustFinish && !finishHandled.current) {
@@ -176,10 +182,18 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
     }
   }
 
-  async function open() {
-    if (latest.current.chapter && latest.current.capabilities) return;
+  async function open(autoplay = false) {
+    // Expanding the mini player while startup is pending must not restart
+    // preparation or replace the original request to play with a paused one.
+    if (openingEpoch.current !== undefined) return;
+    if (latest.current.chapter && latest.current.capabilities) {
+      if (autoplay && !wanted.current) toggle();
+      return;
+    }
+    wanted.current = autoplay;
     setBusy(true); setError("");
     const currentEpoch = ++epoch.current;
+    openingEpoch.current = currentEpoch;
     const reading = latest.current.props;
     try {
       const position = await reading.getReadingPosition?.();
@@ -197,8 +211,9 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
       setRate(speed); latest.current.rate = speed;
       setCapabilities(caps);
       const id = !reading.getReadingPosition && saved && reading.chapters.some((item) => item.id === saved.chapterId) ? saved.chapterId : reading.chapterId;
-      await selectChapter(id, false, reading.getReadingPosition ? undefined : saved, choice, caps, position);
-    } catch (reason) { if (mounted.current && currentEpoch === epoch.current) { setBusy(false); setError(reason instanceof Error ? reason.message : "听读暂时不可用"); } }
+      await selectChapter(id, autoplay && wanted.current, reading.getReadingPosition ? undefined : saved, choice, caps, position);
+    } catch (reason) { if (mounted.current && currentEpoch === epoch.current) { wanted.current = false; setBusy(false); setError(reason instanceof Error ? reason.message : "听读暂时不可用"); } }
+    finally { if (openingEpoch.current === currentEpoch) openingEpoch.current = undefined; }
   }
 
   async function source(index: number, streaming = false): Promise<SpeechSource> {
@@ -237,11 +252,12 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
       const audio = await source(index, time === 0 && !complete);
       if (!mounted.current || request !== operation.current) return;
       finishHandled.current = false;
-      player.replace({ uri: audio.url });
       mediaDeadline.current = Date.now() + 30000;
       activePart.current = index;
       activeStreaming.current = audio.streaming === true;
       pending.current = { seconds: time, operation: request, url: audio.url };
+      // Some cached native sources emit loaded synchronously from replace().
+      player.replace({ uri: audio.url });
       setPart(index); setSeconds(time);
       if (audio.duration > 0) setDurations((known) => ({ ...known, [index]: audio.duration }));
       if (bookmark.current) { bookmark.current.part = index; bookmark.current.seconds = time; }
@@ -301,7 +317,7 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
     if (ready.current && finishHandled.current) void startPart(0);
     else if (ready.current) { wanted.current = true; player.play(); }
     else if (chapter) void startPart(part, seconds);
-    else void open();
+    else void open(true);
   }
   function changeRate(value: number) {
     setRate(value); player.setPlaybackRate(value);
@@ -310,6 +326,6 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
   }
   return { chapter, capabilities, voice, part, rate, playing, busy, error, timer, elapsed, duration,
     open, toggle, halt, close, seek, setTimer, changeRate, selectChapter,
-    changeVoice: (provider: string, value: string) => chapter && selectChapter(chapter.id, playing, bookmark.current, { provider, voice: value }, capabilities, undefined, chapter),
+    changeVoice: (provider: string, value: string) => chapter && selectChapter(chapter.id, playing || wanted.current, bookmark.current, { provider, voice: value }, capabilities, undefined, chapter),
   };
 }

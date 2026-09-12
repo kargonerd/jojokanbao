@@ -637,12 +637,13 @@ export function MeScreen() {
               { section: "interaction" as const, label: "交互设置", icon: "hand-left-outline" as const },
               { section: "times" as const, label: "时事设置", icon: "newspaper-outline" as const },
               { section: "data" as const, label: "阅读数据", icon: "time-outline" as const },
+              { section: "support" as const, label: "支持 JOJO 看报", icon: "heart-outline" as const },
               { section: "about" as const, label: "关于", icon: "information-circle-outline" as const },
             ]).map((item, index, items) => (
               <Pressable
                 key={item.section}
                 accessibilityRole="button"
-                onPress={() => navigation.navigate("Settings", { section: item.section })}
+                onPress={() => item.section === "support" ? navigation.navigate("Support") : navigation.navigate("Settings", { section: item.section })}
                 style={({ pressed }) => [
                   styles.settingsRow,
                   index < items.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.rule },

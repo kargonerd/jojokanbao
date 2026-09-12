@@ -71,22 +71,23 @@ describe("commemorative launch opening", () => {
     expect(writeStorage).not.toHaveBeenCalled();
   });
 
-  it.each([null, "1"])("replays after reloading in development without reading or changing an existing %s playback record", async (record) => {
+  it.each([null, "1"])("skips the opening and reloads in development without reading or changing an existing %s playback record", async (record) => {
     vi.stubEnv("DEV", true);
     if (record) window.localStorage.setItem(seenKey, record);
     const readStorage = vi.spyOn(Storage.prototype, "getItem");
     const writeStorage = vi.spyOn(Storage.prototype, "setItem");
     const view = renderOpening();
-    expect(screen.getByRole("dialog")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "跳过动画" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
     act(() => vi.advanceTimersByTime(30000));
     expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.documentElement.hasAttribute("data-commemoration-tone")).toBe(false);
+    expect(document.body.style.overflow).toBe("");
     view.unmount();
 
     vi.resetModules();
     const { LaunchCommemoration: ReloadedOpening } = await import("../src/home/LaunchCommemoration");
     render(<StrictMode><ReloadedOpening /></StrictMode>);
-    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
     expect(readStorage).not.toHaveBeenCalled();
     expect(writeStorage).not.toHaveBeenCalled();
   });

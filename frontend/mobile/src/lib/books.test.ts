@@ -41,6 +41,9 @@ describe("mobile book catalog", () => {
     expect(fuzzyBookTitleScore("《资本论》第一卷", "资本论")).toBeLessThan(Number.POSITIVE_INFINITY);
     expect(fuzzyBookTitleScore("马克思恩格斯文集", "马恩文")).toBeLessThan(Number.POSITIVE_INFINITY);
     expect(fuzzyBookTitleScore("毛泽东选集", "资本论")).toBe(Number.POSITIVE_INFINITY);
+    expect(Number.isFinite(fuzzyBookTitleScore("毛泽东选集", "mao"))).toBe(true);
+    expect(Number.isFinite(fuzzyBookTitleScore("毛泽东选集", "mzd"))).toBe(true);
+    expect(Number.isFinite(fuzzyBookTitleScore("毛泽东选集", "mao选"))).toBe(true);
   });
 
   it("builds a bounded in-book search excerpt with an exact match", () => {

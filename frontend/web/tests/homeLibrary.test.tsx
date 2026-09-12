@@ -123,10 +123,12 @@ describe("app homepage", () => {
     expect(screen.queryByRole("menu", { name: "读者菜单" })).toBeNull();
   });
 
-  it("shows a truthful empty state until something has been opened", () => {
+  it("shows a truthful empty state until something has been opened", async () => {
     renderAt("/");
+    // Settle the real lazy route import before checking its rendered state.
+    await act(async () => { await vi.dynamicImportSettled(); });
 
-    expect(screen.getByText("还没有阅读记录")).toBeTruthy();
+    expect(await screen.findByText("还没有阅读记录")).toBeTruthy();
     expect(screen.queryByText("今日一读")).toBeNull();
     expect(screen.getByLabelText("每日语录").className).toContain("daily-quote-footnote");
     expect(screen.getByRole("link", { name: /^去资料库\s*→$/ }).getAttribute("href")).toBe("/library");
@@ -134,23 +136,60 @@ describe("app homepage", () => {
 
   it("lets readers choose a title instead of opening the first match on submit", async () => {
     renderAt("/");
-    const input = screen.getByRole("searchbox", { name: "搜索书名" });
+    const input = await screen.findByRole("searchbox", { name: "搜索书名" });
     await waitFor(() => expect(catalogMocks.list).toHaveBeenCalled());
     fireEvent.change(input, { target: { value: "毛文集" } });
     const book = await screen.findByRole("link", { name: "毛泽东文集" });
-    expect(screen.getByRole("button", { name: "找书" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "找书" })).toBeNull();
     fireEvent.submit(screen.getByRole("search"));
     expect(window.location.pathname).toBe("/");
-    expect(document.activeElement).toBe(screen.getByRole("region", { name: "书名匹配结果" }));
+    expect(screen.getByRole("region", { name: "书名匹配结果" })).toBeTruthy();
+    expect(document.activeElement).not.toBe(input);
     fireEvent.click(book);
     await waitFor(() => expect(window.location.pathname).toBe("/library/mao"));
+  });
+
+  it.each(["mao", "mzd"])("matches pinyin query %s while preserving book visibility", async (query) => {
+    catalogMocks.list.mockResolvedValue([
+      { id: "mao", title: "毛泽东文集", type: "book-series", sources_count: 2 },
+      { id: "solo", title: "青年政治经济学读本", type: "book", sources_count: 1 },
+      { id: "restricted-mao", title: "毛泽东研究资料", type: "book", sources_count: 1, access: "authenticated" },
+    ]);
+    renderAt("/");
+    fireEvent.change(await screen.findByRole("searchbox", { name: "搜索书名" }), { target: { value: query } });
+
+    const book = await screen.findByRole("link", { name: "毛泽东文集" });
+    expect(book.getAttribute("href")).toBe("/library/mao?returnTo=%2F");
+    expect(screen.queryByRole("link", { name: "青年政治经济学读本" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "毛泽东研究资料" })).toBeNull();
+    expect(screen.queryByText(/没有找到相近书名/)).toBeNull();
+
+    act(() => useAccountSessionStore.setState({ initialized: true, userId: "reader-1", displayName: "测试读者" }));
+    expect(await screen.findByRole("link", { name: "毛泽东研究资料" })).toBeTruthy();
+    expect(screen.getByRole<HTMLInputElement>("searchbox", { name: "搜索书名" }).value).toBe(query);
+  });
+
+  it("dismisses title suggestions outside the search area and reopens them on focus", async () => {
+    renderAt("/");
+    const input = await screen.findByRole("searchbox", { name: "搜索书名" });
+    fireEvent.change(input, { target: { value: "毛文集" } });
+    const book = await screen.findByRole("link", { name: "毛泽东文集" });
+    fireEvent.pointerDown(book);
+    expect(screen.getByRole("region", { name: "书名匹配结果" })).toBeTruthy();
+    fireEvent.pointerDown(screen.getByRole("heading", { name: "继续阅读" }));
+    expect(screen.queryByRole("region", { name: "书名匹配结果" })).toBeNull();
+    expect((input as HTMLInputElement).value).toBe("毛文集");
+    fireEvent.focus(input);
+    expect(screen.getByRole("link", { name: "毛泽东文集" })).toBeTruthy();
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(screen.queryByRole("region", { name: "书名匹配结果" })).toBeNull();
   });
 
   it("distinguishes a loading or failed catalog from no matches and retries the current query", async () => {
     let rejectCatalog!: (reason: Error) => void;
     catalogMocks.list.mockImplementationOnce(() => new Promise((_, reject) => { rejectCatalog = reject; }));
     renderAt("/");
-    fireEvent.change(screen.getByRole("searchbox", { name: "搜索书名" }), { target: { value: "毛文集" } });
+    fireEvent.change(await screen.findByRole("searchbox", { name: "搜索书名" }), { target: { value: "毛文集" } });
     expect(screen.getByRole("status").textContent).toContain("正在载入书籍目录");
     expect(screen.queryByText(/没有找到相近书名/)).toBeNull();
 
@@ -168,7 +207,7 @@ describe("app homepage", () => {
   it("only shows no matches after the book catalog has loaded successfully", async () => {
     catalogMocks.list.mockResolvedValue([]);
     renderAt("/");
-    fireEvent.change(screen.getByRole("searchbox", { name: "搜索书名" }), { target: { value: "不存在的书名" } });
+    fireEvent.change(await screen.findByRole("searchbox", { name: "搜索书名" }), { target: { value: "不存在的书名" } });
     expect(await screen.findByText("没有找到相近书名，请换个书名关键词。")).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
   });
@@ -189,10 +228,10 @@ describe("app homepage", () => {
     expect(screen.queryByText("暂时无法恢复阅读记录")).toBeNull();
   });
 
-  it("keeps the homepage focused on continuing to read", () => {
+  it("keeps the homepage focused on continuing to read", async () => {
     renderAt("/");
 
-    expect(screen.getByRole("heading", { name: "继续阅读" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "继续阅读" })).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "我的书架" })).toBeNull();
     expect(screen.getByRole("link", { name: "客户端" }).getAttribute("href")).toBe("/download");
     expect(screen.getByRole("link", { name: "我的书架" }).getAttribute("href")).toBe("/bookshelf");
@@ -491,6 +530,39 @@ describe("app library", () => {
     expect(screen.queryByRole("link", { name: /人民日报/ })).toBeNull();
   });
 
+  it.each(["mao", "maozedong", "mzd"])("filters library titles by %s without exposing restricted books", async (query) => {
+    catalogMocks.list.mockResolvedValue([
+      { id: "mao", title: "毛泽东文集", type: "book-series", sources_count: 2 },
+      { id: "solo", title: "青年政治经济学读本", type: "book", sources_count: 1 },
+      { id: "restricted-mao", title: "毛泽东研究资料", type: "book", sources_count: 1, access: "authenticated" },
+    ]);
+    renderAt("/library");
+    await screen.findByRole("link", { name: /毛泽东文集/ });
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜索馆藏" }), { target: { value: query } });
+    expect(screen.getByRole("link", { name: /毛泽东文集/ })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /青年政治经济学读本|毛泽东研究资料|人民日报/ })).toBeNull();
+    expect(screen.queryByText("没有找到匹配的资料。")).toBeNull();
+    act(() => useAccountSessionStore.setState({ userId: "reader-1", displayName: "读者" }));
+    expect(await screen.findByRole("link", { name: /毛泽东研究资料/ })).toBeTruthy();
+    expect(screen.getByRole<HTMLInputElement>("searchbox", { name: "搜索馆藏" }).value).toBe(query);
+  });
+
+  it.each(["mao", "maozedong", "mzd"])("filters collection volumes by %s while keeping draft and restricted items hidden", async (query) => {
+    catalogMocks.getSources.mockResolvedValue([
+      { id: "mao-1", itemKey: "volume-1", title: "毛泽东文集 第一卷", published: true },
+      { id: "restricted", itemKey: "private", title: "毛泽东研究资料", access: "authenticated", published: true },
+      { id: "draft", itemKey: "draft", title: "毛泽东资料草稿", published: false },
+      { id: "other", itemKey: "other", title: "青年政治经济学读本", published: true },
+    ]);
+    renderAt("/library/mao");
+    await screen.findByRole("link", { name: /毛泽东文集 第一卷/ });
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜索本书分卷" }), { target: { value: query } });
+    expect(screen.getByRole("link", { name: /毛泽东文集 第一卷/ })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /毛泽东研究资料|毛泽东资料草稿|青年政治经济学读本/ })).toBeNull();
+    expect(screen.queryByText("没有找到匹配的资料。")).toBeNull();
+    expect(window.location.pathname).toBe("/library/mao");
+  });
+
   it("retries a failed library catalog without misreporting an empty collection", async () => {
     catalogMocks.list.mockRejectedValueOnce(new Error("offline"));
     renderAt("/library?type=book");
@@ -569,7 +641,7 @@ describe("app library", () => {
 
     renderAt("/");
 
-    const card = screen.getByRole("link", { name: /人民日报/ });
+    const card = await screen.findByRole("link", { name: /人民日报/ });
     expect(card.querySelector("img")?.getAttribute("src")).toContain("people-daily-brand");
   });
 });

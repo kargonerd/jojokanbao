@@ -1,7 +1,7 @@
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { speechFromReadingPosition } from "@jojo/content";
-import { speechVoiceLabel } from "@jojo/content/speech";
+import { SPEECH_PROVIDERS_ERROR, speechVoiceLabel } from "@jojo/content/speech";
 import { Backward15Seconds, Forward15Seconds, Book, BookStack, Check, DashboardSpeed, Headset, List, NavArrowDown, PauseSolid, PlaySolid, SkipNextSolid, SkipPrevSolid, Timer, User, Xmark } from "iconoir-react";
 import { ReadingBookshelfContext } from "./ReadingBookshelfContext";
 import { DEFAULT_SPEECH_PROVIDERS, loadCachedSpeechDurations, loadSpeechProviders, logicalSpeechVoice, requestSpeech, SPEECH_VOICES, type SpeechProvider, type SpeechVoice } from "./speech";
@@ -166,12 +166,6 @@ function ActiveSpeechPlayer({
   const [speed, setSpeed] = useState(storedSpeed);
   const [state, setState] = useState<PlayerState>("idle");
   const [playbackRevision, setPlaybackRevision] = useState(0);
-  const [showLoading, setShowLoading] = useState(false);
-  useEffect(() => {
-    if (state !== "loading") { setShowLoading(false); return; }
-    const timer = window.setTimeout(() => setShowLoading(true), 300);
-    return () => window.clearTimeout(timer);
-  }, [state]);
   const [segmentIndex, setSegmentIndex] = useState(0);
   const [segmentProgress, setSegmentProgress] = useState(0);
   const [wantsPlayback, setWantsPlayback] = useState(false);
@@ -195,6 +189,7 @@ function ActiveSpeechPlayer({
   const mountedRef = useRef(true);
   const sleepTimerRef = useRef<number | undefined>(undefined);
   const resumeAfterContentChangeRef = useRef(false);
+  const restoreOnOpenRef = useRef(false);
   const pendingSeekFractionRef = useRef<number | null>(null);
   const pendingSeekSecondsRef = useRef<number | null>(null);
   const pauseAfterSeekRef = useRef(false);
@@ -214,11 +209,15 @@ function ActiveSpeechPlayer({
   useEffect(() => {
     if (!sessionStarted || !userId) return;
     const controller = new AbortController();
+    setCapabilitiesReady(false);
+    setProvidersError("");
     void loadSpeechProviders(controller.signal).then((capabilities) => {
+      if (controller.signal.aborted) return;
       setProviders(capabilities.providers);
       setCdnBase(capabilities.cdnBase ?? null);
       setCapabilitiesReady(true);
       setProvidersError("");
+      setError("");
       if (restoredPreferencesRef.current) return;
       restoredPreferencesRef.current = true;
       try {
@@ -237,9 +236,9 @@ function ActiveSpeechPlayer({
       } catch { /* Invalid saved settings do not prevent playback. */ }
     }).catch((reason: unknown) => {
       if (!controller.signal.aborted) {
-        const message = reason instanceof Error ? reason.message : "无法加载声音列表，请重试";
+        const message = reason instanceof Error ? reason.message : SPEECH_PROVIDERS_ERROR;
         setProvidersError(message);
-        setError(`${message}，请打开声音设置重试`);
+        setError(message);
         setWantsPlayback(false);
         setState("error");
       }
@@ -256,6 +255,8 @@ function ActiveSpeechPlayer({
     audio.ontimeupdate = null;
     audio.onloadedmetadata = null;
     audio.ondurationchange = null;
+    audio.onwaiting = null;
+    audio.onplaying = null;
     audio.onerror = null;
     audio.pause();
     audio.removeAttribute("src");
@@ -350,9 +351,10 @@ function ActiveSpeechPlayer({
   useEffect(() => {
     stopAudio();
     setWantsPlayback(false);
-    setState("idle");
+    setState(resumeAfterContentChangeRef.current ? "loading" : "idle");
     const saved = readSpeechProgress(progressId);
-    const resume = !listening && !resumeAfterContentChangeRef.current && saved?.chapterId === activeQueueId && saved?.fingerprint === fingerprint && saved.segmentIndex < playableSegments.length ? saved : undefined;
+    const resume = !listening && (!resumeAfterContentChangeRef.current || restoreOnOpenRef.current) && saved?.chapterId === activeQueueId && saved?.fingerprint === fingerprint && saved.segmentIndex < playableSegments.length ? saved : undefined;
+    restoreOnOpenRef.current = false;
     setSegmentIndex(resume?.segmentIndex ?? listening?.index ?? 0);
     setSegmentProgress((resume?.fraction ?? 0) * 100);
     pendingSeekFractionRef.current = resume?.fraction ?? null;
@@ -457,6 +459,8 @@ function ActiveSpeechPlayer({
         setState("error");
         setError("音频播放失败，请重试");
       };
+      audio.onwaiting = () => { if (active && !audio.paused) setState("loading"); };
+      audio.onplaying = () => { if (active) setState("playing"); };
       audioRef.current = audio;
       if (pauseAfterSeekRef.current) {
         pauseAfterSeekRef.current = false;
@@ -590,6 +594,14 @@ function ActiveSpeechPlayer({
     };
   }, [stopAudio]);
 
+  function retryProviders(): void {
+    setError("");
+    setProvidersError("");
+    setWantsPlayback(true);
+    setState("loading");
+    setProvidersRevision((value) => value + 1);
+  }
+
   function togglePlayback(): void {
     if (!userId) return;
     if (!playableSegments.length) return;
@@ -604,6 +616,10 @@ function ActiveSpeechPlayer({
       resumeAfterContentChangeRef.current = false;
       setWantsPlayback(false);
       setState("paused");
+      return;
+    }
+    if (!capabilitiesReady) {
+      retryProviders();
       return;
     }
     if (state === "paused" && audioRef.current) {
@@ -635,15 +651,27 @@ function ActiveSpeechPlayer({
       return;
     }
     if (!sessionStarted) {
+      // The launcher is an explicit request to listen. Preserve that intent
+      // through asynchronous capabilities and reading-position preparation.
+      let changingContent = false;
       if (bookshelf?.getSpeechPosition) {
+        changingContent = true;
+        resumeAfterContentChangeRef.current = true;
         setListening({ id: readingQueueId, title: readingTitle,
           ...speechFromReadingPosition(readingSegments, bookshelf.getSpeechPosition()) });
       } else {
         const saved = readSpeechProgress(progressId);
         if (saved?.chapterId && saved.chapterId !== activeQueueId && queueItems?.some((item) => item.id === saved.chapterId)) {
+          changingContent = true;
+          resumeAfterContentChangeRef.current = true;
+          restoreOnOpenRef.current = true;
           onQueueItemChange?.(saved.chapterId);
         }
       }
+      if (!changingContent) setWantsPlayback(true);
+      setState("loading");
+    } else if (providersError) {
+      retryProviders();
     }
     setSessionStarted(true);
     setPanelOpen(true);
@@ -782,7 +810,7 @@ function ActiveSpeechPlayer({
   const durationTimeLabel = totalWeight ? formatTime(estimatedDuration) : "--:--";
   const active = state === "playing" || state === "loading";
   const status = error || (
-    state === "loading" ? (showLoading ? "加载中" : "")
+    state === "loading" ? "加载中"
       : state === "playing" ? "正在朗读"
         : state === "paused" ? "已暂停"
           : state === "complete" ? "本篇播放完成"
@@ -856,6 +884,7 @@ function ActiveSpeechPlayer({
                 <div>
                   <span className="speech-player__time">{elapsedTimeLabel}</span>
                   <input
+                    className="reader-range"
                     type="range"
                     min="0"
                     max="100"
@@ -864,7 +893,7 @@ function ActiveSpeechPlayer({
                     onChange={(event) => seekChapter(Number(event.target.value))}
                     aria-label={hasDocumentQueue ? "当前章节播放进度" : "全文播放进度"}
                     aria-valuetext={`${elapsedTimeLabel} / ${durationTimeLabel}`}
-                    style={{ "--speech-progress": `${totalProgress}%` } as CSSProperties}
+                    style={{ "--reader-range-fill": `${totalProgress}%` } as CSSProperties}
                   />
                   <span className="speech-player__time" title="未加载音频的时长按字数估算，播放后自动校准">{durationTimeLabel}</span>
                 </div>
@@ -879,7 +908,7 @@ function ActiveSpeechPlayer({
                 if (activeQueueId) bookshelf?.showSpeechLocation?.({ chapterId: activeQueueId, segments: playableSegments, index: segmentIndex }, true);
               }} aria-label="返回原文" title="返回原文"><SourceIcon /><span>原文</span></button>
               <button type="button" onClick={() => hasDocumentQueue ? jumpToQueueItem(activeQueueIndex - 1) : jumpToSegment(segmentIndex - 1)} disabled={hasDocumentQueue ? activeQueueIndex === 0 : segmentIndex === 0} aria-label={hasDocumentQueue ? "上一章" : "上一段"} title={hasDocumentQueue ? "上一章" : "上一段"}><StepIcon direction="previous" /></button>
-              <button type="button" className="speech-player__primary" onClick={togglePlayback} disabled={!playableSegments.length} aria-label={state === "loading" ? "取消加载" : active ? "暂停听读" : state === "paused" ? "继续听读" : "开始听读"}>{showLoading ? <LoadingIndicator /> : <PlayIcon playing={active} />}</button>
+              <button type="button" className="speech-player__primary" onClick={togglePlayback} disabled={!playableSegments.length} aria-label={state === "loading" ? "取消加载" : active ? "暂停听读" : state === "paused" ? "继续听读" : "开始听读"}>{state === "loading" ? <LoadingIndicator /> : <PlayIcon playing={active} />}</button>
               <button type="button" onClick={() => hasDocumentQueue ? jumpToQueueItem(activeQueueIndex + 1) : jumpToSegment(segmentIndex + 1)} disabled={hasDocumentQueue ? activeQueueIndex >= visibleQueue.length - 1 : segmentIndex >= playableSegments.length - 1} aria-label={hasDocumentQueue ? "下一章" : "下一段"} title={hasDocumentQueue ? "下一章" : "下一段"}><StepIcon direction="next" /></button>
               <button type="button" className="speech-player__transport-utility" onClick={showQueue} aria-label="打开章节列表" aria-expanded={queueOpen} aria-controls="speech-player-queue" title="打开章节列表"><QueueIcon /><span>{visibleQueue.length}{queueUnit}</span></button>
             </div>
@@ -930,9 +959,10 @@ function ActiveSpeechPlayer({
             </button>
           </>}
           {settingPanel === "voice" && <>
-            {providersError && <p className="speech-player__provider-error" role="alert">{providersError} <button type="button" onClick={() => setProvidersRevision((value) => value + 1)}>重试</button></p>}
+            {providersError && <p className="speech-player__provider-error" role="alert">{providersError} <button type="button" onClick={retryProviders}>重试</button></p>}
+            {!capabilitiesReady && !providersError && <p className="speech-player__provider-loading" role="status"><LoadingIndicator />正在加载声音</p>}
             <div className="speech-player__sheet-options speech-player__sheet-options--voice" role="group" aria-label="声音选项">
-              {providers.filter((source) => source.available).flatMap((source) => source.voices.map((option) => <button type="button" key={`${source.id}:${option.id}`}
+              {capabilitiesReady && providers.filter((source) => source.available).flatMap((source) => source.voices.map((option) => <button type="button" key={`${source.id}:${option.id}`}
                     className={provider === source.id && voice === option.id ? "is-selected" : undefined}
                     aria-pressed={provider === source.id && voice === option.id}
                     onClick={() => chooseVoice(source, option.id)}>
@@ -970,7 +1000,7 @@ function ActiveSpeechPlayer({
           <span className="speech-mini__identity"><strong>{displayTitle}</strong><small>{state === "loading" || error ? status : `${collectionTitle || label} · ${selectedVoiceLabel}`}</small></span>
         </button>
         <span className="speech-mini__time">{elapsedTimeLabel} / {durationTimeLabel}</span>
-        <button type="button" className="speech-mini__play" onClick={togglePlayback} aria-label={state === "loading" ? "取消加载" : active ? "暂停听读" : "继续听读"}>{showLoading ? <LoadingIndicator /> : <PlayIcon playing={active} />}</button>
+        <button type="button" className="speech-mini__play" onClick={togglePlayback} aria-label={state === "loading" ? "取消加载" : active ? "暂停听读" : "继续听读"}>{state === "loading" ? <LoadingIndicator /> : <PlayIcon playing={active} />}</button>
         <button type="button" onClick={() => { openPlayer(); showQueue(); }} aria-label="打开章节列表"><QueueIcon /></button>
         <button type="button" onClick={dismissMini} aria-label="关闭迷你播放器"><CloseIcon /></button>
       </div>

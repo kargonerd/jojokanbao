@@ -3,12 +3,10 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-route
 import { Layout } from "./archive/components/Layout";
 import { HomePage as ArchiveHomePage } from "./archive/pages/HomePage";
 import { SearchPage } from "./archive/pages/SearchPage";
-import { SupportPage } from "./archive/pages/SupportPage";
+import { DonationPage, SupportPage } from "./archive/pages/SupportPage";
 import { PUBLICATIONS, PUBLICATION_NAMES } from "./archive/publications";
 import { NotFoundPage } from "./NotFoundPage";
 import { AppLayout } from "./shell/AppLayout";
-import { HomePage } from "./home/HomePage";
-import { LibraryPage } from "./library/LibraryPage";
 import { NotificationsPage } from "./notifications/NotificationsPage";
 import { PERIODICALS } from "./library/catalog";
 import { rollout } from "./rollout";
@@ -19,6 +17,13 @@ import { TimesSourceSettingsPage } from "./account/pages/TimesSourceSettingsPage
 import { startAccountSessionSync, useAccountSessionStore } from "./account/session";
 
 const AccountConfirmation = lazy(() => import("./account/AccountConfirmation"));
+// Load the title search dictionary only on routes that search the book catalog.
+const HomePage = lazy(() =>
+  import("./home/HomePage").then(({ HomePage }) => ({ default: HomePage })),
+);
+const LibraryPage = lazy(() =>
+  import("./library/LibraryPage").then(({ LibraryPage }) => ({ default: LibraryPage })),
+);
 // Keep the client download adapter out of the Web entry bundle.
 const BookshelfPage = lazy(() =>
   import("./library/BookshelfPage").then(({ BookshelfPage }) => ({ default: BookshelfPage })),
@@ -142,14 +147,15 @@ function RedesignedRoutes() {
         <Route path="/login" element={<Navigate to="/account" replace />} />
 
         <Route element={<AppLayout />}>
-          <Route index element={<><HomePage periodicals={PERIODICALS} /><LazyRoute><LaunchCommemoration /></LazyRoute></>} />
+          <Route index element={<><LazyRoute><HomePage periodicals={PERIODICALS} /></LazyRoute><LazyRoute><LaunchCommemoration /></LazyRoute></>} />
           <Route path="bookshelf" element={<LazyRoute><BookshelfPage /></LazyRoute>} />
-          <Route path="library" element={<LibraryPage periodicals={PERIODICALS} />} />
-          <Route path="library/:datasetId" element={<LibraryPage periodicals={PERIODICALS} />} />
+          <Route path="library" element={<LazyRoute><LibraryPage periodicals={PERIODICALS} /></LazyRoute>} />
+          <Route path="library/:datasetId" element={<LazyRoute><LibraryPage periodicals={PERIODICALS} /></LazyRoute>} />
           <Route path="search" element={<div className="h-[calc(100vh-64px)] overflow-hidden"><SearchPage platformRedesign /></div>} />
           <Route path="download" element={<LazyRoute><DownloadPage /></LazyRoute>} />
           <Route path="download/iphone" element={<LazyRoute><IphoneInstallPage /></LazyRoute>} />
           <Route path="support" element={<SupportPage platformRedesign />} />
+          <Route path="donate" element={<DonationPage />} />
           <Route path="support/licenses" element={<LazyRoute><OpenSourceLicensesPage /></LazyRoute>} />
           <Route path="notifications" element={<NotificationsPage />} />
           <Route path="rag/*" element={<AuthenticatedRoute><LazyRoute><RagRoutes /></LazyRoute></AuthenticatedRoute>} />
