@@ -7,7 +7,7 @@ import type { AnnotationSubject, TextAnchor, AnnotationThread, AnnotationVisibil
 
 const mocks = vi.hoisted(() => ({
   eInk: false, focused: true, user: { id: "reader" } as { id: string } | null,
-  enabled: true,
+  enabled: true, flagUserId: "reader", playbackUnmount: vi.fn(),
   annotationThreads: vi.fn(async () => [] as AnnotationThread[]),
   personalNotes: vi.fn(async () => [] as AnnotationThread[]),
   createAnnotation: vi.fn(),
@@ -64,9 +64,15 @@ vi.mock("../theme/tokens", async (importOriginal) => {
 });
 vi.mock("../account/auth", () => ({ useMobileAuthStore: (select: (state: { user: typeof mocks.user }) => unknown) => select({ user: mocks.user }) }));
 vi.mock("./featureFlag", () => ({ useSpeechFlagStore: (select?: (state: unknown) => unknown) => {
-  const state = { enabled: mocks.enabled, userId: "reader" }; return select ? select(state) : state;
+  const state = { enabled: mocks.enabled, userId: mocks.flagUserId }; return select ? select(state) : state;
 } }));
-vi.mock("./useSpeechPlayback", () => ({ useSpeechPlayback: () => mocks.playback }));
+vi.mock("./useSpeechPlayback", async () => {
+  const { useEffect } = await import("react");
+  return { useSpeechPlayback: () => {
+    useEffect(() => () => mocks.playbackUnmount(), []);
+    return mocks.playback;
+  } };
+});
 vi.mock("./SpeechLoading", async () => {
   const { createElement } = await import("react");
   return { SpeechLoading: () => createElement("span", { "data-testid": "speech-loading-bars" }) };
@@ -123,9 +129,10 @@ async function readerMessage(data: object) {
   await act(async () => reader.props.onMessage({ nativeEvent: { data: JSON.stringify({ ...data, readerSessionId }) } }));
 }
 async function tick() { await act(async () => { vi.advanceTimersByTime(4000); }); }
+const readerProps = { route: { params: { datasetId: "books", itemKey: "book", title: "测试书" } }, navigation: { navigate: mocks.navigate } } as unknown as ComponentProps<typeof BookReaderScreen>;
+const readerTool = (label: string) => view.root.findAllByType("button").find((button) => button.findAllByType("span").some((span) => span.props.children === label))!;
 async function renderReader(initialized = true) {
-  const props = { route: { params: { datasetId: "books", itemKey: "book", title: "测试书" } }, navigation: { navigate: mocks.navigate } } as unknown as ComponentProps<typeof BookReaderScreen>;
-  await act(async () => { view = create(<BookReaderScreen {...props} />); });
+  await act(async () => { view = create(<BookReaderScreen {...readerProps} />); });
   if (initialized) {
     const paged = mocks.state.bookReadingMode === "paged";
     await readerMessage({ type: "reader-ready", chapterId: "c1" });
@@ -136,7 +143,7 @@ async function renderReader(initialized = true) {
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   vi.useFakeTimers(); vi.clearAllMocks();
-  mocks.eInk = false; mocks.focused = true; mocks.enabled = true; mocks.user = { id: "reader" };
+  mocks.eInk = false; mocks.focused = true; mocks.enabled = true; mocks.flagUserId = "reader"; mocks.user = { id: "reader" };
   mocks.state.bookAnnotations = [];
   mocks.annotationThreads.mockReset().mockResolvedValue([]); mocks.personalNotes.mockReset().mockResolvedValue([]);
   mocks.createAnnotation.mockReset().mockImplementation(async (subject: AnnotationSubject, anchor: TextAnchor, note?: string, visibility: AnnotationVisibility = "public") => ({
@@ -145,6 +152,7 @@ beforeEach(() => {
   }));
   mocks.state.bookReadingMode = "paged";
   mocks.playback.part = 0; mocks.playback.playing = true; mocks.playback.elapsed = 12; mocks.playback.busy = false;
+  mocks.playback.chapter = { id: "c1", title: "第一章", segments: ["第一段。这里还有一句。", "第二段。接着朗读。"] };
   mocks.shelfContains.mockResolvedValue(false); mocks.setShelf.mockResolvedValue(undefined);
   mocks.loadChapter.mockReset().mockImplementation(async (_loaded, id: string) => ({ assetUrls: { portrait: "data:image/png;base64,test" },
     fragment: { fragmentId: id, title: id === "c1" ? "第一章" : "第二章", body: { format: "html", value: "<p>正文</p>" } } }));
@@ -344,6 +352,48 @@ describe("continuous chapter reading", () => {
     await press("返回原文");
     expect(mocks.injectJavaScript).toHaveBeenLastCalledWith(expect.stringContaining('__jojoReaderGoToChapterProgress(0.45, "c2")'));
     expect(reader().props.source).toBe(source);
+  });
+
+  it("requests the visible chapter's reading position and accepts only its current session response", async () => {
+    await renderReader();
+    const source = reader().props.source;
+    await message({ type: "reader-chapter-request", chapterId: "c2" });
+    await message(page("c2", .5));
+    const player = view.root.findByType(NativeSpeechPlayer);
+    expect(player.props.chapterId).toBe("c2");
+    let position!: Promise<{ text: string; offset: number } | null>;
+    const received = vi.fn();
+    await act(async () => { position = player.props.getReadingPosition(); void position.then(received, () => undefined); });
+    const script = mocks.injectJavaScript.mock.calls.at(-1)![0] as string;
+    const requestId = Number(script.match(/__jojoReaderSpeechPosition\((\d+)\)/)![1]);
+    const expected = { text: "第二章正文，现在从这里接着听。", offset: 6 };
+    await message({ type: "reader-speech-position", requestId: requestId + 1, position: expected });
+    await act(async () => reader().props.onMessage({ nativeEvent: { data: JSON.stringify({ type: "reader-speech-position", requestId, position: expected, readerSessionId: "discarded-session" }) } }));
+    expect(received).not.toHaveBeenCalled();
+    await message({ type: "reader-speech-position", requestId, position: expected });
+    await expect(position).resolves.toEqual(expected);
+    expect(reader().props.source).toBe(source);
+  });
+
+  it("reveals the spoken chapter and returns to its text without rebuilding the continuous document", async () => {
+    mocks.playback.chapter = { id: "c2", title: "第二章", segments: ["第二章正在朗读的正文。"] };
+    await renderReader();
+    const source = reader().props.source;
+    const initialReader = reader();
+    await press("打开听读播放器");
+    await press("收起播放器");
+    await act(async () => { vi.advanceTimersByTime(90); });
+    expect(mocks.injectJavaScript).toHaveBeenCalledWith(expect.stringContaining('__jojoReaderInsertChapter("c2"'));
+    expect(mocks.injectJavaScript).toHaveBeenCalledWith(expect.stringContaining('__jojoReaderSpeechHighlight({"chapterId":"c2"'));
+    expect(reader()).toBe(initialReader);
+    expect(reader().props.source).toBe(source);
+    await message(page("c2", .4));
+    await press("展开听读播放器");
+    await act(async () => readerTool("原文").props.onPress());
+    expect(view.root.findAllByType("dialog")).toHaveLength(0);
+    expect(mocks.injectJavaScript).toHaveBeenLastCalledWith(expect.stringContaining('__jojoReaderSpeechHighlight({"chapterId":"c2"'));
+    expect(reader().props.source).toBe(source);
+    expect(mocks.loadChapter).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -555,16 +605,69 @@ describe.each([false, true])("reader listening visibility (eInk=%s)", (eInk) => 
     expect(view.root.findAllByProps({ accessibilityLabel: "展开听读播放器" })).toHaveLength(0);
   });
 
-  it("keeps the mobile reading toolbar visible until tapped without desktop listening tools", async () => {
+  it("keeps the floating listening launcher above the five reader tools until the reader is tapped", async () => {
     await renderReader(); await tick();
-    expect(view.root.findAllByProps({ accessibilityLabel: "打开听读播放器" })).toHaveLength(0);
+    const launcher = view.root.findByProps({ accessibilityLabel: "打开听读播放器" });
+    expect(launcher.props.style).toEqual(expect.arrayContaining([expect.objectContaining({ position: "absolute" }), expect.objectContaining({ bottom: 92 })]));
+    const toolbar = readerTool("目录").parent!;
+    expect(toolbar.findAllByType("button").map((button) => button.findAllByType("span").map((text) => text.props.children).join(""))).toEqual(["目录", "AI", "进度", "笔记", "文字"]);
+    expect(toolbar.findAllByProps({ accessibilityLabel: "打开听读播放器" })).toHaveLength(0);
     expect(view.root.findAllByProps({ accessibilityLabel: "返回书籍" })).toHaveLength(1);
     await readerTap();
     expect(view.root.findAllByProps({ accessibilityLabel: "打开听读播放器" })).toHaveLength(0);
     expect(view.root.findAllByProps({ accessibilityLabel: "返回书籍" })).toHaveLength(0);
     await readerTap();
     expect(view.root.findAllByProps({ accessibilityLabel: "返回书籍" })).toHaveLength(1);
+    expect(view.root.findAllByProps({ accessibilityLabel: "打开听读播放器" })).toHaveLength(1);
+  });
+
+  it("keeps the reader's expanded player open until it is explicitly collapsed", async () => {
+    await renderReader();
+    await press("打开听读播放器"); await tick();
+    expect(view.root.findAllByType("dialog")).toHaveLength(1);
+    expect(view.root.findAllByProps({ accessibilityLabel: "收起播放器" })).toHaveLength(1);
+    expect(mocks.playback.open).toHaveBeenCalledExactlyOnceWith(true);
+    expect(mocks.playback.close).not.toHaveBeenCalled();
+  });
+
+  it("hides and restores the reader mini player with the toolbar and tool panels without closing playback", async () => {
+    await renderReader();
+    await press("打开听读播放器"); await press("收起播放器"); await tick();
+    expect(view.root.findAllByProps({ accessibilityLabel: "展开听读播放器" })).toHaveLength(1);
+    await press("暂停听读");
+    expect(mocks.playback.toggle).toHaveBeenCalledOnce();
+    await readerTap(); await tick();
+    expect(view.root.findAllByProps({ accessibilityLabel: "展开听读播放器" })).toHaveLength(0);
+    await readerTap();
+    expect(view.root.findAllByProps({ accessibilityLabel: "展开听读播放器" })).toHaveLength(1);
+    for (const label of ["目录", "AI", "进度", "笔记", "文字"]) {
+      await act(async () => readerTool(label).props.onPress());
+      expect(view.root.findAllByProps({ accessibilityLabel: "展开听读播放器" })).toHaveLength(0);
+      await act(async () => readerTool(label).props.onPress());
+      expect(view.root.findAllByProps({ accessibilityLabel: "展开听读播放器" })).toHaveLength(1);
+    }
+    expect(mocks.playback.close).not.toHaveBeenCalled();
+    expect(mocks.playbackUnmount).not.toHaveBeenCalled();
+    await press("关闭听读");
+    expect(mocks.playback.close).toHaveBeenCalledOnce();
+    expect(view.root.findAllByProps({ accessibilityLabel: "打开听读播放器" })).toHaveLength(1);
+  });
+
+  it.each(["logout", "flag disabled", "flag belongs to another account", "reader loses focus"])("unmounts the active listening session when %s", async (reason) => {
+    await renderReader(); await press("打开听读播放器");
+    if (reason === "logout") mocks.user = null;
+    else if (reason === "flag disabled") mocks.enabled = false;
+    else if (reason === "flag belongs to another account") mocks.flagUserId = "another-reader";
+    else mocks.focused = false;
+    await act(async () => view.update(<BookReaderScreen {...readerProps} />));
+    expect(view.root.findAllByType("dialog")).toHaveLength(0);
     expect(view.root.findAllByProps({ accessibilityLabel: "打开听读播放器" })).toHaveLength(0);
+    expect(view.root.findAllByProps({ accessibilityLabel: "展开听读播放器" })).toHaveLength(0);
+    expect(mocks.playbackUnmount).toHaveBeenCalledOnce();
+    mocks.user = { id: "reader" }; mocks.enabled = true; mocks.flagUserId = "reader"; mocks.focused = true;
+    await act(async () => view.update(<BookReaderScreen {...readerProps} />));
+    expect(view.root.findAllByProps({ accessibilityLabel: "打开听读播放器" })).toHaveLength(1);
+    expect(view.root.findAllByType("dialog")).toHaveLength(0);
   });
 });
 

@@ -269,7 +269,7 @@ describe("BookReader", () => {
     expect(screen.queryByRole("button", { name: "切换纸张纹理" })).toBeNull();
   });
 
-  it.each([390, 1200])("shares the five reading tools and reserves listening and download for desktop at %spx", (width) => {
+  it.each([390, 767, 768, 1200])("shares five tools and keeps listening floating on mobile and in the desktop toolbar at %spx", (width) => {
     window.innerWidth = width;
     renderReader();
     const toolbar = screen.getByRole("navigation", { name: "阅读工具" });
@@ -277,12 +277,39 @@ describe("BookReader", () => {
       "打开目录", "打开书内 AI", "阅读进度", "阅读笔记", "文字设置",
     ]);
     expect(within(toolbar).getAllByRole("button")).toHaveLength(width < 768 ? 5 : 7);
-    expect(Boolean(screen.queryByRole("button", { name: "打开听本章播放器" }))).toBe(width >= 768);
+    const listeningButton = screen.getByRole("button", { name: "打开听本章播放器" });
+    expect(toolbar.contains(listeningButton)).toBe(width >= 768);
     expect(Boolean(screen.queryByRole("button", { name: "下载整本 EPUB" }))).toBe(width >= 768);
     expect(within(document.querySelector("header")!).queryByText(/全书|%/)).toBeNull();
     fireEvent.click(within(toolbar).getByRole("button", { name: "打开目录" }));
     fireEvent.click(screen.getByRole("tab", { name: "⌕ 搜本书" }));
     expect(screen.getByRole("textbox", { name: "搜索全书正文" })).toBeTruthy();
+  });
+
+  it("keeps the listening player mounted when moving between mobile and desktop widths", () => {
+    window.innerWidth = 390;
+    useAccountSessionStore.setState({ userId: null });
+    renderReader();
+    fireEvent.click(screen.getByRole("button", { name: "打开听本章播放器" }));
+    const dialog = screen.getByRole("dialog", { name: "登录后听读" });
+
+    for (const width of [1200, 390]) {
+      window.innerWidth = width;
+      fireEvent.resize(window);
+      expect(screen.getByRole("dialog", { name: "登录后听读" })).toBe(dialog);
+      const launcher = screen.getByRole("button", { name: "打开听本章播放器" });
+      expect(screen.getByRole("navigation", { name: "阅读工具" }).contains(launcher)).toBe(width >= 768);
+    }
+    fireEvent.click(screen.getByRole("button", { name: "暂不登录" }));
+    expect(screen.queryByRole("dialog", { name: "登录后听读" })).toBeNull();
+    expect(screen.getByRole("button", { name: "打开听本章播放器" })).toBeTruthy();
+  });
+
+  it.each([390, 1200])("respects the listening feature flag at %spx", (width) => {
+    window.innerWidth = width;
+    useFeatureFlagStore.setState({ flags: { ...useFeatureFlagStore.getState().flags, "reader.speech": false } });
+    renderReader();
+    expect(screen.queryByRole("button", { name: "打开听本章播放器" })).toBeNull();
   });
 
   it.each([390, 1200])("keeps tool panels draggable only on mobile at %spx", (width) => {
@@ -929,7 +956,7 @@ describe("BookReader", () => {
     expect(screen.queryByRole("dialog", { name: "写想法" })).toBeNull();
   });
 
-  it.each([1200])("hides listening controls while reader panels are open at %ipx", (width) => {
+  it.each([390, 1200])("hides listening controls while reader panels are open at %ipx", (width) => {
     window.innerWidth = width;
     const { container } = renderReader();
     const launcher = screen.getByRole("button", { name: "打开听本章播放器" });
@@ -967,7 +994,7 @@ describe("BookReader", () => {
     fireEvent.click(within(composer).getByRole("button", { name: "取消写想法" }));
     expect(screen.queryByRole("dialog", { name: "写想法" })).toBeNull();
     expect(screen.queryByRole("toolbar", { name: "选中文字工具" })).toBeNull();
-    expect(Boolean(screen.queryByRole("button", { name: "打开听本章播放器" }))).toBe(width >= 768);
+    expect(screen.getByRole("button", { name: "打开听本章播放器" })).toBeTruthy();
     expect(annotationApi.createAnnotation).not.toHaveBeenCalled();
   });
 

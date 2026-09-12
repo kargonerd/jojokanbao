@@ -294,21 +294,26 @@ export function createBookReaderBridgeScript(
       }
 
       var speechReader = null;
+      var speechRoot = null;
       var speechBottomInset = 80;
-      function ensureSpeechReader() {
-        if (!speechReader && articleRoot()) speechReader = ${SPEECH_READER_FACTORY}(articleRoot(), function () {
-          return { left: 0, top: 64, right: window.innerWidth, bottom: window.innerHeight - speechBottomInset };
-        }, ${jsonArgument(SPEECH_EXCLUDED_ELEMENTS)});
-        return speechReader;
+      function ensureSpeechReader(chapterId) {
+        var root = articleRoot(chapterId);
+        if (root && root !== speechRoot) {
+          speechRoot = root;
+          speechReader = ${SPEECH_READER_FACTORY}(root, function () {
+            return { left: 0, top: 64, right: window.innerWidth, bottom: window.innerHeight - speechBottomInset };
+          }, ${jsonArgument(SPEECH_EXCLUDED_ELEMENTS)});
+        }
+        return root ? speechReader : null;
       }
       window.__jojoReaderSpeechPosition = function (requestId) {
         speechBottomInset = 80;
         if (ensureSpeechReader()) post({ type: "reader-speech-position", requestId: requestId, position: speechReader.read() });
       };
       window.__jojoReaderSpeechHighlight = function (location, reveal) {
-        if (!ensureSpeechReader()) return;
         if (!location) return;
-        if (document.querySelector("[data-book-content]")?.getAttribute("data-target-id") !== location.chapterId) return;
+        var root = articleRoot(location.chapterId);
+        if (!root || chapterOf(root) !== location.chapterId || !ensureSpeechReader(location.chapterId)) return;
         speechBottomInset = 128;
         speechReader.show(location.segments, location.index, reveal ? function (range) {
           var rect = range.getClientRects()[0];

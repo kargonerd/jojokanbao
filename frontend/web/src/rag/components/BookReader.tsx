@@ -1154,7 +1154,7 @@ export function BookReader({
       {!mobileViewport && speechEnabled && speechControl && <div ref={setSpeechLauncherTarget} className="book-desktop-speech shrink-0" />}
       {!mobileViewport && onDownload && <button type="button" onClick={onDownload} className="book-mobile-tool" aria-label="下载整本 EPUB"><IoDownloadOutline aria-hidden="true" /><span>下载</span></button>}
     </nav>
-    {!mobileViewport && speechEnabled && speechControl}
+    {speechEnabled && speechControl}
 
     {(tocOpen || searchOpen) && <BookNavigationSheet mobile={mobileViewport} tab={tocOpen ? "toc" : "search"} onTabChange={openPanel} onClose={() => { setTocOpen(false); setSearchOpen(false); }} panelClass={panelClass}>
       {tocOpen ? <><div className="book-toc-book-title"><strong>{bookTitle}</strong><span>{logicalChapterCount ? `${logicalChapterCount} 章 · ` : ""}{characterCount.toLocaleString()} 字</span></div><label className="book-toc-filter"><input value={tocQuery} onChange={(event) => setTocQuery(event.target.value)} placeholder="筛选目录" aria-label="搜索目录" className="book-toc-search" /></label>{tocList}</> : <BookSearchPanel embedded bookTitle={bookTitle} panelClass={panelClass} onClose={() => setSearchOpen(false)} onJump={locateSearchResult} onSearch={onSearch} />}

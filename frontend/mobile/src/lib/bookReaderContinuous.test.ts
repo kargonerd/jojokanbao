@@ -7,6 +7,8 @@ import {
   createBookReaderBridgeScript,
   createBookReaderInsertChapterScript,
   createBookReaderRevealAnchorScript,
+  createBookReaderSpeechPositionScript,
+  createBookReaderSpeechHighlightScript,
   type BookReaderAnnotationMarker,
   type BookReaderMessage,
 } from "./bookReaderBridge";
@@ -48,6 +50,7 @@ describe("continuous chapter WebView bridge", () => {
   let removeListeners: Array<() => void>;
   let scrollYDescriptor: PropertyDescriptor | undefined;
   let rangeRectDescriptor: PropertyDescriptor | undefined;
+  let rangeRectsDescriptor: PropertyDescriptor | undefined;
   let scrollIntoViewDescriptor: PropertyDescriptor | undefined;
 
   function root(chapterId: string) {
@@ -116,6 +119,7 @@ describe("continuous chapter WebView bridge", () => {
     scrollPosition = 0;
     scrollYDescriptor = Object.getOwnPropertyDescriptor(window, "scrollY");
     rangeRectDescriptor = Object.getOwnPropertyDescriptor(Range.prototype, "getBoundingClientRect");
+    rangeRectsDescriptor = Object.getOwnPropertyDescriptor(Range.prototype, "getClientRects");
     scrollIntoViewDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView");
     Object.defineProperty(window, "scrollY", { configurable: true, get: () => scrollPosition });
     vi.stubGlobal("innerWidth", 400);
@@ -153,6 +157,10 @@ describe("continuous chapter WebView bridge", () => {
         return new DOMRect(20, element.getBoundingClientRect().top + 20, 100, 24);
       },
     });
+    Object.defineProperty(Range.prototype, "getClientRects", {
+      configurable: true,
+      value: function (this: Range) { return [this.getBoundingClientRect()]; },
+    });
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
       configurable: true,
       value: vi.fn(function (this: HTMLElement) {
@@ -173,6 +181,8 @@ describe("continuous chapter WebView bridge", () => {
     if (scrollYDescriptor) Object.defineProperty(window, "scrollY", scrollYDescriptor);
     if (rangeRectDescriptor) Object.defineProperty(Range.prototype, "getBoundingClientRect", rangeRectDescriptor);
     else Reflect.deleteProperty(Range.prototype, "getBoundingClientRect");
+    if (rangeRectsDescriptor) Object.defineProperty(Range.prototype, "getClientRects", rangeRectsDescriptor);
+    else Reflect.deleteProperty(Range.prototype, "getClientRects");
     if (scrollIntoViewDescriptor) Object.defineProperty(HTMLElement.prototype, "scrollIntoView", scrollIntoViewDescriptor);
     else Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
     for (const key of Object.keys(window)) {
@@ -180,6 +190,35 @@ describe("continuous chapter WebView bridge", () => {
     }
     document.body.innerHTML = "";
     delete document.body.dataset.readingMode;
+  });
+
+  it("reads listening positions from the visible chapter after scrolling both ways", () => {
+    mount();
+    const first = root("chapter-1");
+    const second = root("chapter-2");
+    execute(createBookReaderSpeechPositionScript(1));
+    expect(messages.at(-1)).toMatchObject({ type: "reader-speech-position", requestId: 1, position: { text: expect.stringContaining("前章正文") } });
+    window.scrollTo(0, 1700);
+    execute(createBookReaderSpeechPositionScript(2));
+    expect(messages.at(-1)).toMatchObject({ type: "reader-speech-position", requestId: 2, position: { text: expect.stringContaining("甲乙丙丁戊己") } });
+    expect(JSON.stringify(messages.at(-1))).not.toContain("前章正文");
+    window.scrollTo(0, 0);
+    execute(createBookReaderSpeechPositionScript(3));
+    expect(messages.at(-1)).toMatchObject({ type: "reader-speech-position", requestId: 3, position: { text: expect.stringContaining("前章正文") } });
+    expect(root("chapter-1")).toBe(first);
+    expect(root("chapter-2")).toBe(second);
+  });
+
+  it("reveals a listening passage in its loaded chapter without replacing adjacent content", () => {
+    mount();
+    const first = root("chapter-1");
+    const second = root("chapter-2");
+    execute(createBookReaderSpeechHighlightScript({ chapterId: "chapter-2", segments: ["甲乙丙丁戊己"], index: 0 }, true));
+    expect(window.scrollY).toBeGreaterThan(1600);
+    execute(createBookReaderSpeechHighlightScript({ chapterId: "chapter-1", segments: ["前章正文，长度不同。"], index: 0 }, true));
+    expect(window.scrollY).toBeLessThan(1600);
+    expect(root("chapter-1")).toBe(first);
+    expect(root("chapter-2")).toBe(second);
   });
 
   it("reports selected text offsets relative to the appended chapter rather than the whole document", () => {
