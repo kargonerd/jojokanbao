@@ -28,6 +28,9 @@ applications.ts / rag-tools.ts
 切换 provider 时清空旧的 model 覆盖，或指定该 provider 的模型；错误组合会直接报错。
 本地 `pnpm dev:agent` 从仓库根目录 `.env`、`.env.local` 读取配置，进程环境变量优先级最高；
 修改后重启服务。部署端在国际 Agent 的 EdgeOne Makers 项目环境变量中修改，再重新部署。
+Git worktree 没有自己的环境文件时，本地服务复用主工作区的环境文件；此时若也没有本地
+`agent/auth.json`，则直接使用主工作区的 Agent 登录文件。显式配置的凭据路径和 worktree
+已有的登录文件优先，不复制 OAuth 凭据。
 管理台的 provider 下拉框只决定上传哪套凭据，不切换运行模型。
 
 ```dotenv
