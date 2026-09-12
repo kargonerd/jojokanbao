@@ -76,7 +76,7 @@ def test_absent_array_uses_legacy_key(monkeypatch):
 def test_primary_optional_and_single_key_still_supported():
     assert PooledMimoProvider().available(configured(mimo_api_keys=("second",)))
     assert configured(mimo_api_key="first").mimo_keys == ("first",)
-    assert not PooledMimoProvider().available(configured(tts_enabled=False, mimo_api_keys=("second",)))
+    assert not PooledMimoProvider().available(configured())
 
 
 def test_least_busy_rotation_and_cooldown():

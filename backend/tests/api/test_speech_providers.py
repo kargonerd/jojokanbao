@@ -130,7 +130,7 @@ def test_production_uses_frontend_only_login(client, monkeypatch):
     app.dependency_overrides[get_settings] = lambda: Settings(
         environment="production", allowed_origins=(), supabase_url=None,
         supabase_publishable_key=None, auth_timeout_seconds=1,
-        mimo_api_key="secret", tts_enabled=True)
+        mimo_api_key="secret")
     async def generate(*args):
         return AudioResult(b"RIFF-test-WAVE", "audio/wav", "wav")
     monkeypatch.setattr(PROVIDERS["mimo"], "synthesize", generate)
@@ -138,28 +138,30 @@ def test_production_uses_frontend_only_login(client, monkeypatch):
     assert client.get("/v1/speech/providers").json()["requiresAuth"] is False
 
 
-def test_production_synthesis_defaults_off_and_key_not_in_repr(monkeypatch):
+@pytest.mark.parametrize("key,expected_provider", [("", "edge"), ("server-only-secret", "mimo")])
+def test_production_synthesis_uses_configured_providers(client, monkeypatch, key, expected_provider):
     monkeypatch.setenv("JOJO_ENV", "production")
     monkeypatch.setenv("JOJO_ALLOWED_ORIGINS", "https://reader.example.com")
-    monkeypatch.setenv("MIMO_API_KEY", "server-only-secret")
-    monkeypatch.delenv("JOJO_TTS_ENABLED", raising=False)
-    assert Settings.from_env().tts_enabled is False
-    assert "server-only-secret" not in repr(Settings.from_env())
-
-
-@pytest.mark.parametrize("enabled", ["true", "false"])
-def test_one_environment_switch_controls_both_providers(monkeypatch, enabled):
-    monkeypatch.setenv("JOJO_ENV", "production")
-    monkeypatch.setenv("JOJO_ALLOWED_ORIGINS", "https://reader.example.com")
-    monkeypatch.setenv("JOJO_TTS_ENABLED", enabled)
-    monkeypatch.setenv("MIMO_API_KEY", "server-only-secret")
+    monkeypatch.setenv("JOJO_SPEECH_STORAGE", "local")
+    monkeypatch.setenv("JOJO_SPEECH_CACHE_ENABLED", "false")
+    monkeypatch.setenv("MIMO_API_KEY", key)
+    monkeypatch.delenv("MIMO_API_KEYS", raising=False)
     settings = Settings.from_env()
-    assert settings.tts_enabled is (enabled == "true")
-    assert all(provider.available(settings) is (enabled == "true") for provider in PROVIDERS.values())
+    app.dependency_overrides[get_settings] = lambda: settings
+    calls = []
 
+    async def edge(*args):
+        calls.append("edge")
+        return AudioResult(b"edge-audio", "audio/mpeg", "mp3")
 
-def test_synthesis_switch_rejects_invalid_values(monkeypatch):
-    monkeypatch.setenv("JOJO_ENV", "test")
-    monkeypatch.setenv("JOJO_TTS_ENABLED", "maybe")
-    with pytest.raises(RuntimeError, match="JOJO_TTS_ENABLED must be a boolean"):
-        Settings.from_env()
+    async def mimo(*args):
+        calls.append("mimo")
+        return AudioResult(b"RIFF-test-WAVE", "audio/wav", "wav")
+
+    monkeypatch.setattr(PROVIDERS["edge"], "synthesize", edge)
+    monkeypatch.setattr(PROVIDERS["mimo"], "synthesize", mimo)
+    catalog = client.get("/v1/speech/providers?v=2").json()["providers"][0]
+    assert catalog["available"] is True and catalog["canGenerate"] is True
+    assert client.post("/v1/speech", json={"text": "原文"}).status_code == 200
+    assert calls == [expected_provider]
+    assert "server-only-secret" not in repr(settings)

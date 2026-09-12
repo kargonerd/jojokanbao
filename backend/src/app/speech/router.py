@@ -53,6 +53,7 @@ async def speech_providers(settings: Settings = Depends(get_settings), v: int = 
                            for voice, label in (("male", "男声"), ("female", "女声"))],
             }],
         }
+    can_generate = any(provider.available(settings) for provider in PROVIDERS.values())
     return {
         "defaultProvider": "auto",
         "defaultVoice": "male",
@@ -61,8 +62,8 @@ async def speech_providers(settings: Settings = Depends(get_settings), v: int = 
         "cdnBase": settings.speech_cdn_base if settings.speech_storage == "b2" else None,
         "providers": [{
             "id": "auto", "label": "在线朗读", "description": "",
-            "available": settings.tts_enabled or settings.speech_storage == "b2",
-            "canGenerate": settings.tts_enabled,
+            "available": can_generate or settings.speech_storage == "b2",
+            "canGenerate": can_generate,
             "streaming": streaming.available(settings),
             "cacheVersion": delivery_version("auto"),
             "voices": [{"id": "male", "label": "男声", "description": ""},

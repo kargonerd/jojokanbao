@@ -104,7 +104,7 @@ async def run_pool(args, settings):
     publish_only = getattr(args, "publish_only", False)
     if type(publish_workers) is not int or not 1 <= publish_workers <= MAX_PUBLICATION_WORKERS:
         raise ValueError("publish_workers must be between 1 and 64")
-    if settings.speech_storage != "b2" or not settings.mimo_api_key or not settings.tts_enabled:
+    if settings.speech_storage != "b2" or not settings.mimo_api_key:
         raise ValueError("B2/MiMo synthesis configuration is required")
     keys = [settings.mimo_api_key]
     account_count = getattr(args, "accounts", 1)

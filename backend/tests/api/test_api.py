@@ -253,8 +253,10 @@ def test_speech_rejects_unknown_voice() -> None:
     assert response.json()["error"]["code"] == "invalid_request"
 
 
-def test_speech_can_be_disabled(monkeypatch) -> None:
-    app.dependency_overrides[get_settings] = lambda: settings(tts_enabled=False)
+def test_speech_returns_503_when_no_provider_is_available(monkeypatch) -> None:
+    app.dependency_overrides[get_settings] = lambda: settings()
+    for provider in speech_providers.PROVIDERS.values():
+        monkeypatch.setattr(provider, "available", lambda _: False)
     try:
         response = client.post("/v1/speech", json={"text": "正文"})
     finally:

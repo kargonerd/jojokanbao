@@ -113,12 +113,11 @@ python tools/speech/generate.py --plan <绝对路径/library-plan.json> --provid
 
 这会产生 B2 写入和提供方调用；必须人工明确授权。中断后重复同一命令会复用已提交的段。
 
-## 前端灰度与客户端
+## 客户端听读
 
-`reader.speech` 是 Web、Desktop、Android、iOS 和墨水屏 Android 共用的前端 flag，默认关闭。
-迁移 `202609050001_reader_speech_flag.sql` 只创建关闭规则；通过现有 feature flag 管理界面按用户灰度开启。
-缺少配置、评估失败均不开放听读。登录退出/flag 关闭后停止播放。
-它与 `JOJO_TTS_ENABLED` 不同：后者只控制后端能否生成新音频，不影响 CDN 已有音频。
+听读是 Web、Desktop、Android、iOS 和墨水屏 Android 的常规功能，不再由 `reader.speech` 控制。
+退出登录后停止播放。新客户端直接读取服务端声音能力，旧 flag 行和接口保留供已安装客户端兼容使用。
+服务端也不再设独立合成开关，优先复用 CDN 已有音频；MiMo 需配置服务端密钥，自动模式在 MiMo 不可用时回退到 Edge。
 
 Desktop 复用网页播放器，通过固定白名单的 `jojo-agent://reader/api/v1/speech*` 访问 API。
 Mobile 使用 expo-audio 播放相同 CDN MP3，支持系统媒体控件、跨段进度、续听和定时关闭。
@@ -291,7 +290,6 @@ JOJO_SPEECH_S3_BUCKET=jojo-newspaper
 JOJO_SPEECH_S3_KEY_ID=<已有B2 key id>
 JOJO_SPEECH_S3_APPLICATION_KEY=<已有B2 application key>
 JOJO_SPEECH_CDN_BASE=https://blacknews.jojokanbao.cn
-JOJO_TTS_ENABLED=true
 MIMO_API_KEYS=["<key-1>","<key-2>"]
 ```
 
@@ -311,10 +309,9 @@ Key 不进入缓存哈希、音频地址、前端或日志，已有缓存无需�
 
 部署配置将 Python 超时设为 120 秒，API 等待上限 110 秒。MiMo HTTP 读取体积上限 16 MiB，
 交付编码音频上限 12 MiB，不等于进程峰值内存（JSON/Base64/编码仍有多份缓冲）。
-`JOJO_TTS_ENABLED` 是唯一的新音频合成总开关，统一作用于 Edge/MiMo 和手工预生成工具。
-设为 `false` 时只复用已有缓存，不调用 TTS；设为 `true` 时允许生成缺失音频，MiMo 另需配置 Key。
-开发默认开启、生产默认关闭。配置在进程启动时读取，修改后需重启后端或重新部署。
-已存音频可继续从 CDN 使用，开关不改变音频地址或缓存哈希。
+线上缺失音频按服务商配置合成；手工预生成工具仍要求 B2 和单个 MiMo Key，并保留独立预算，不回退到 Edge。
+开发和生产不再有不同的合成开关默认值。密钥等配置在进程启动时读取，修改后需重启后端或重新部署。
+已存音频可继续从 CDN 使用，音频地址和缓存哈希不变。
 不加后端登录/音频鉴权是产品选择：公开地址及合成接口都可能被绕过 UI 直接使用，
 2 段并发上限是单进程保护，不是账户总预算或防盗刷保障。
 
