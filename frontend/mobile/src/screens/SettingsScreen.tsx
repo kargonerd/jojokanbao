@@ -1,7 +1,6 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { ARCHIVE_WEB_ORIGIN, FEEDBACK_BILIBILI_URL, FEEDBACK_QQ_GROUP, PROJECT_COPYRIGHT_NOTICES, type TimesSourceRef } from "@jojo/content";
 import { useNavigation, useRoute, type NavigationProp, type RouteProp } from "@react-navigation/native";
-import { nativeApplicationVersion } from "expo-application";
 import * as Clipboard from "expo-clipboard";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -18,7 +17,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ScreenHeader } from "../components/ScreenHeader";
-import { OtaUpdatePanel } from "../components/OtaUpdatePanel";
+import { AppVersionInfo } from "../components/AppVersionInfo";
 import { SectionTitle } from "../components/SectionTitle";
 import { IS_EINK_RELEASE } from "../config/appVariant";
 import { checkNativeAppUpdate, openNativeAppUpdate } from "../lib/appUpdate";
@@ -403,9 +402,8 @@ export function SettingsScreen() {
           <View style={[styles.panel, { backgroundColor: theme.paper, borderColor: theme.rule }]}>
             <View style={[styles.about, { borderBottomColor: theme.rule }]}>
               <Text style={[styles.aboutTitle, { color: theme.ink, fontFamily: theme.serif }]}>JOJO 看报</Text>
-              <Text style={[styles.aboutVersion, { color: theme.muted, fontFamily: theme.sans }]}>{nativeApplicationVersion ?? "0.0.1"}</Text>
             </View>
-            <OtaUpdatePanel />
+            <AppVersionInfo />
             {Platform.OS === "android" ? (
               <Pressable
                 accessibilityRole="button"
@@ -505,7 +503,6 @@ const styles = StyleSheet.create({
   updateMessage: { minHeight: 42, borderBottomWidth: StyleSheet.hairlineWidth, paddingVertical: 12, fontSize: 11, lineHeight: 17 },
   about: { minHeight: 58, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: "row", alignItems: "center" },
   aboutTitle: { flex: 1, fontSize: 13, fontWeight: "800" },
-  aboutVersion: { fontSize: 10, fontWeight: "700" },
   aboutParagraph: { paddingVertical: 12, fontSize: 14, lineHeight: 24 },
   feedbackGroup: { minHeight: 58, borderTopWidth: StyleSheet.hairlineWidth, flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 12 },
   copyGroupButton: { minHeight: 44, paddingHorizontal: 4, justifyContent: "center" },
