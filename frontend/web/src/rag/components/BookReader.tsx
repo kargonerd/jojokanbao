@@ -1119,7 +1119,7 @@ export function BookReader({
   const shellClass = isDark ? "bg-[#151716] text-[#deded8]" : paperColor === "white" ? "bg-[#edf0f0] text-ink" : "bg-[#e8e9e4] text-ink";
   const pageClass = isDark ? "bg-[#202321]" : paperColor === "white" ? "bg-white" : "bg-[#fbfaf6]";
   const panelClass = isDark ? "bg-[#242725] text-[#deded8] border-[#393d3a]" : "bg-[#fbfaf6] text-ink border-[#d8d8d1]";
-  const chromeClass = isDark ? "border-[#303431] bg-[#151716]/90" : paperColor === "white" ? "border-[#d6d8d3] bg-[#edf0f0]/90" : "border-[#d6d8d3] bg-[#e8e9e4]/90";
+  const chromeClass = isDark ? "border-[#303431] bg-[#151716]" : paperColor === "white" ? "border-[#d6d8d3] bg-[#edf0f0]" : "border-[#d6d8d3] bg-[#e8e9e4]";
   const firstPhysicalPage = pageMetrics.page * pageMetrics.columnsPerSpread + 1;
   const lastPhysicalPage = Math.min(firstPhysicalPage + pageMetrics.columnsPerSpread - 1, pageMetrics.physicalPages);
 
