@@ -6,7 +6,6 @@ import { ReadingBookshelfContext } from "../src/reading/ReadingBookshelfContext"
 import { DEFAULT_SPEECH_PROVIDERS, speechSegments, splitSpeechText, speechKey, speechObjectBase } from "../src/reading/speech";
 import { readSpeechProgress, saveSpeechProgress, speechFingerprint } from "../src/reading/speechProgress";
 import { useAccountSessionStore } from "../src/account/session";
-import { useFeatureFlagStore } from "../src/featureFlags";
 
 class AudioMock extends EventTarget {
   static instances: AudioMock[] = [];
@@ -199,7 +198,7 @@ describe("reader speech", () => {
   });
 
   beforeEach(() => {
-    useFeatureFlagStore.setState((state) => ({ flags: { ...state.flags, "reader.speech": true } }));
+
     useAccountSessionStore.setState({ initialized: true, userId: "test-reader" });
     window.localStorage.clear();
     vi.stubGlobal("Audio", AudioMock);
@@ -441,20 +440,22 @@ describe("reader speech", () => {
     expect(audio.pause).toHaveBeenCalledTimes(pauses);
   });
 
-  it("makes no network requests and renders no launcher with the rollout flag off", () => {
-    useFeatureFlagStore.setState((state) => ({ flags: { ...state.flags, "reader.speech": false } }));
+  it("makes no network requests when a signed-out reader opens the login prompt", () => {
+    useAccountSessionStore.setState({ userId: null });
     const { container } = render(<SpeechPlayer segments={["正文"]} label="听本章" />);
-    expect(container.childElementCount).toBe(0);
+    expect(container.childElementCount).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: "打开听本章播放器" }));
+    expect(screen.getByRole("dialog", { name: "登录后听读" })).toBeTruthy();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("stops playback when the rollout flag is disabled", async () => {
+  it("stops playback when the reader signs out", async () => {
     render(<SpeechPlayer segments={["正文"]} label="听本章" />);
     fireEvent.click(screen.getByRole("button", { name: "打开听本章播放器" }));
     fireEvent.click(screen.getByRole("button", { name: "开始听读" }));
     await waitFor(() => expect(AudioMock.instances.at(-1)?.play).toHaveBeenCalled());
     const audio = AudioMock.instances.at(-1)!;
-    act(() => useFeatureFlagStore.setState((state) => ({ flags: { ...state.flags, "reader.speech": false } })));
+    act(() => useAccountSessionStore.setState({ userId: null }));
     expect(audio.pause).toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "暂停听读" })).toBeNull();
   });

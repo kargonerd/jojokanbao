@@ -56,13 +56,11 @@ jobs:
       EDGEONE_PROJECT_NAME: ${{ vars.EDGEONE_PROJECT_NAME || 'jojo-reader' }}
       EDGEONE_DEPLOY_ENV: ${{ github.event_name == 'pull_request' && 'preview' || github.event_name == 'workflow_dispatch' && inputs.environment || github.ref == 'refs/heads/master' && 'preview' || 'production' }}
       # Relevant master changes automatically publish the public Beta channel.
-      # Production tags remain stable until its redesign flag is enabled.
-      VITE_ENABLE_PLATFORM_REDESIGN: ${{ (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'preview') || (github.event_name == 'push' && github.ref == 'refs/heads/master')) && 'true' || vars.VITE_ENABLE_PLATFORM_REDESIGN || 'false' }}
+      # Production tags publish the stable release channel using the same interface.
       VITE_RELEASE_CHANNEL: ${{ (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'preview') || (github.event_name == 'push' && github.ref == 'refs/heads/master')) && 'beta' || 'stable' }}
       VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
       VITE_POSTHOG_TOKEN: ${{ vars.POSTHOG_PROJECT_TOKEN }}
       VITE_POSTHOG_HOST: ${{ vars.POSTHOG_API_HOST }}
-      VITE_FEATURE_FLAG_PROVIDER: ${{ vars.FEATURE_FLAG_PROVIDER || 'supabase' }}
       VITE_APP_VERSION: ${{ github.sha }}
       VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
       VITE_CONTENT_CDN_BASE: ${{ vars.VITE_CONTENT_CDN_BASE || 'https://blacknews.jojokanbao.cn/' }}

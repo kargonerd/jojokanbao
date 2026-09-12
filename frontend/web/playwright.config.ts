@@ -21,7 +21,6 @@ export default defineConfig({
     reuseExistingServer: !ci,
     timeout: 240_000,
     env: {
-      VITE_ENABLE_PLATFORM_REDESIGN: "true",
       ...(ci ? {
         // Load the account UI without depending on repository variables or a
         // real auth backend. Reading an empty browser session is local-only.

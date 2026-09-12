@@ -4,11 +4,9 @@ import type { RootStackParamList } from "../navigation/types";
 import { loadMobileBookshelf, setMobileBookshelf, type MobileBookshelfEntry } from "./accountData";
 import { useMobileAuthStore } from "./auth";
 import { useRetryOnFailure } from "../lib/useRetryOnFailure";
-import { useMobileFeatureFlag } from "../reading/featureFlag";
 
 // One shelf request per focused screen, not one request for every book card.
 export function useBookshelf() {
-  const enabled = useMobileFeatureFlag("library.bookshelf");
   const userId = useMobileAuthStore((state) => state.user?.id);
   const navigation = useNavigation<NavigationProp<RootStackParamList>>();
   const [entries, setEntries] = useState<MobileBookshelfEntry[]>([]);
@@ -27,10 +25,10 @@ export function useBookshelf() {
     if (owner.current !== userId) setEntries([]);
     owner.current = userId;
     setError("");
-    setLoading(Boolean(userId && enabled));
+    setLoading(Boolean(userId));
     setBusyKey("");
     busy.current = false;
-    if (userId && enabled) void loadMobileBookshelf({
+    if (userId) void loadMobileBookshelf({
       onUpdate: (items) => { if (request === generation.current) { setEntries(items); setError(""); } },
       onError: () => { if (request === generation.current) setError("书架暂时无法同步，继续显示本地内容。"); },
     })
@@ -38,10 +36,9 @@ export function useBookshelf() {
       .catch(() => { if (request === generation.current) setError("书架状态暂时无法读取，点击书架按钮重试。"); })
       .finally(() => { if (request === generation.current) setLoading(false); });
     return () => { generation.current++; };
-  }, [userId, enabled, retryToken]));
+  }, [userId, retryToken]));
 
   async function toggle(key: string, resolveEntry: () => Promise<MobileBookshelfEntry | undefined>) {
-    if (!enabled) return;
     if (!userId) { navigation.navigate("Account"); return; }
     if (loading || busy.current) return;
     busy.current = true;
@@ -64,5 +61,5 @@ export function useBookshelf() {
     }
   }
 
-  return { enabled, entries: enabled && owner.current === userId ? entries : [], loading, error, busyKey, toggle, reload };
+  return { entries: owner.current === userId ? entries : [], loading, error, busyKey, toggle, reload };
 }

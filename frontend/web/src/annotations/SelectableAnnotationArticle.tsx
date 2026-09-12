@@ -3,7 +3,6 @@ import type { ReaderSelectionRect } from "@jojo/ui/reader-selection";
 import { IoCopyOutline, IoCreateOutline, IoSparklesOutline } from "react-icons/io5";
 import { ReaderSelectionPopover } from "../reading/ReaderSelectionPopover";
 import { useAccountSessionStore } from "../account/session";
-import { useFeatureFlag } from "../featureFlags";
 import { AnnotationDiscussionPanel } from "./AnnotationDiscussionPanel";
 import { CommentVisibilityControl } from "./CommentVisibilityControl";
 import { renderAnnotationMarks, textAnchorFromRange } from "./domAnchors";
@@ -25,9 +24,8 @@ export function SelectableAnnotationArticle({
   children: ReactNode;
   onExplain?: (anchor: TextAnchor) => void;
 }) {
-  const enabled = useFeatureFlag("reader.annotations");
   const currentUserId = useAccountSessionStore((state) => state.userId);
-  const access = enabled && Boolean(currentUserId);
+  const access = Boolean(currentUserId);
   const explanationAccess = Boolean(currentUserId && onExplain);
   const annotations = useAnnotationThreads(subject, access, currentUserId);
   const rootRef = useRef<HTMLDivElement>(null);

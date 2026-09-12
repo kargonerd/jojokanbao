@@ -42,10 +42,14 @@ before(async () => {
   await db.query(`update private.feature_flags set config = config || $1::jsonb where key='ai.usage_limits'`, [JSON.stringify({...ai, reserved: 'retain'})]);
   await db.query(`insert into private.agent_usage_state(user_id, usage_day, day_count, active_request_id, active_until)
     values ($1, (clock_timestamp() at time zone 'Asia/Shanghai')::date, 50, $2, clock_timestamp() + interval '1 hour')`, [user, request]);
+  await db.exec(await migration('202609050001_reader_speech_flag'));
+  // These retired keys exist in production, but are no longer seeded on fresh databases.
+  await db.exec("insert into private.feature_flags(key,description,rules) select key,'Legacy workspace','[{\"conditionType\":\"global\",\"serve\":false,\"enabled\":true,\"isFallback\":true}]'::jsonb from unnest(array['rag.workspace','olds.workspace']) key");
   beforeMigration = await queryValue('select jsonb_agg(to_jsonb(f) order by key) as value from private.feature_flags f');
   beforeUsage = await queryValue('select to_jsonb(s) as value from private.agent_usage_state s');
   await db.exec(await migration('202609110001_posthog_product_flags'));
   await db.exec(await migration('202609120001_posthog_runtime_config'));
+  await db.exec(await migration('202609120002_retire_product_flags'));
 });
 after(async () => db.close());
 beforeEach(async () => {
@@ -148,4 +152,19 @@ test('server admission reads new limits immediately but retains existing counter
   result = await queryValue('select public.acquire_agent_usage($1,$2,$3) as value', [token, user, request]);
   assert.equal(result.allowed, false); assert.equal(result.reason, 'daily'); assert.equal(result.limit, 40);
   assert.equal(await queryValue('select day_count as value from private.agent_usage_state where user_id=$1', [user]), 50);
+});
+
+test('retired rollouts disappear from management while config, history and old client RPCs remain', async () => {
+  const flags = await queryValue('select public.operator_list_feature_flags($1) as value', [token]);
+  const retired = ['library.bookshelf', 'reader.speech', 'rag.workspace', 'olds.workspace'];
+  assert.ok(retired.every(key => !flags.some(flag => flag.key === key)));
+  assert.ok(flags.some(flag => flag.key === 'reader.annotations' && flag.configProvider === 'posthog'));
+  for (const key of [...retired, 'reader.annotations']) {
+    const current = await snapshot(key);
+    assert.equal(current.rolloutProvider, 'retired');
+    assert.deepEqual(current.rules, beforeMigration.find(flag => flag.key === key).rules);
+    assert.deepEqual(current.history, beforeMigration.find(flag => flag.key === key).history);
+  }
+  const legacy = await queryValue("select jsonb_agg(row_to_json(f)) as value from public.get_my_feature_flags(array['library.bookshelf','reader.annotations','reader.speech'], null) f");
+  assert.equal(legacy.length, 3);
 });

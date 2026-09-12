@@ -6,18 +6,16 @@ import {
   ARCHIVE_PUBLICATIONS,
   ARCHIVE_PUBLICATION_BY_ID,
   ARCHIVE_PUBLICATION_NAMES,
-  ARCHIVE_SEARCH_API,
   CONTENT_SEARCH_API,
   searchResultQuote,
   searchResultTitle,
   withSearchLocation,
   type ArchivePublicationName,
 } from "@jojo/content";
-import { Button, Tag, Pagination, LoadingSpinner, DateRangePicker, Select, type DateRangeValue } from "@jojo/ui";
+import { Button, Tag, Pagination, DateRangePicker, Select, type DateRangeValue } from "@jojo/ui";
 import { useAccountSessionStore } from "../../account/session";
 import { getLatestRmrbAvailableDate } from "../dateAvailability";
 import { archiveIssuePath } from "../../routes";
-import { rollout } from "../../rollout";
 import { loadCatalog } from "../../rag/content";
 import { isContentVisible } from "../../rag/contentVisibility";
 
@@ -259,10 +257,8 @@ function resultSourceLabel(result: SearchResult): string {
 }
 
 export function SearchPage({
-  platformRedesign = rollout.platformRedesign,
   openResultsInNewTab = true,
 }: {
-  platformRedesign?: boolean;
   openResultsInNewTab?: boolean;
 }) {
   const [params, setParams] = useSearchParams();
@@ -305,7 +301,7 @@ export function SearchPage({
   const disableUnavailableDate = (date: string) => date < EARLIEST_AVAILABLE_DATE || date > latestAvailableDate;
 
   useEffect(() => {
-    if (!platformRedesign) return;
+
     setBookCatalogError(false);
     if (!accountInitialized) {
       setBookDatasets([]);
@@ -335,10 +331,10 @@ export function SearchPage({
         if (active) setBookCatalogReady(true);
       });
     return () => { active = false; };
-  }, [accountInitialized, catalogRetryToken, platformRedesign, signedIn]);
+  }, [accountInitialized, catalogRetryToken, signedIn]);
 
   useEffect(() => {
-    const nextContentType = platformRedesign ? normalizeContentType(params.get("type")) : "periodical";
+    const nextContentType = normalizeContentType(params.get("type"));
     const option = SEARCH_CONTENT_TYPE_BY_ID[nextContentType];
     setTerm((params.get("keyword") || "").trim());
     setPage(parsePage(params.get("page")));
@@ -346,18 +342,16 @@ export function SearchPage({
     setStartDate(option.supportsDate ? params.get("startDate") || "" : "");
     setEndDate(option.supportsDate ? params.get("endDate") || "" : "");
     setContentType(nextContentType);
-    setDatasetId(platformRedesign ? normalizeDatasetId(params.get("dataset"), nextContentType) : "");
-  }, [paramsKey, platformRedesign]);
+    setDatasetId(normalizeDatasetId(params.get("dataset"), nextContentType));
+  }, [paramsKey]);
 
   useEffect(() => {
     const keyword = (params.get("keyword") || "").trim();
     const nextPage = parsePage(params.get("page"));
-    const nextContentType = platformRedesign ? normalizeContentType(params.get("type")) : "periodical";
+    const nextContentType = normalizeContentType(params.get("type"));
     const contentTypeOption = SEARCH_CONTENT_TYPE_BY_ID[nextContentType];
     const nextSort = contentTypeOption.supportsSort ? normalizeSort(params.get("sort")) : "";
-    const nextDatasetId = platformRedesign
-      ? normalizeDatasetId(params.get("dataset"), nextContentType)
-      : "";
+    const nextDatasetId = normalizeDatasetId(params.get("dataset"), nextContentType);
     const supportsDate = contentTypeOption.supportsDate;
     const nextStartDate = supportsDate ? params.get("startDate") || "" : "";
     const nextEndDate = supportsDate ? params.get("endDate") || "" : "";
@@ -373,7 +367,7 @@ export function SearchPage({
       return;
     }
 
-    if (platformRedesign && activeBookCatalogError) {
+    if (activeBookCatalogError) {
       requestIdRef.current += 1;
       setBeforeSearch(false);
       setResults(null);
@@ -383,14 +377,14 @@ export function SearchPage({
       return;
     }
 
-    if (platformRedesign && nextContentType === "book" && !bookSearchReady) {
+    if (nextContentType === "book" && !bookSearchReady) {
       setBeforeSearch(false);
       setLoading(true);
       setError(null);
       return;
     }
 
-    if (platformRedesign && nextContentType === "book" && (
+    if (nextContentType === "book" && (
       bookDatasets.length === 0 || (nextDatasetId && !bookDatasets.some((dataset) => dataset.id === nextDatasetId))
     )) {
       requestIdRef.current += 1;
@@ -434,8 +428,7 @@ export function SearchPage({
       : PERIODICAL_DATASETS.map((dataset) => dataset.id);
     // Vite forwards local searches so development ports do not depend on the
     // public search service's browser-origin allowlist.
-    const request = platformRedesign
-      ? axios.post(import.meta.env.DEV ? "/search-api/content/search" : CONTENT_SEARCH_API, {
+    const request = axios.post(import.meta.env.DEV ? "/search-api/content/search" : CONTENT_SEARCH_API, {
           query: keyword,
           page: nextPage,
           size: pageSize,
@@ -452,11 +445,7 @@ export function SearchPage({
                 endDate: formatSearchApiDate(nextEndDate),
               }
             : {}),
-        }, { signal: controller.signal })
-      : axios.get(import.meta.env.DEV ? "/search-api/search" : ARCHIVE_SEARCH_API, {
-          params: requestParams,
-          signal: controller.signal,
-        });
+        }, { signal: controller.signal });
 
     void request
       .then((response) => {
@@ -465,23 +454,7 @@ export function SearchPage({
         if (!data || !Array.isArray(data.results) || !Number.isFinite(data.total)) {
           throw new Error("Search API returned an invalid response");
         }
-        const normalizedResults: SearchResult[] = data.results.map((result: SearchResult | UnifiedSearchResult) => (
-          platformRedesign
-            ? normalizeUnifiedResult(result)
-            : {
-                title: String(result.title ?? ""),
-                content: String(result.content ?? ""),
-                date: String(result.date ?? ""),
-                page: Number((result as SearchResult).page) || 0,
-                type: "newspaper",
-                datasetId: "rmrb",
-                itemId: `rmrb:${String(result.date ?? "")}`,
-                source: "人民日报",
-                itemTitle: "",
-                chapterId: "",
-                ellipsis: true,
-              }
-        ));
+        const normalizedResults: SearchResult[] = data.results.map(normalizeUnifiedResult);
         setResults(nextContentType === "book"
           ? normalizedResults.filter((result) => findBookDataset(result, scopedBookDatasets))
           : normalizedResults);
@@ -501,7 +474,7 @@ export function SearchPage({
       });
 
     return () => controller.abort();
-  }, [activeBookDatasetsKey, activeBookCatalogError, bookSearchReady, paramsKey, platformRedesign, retryToken]);
+  }, [activeBookDatasetsKey, activeBookCatalogError, bookSearchReady, paramsKey, retryToken]);
 
   useLayoutEffect(() => {
     if (loading || !scrollToResultsRef.current) return;
@@ -521,7 +494,7 @@ export function SearchPage({
       sort,
       startDate,
       endDate,
-      ...(platformRedesign ? { contentType, datasetId } : {}),
+      contentType, datasetId,
     });
     if (query.toString() === paramsKey) setRetryToken((value) => value + 1);
     else setParams(query);
@@ -536,7 +509,7 @@ export function SearchPage({
       sort,
       startDate,
       endDate,
-      ...(platformRedesign ? { contentType, datasetId } : {}),
+      contentType, datasetId,
     }));
   }
 
@@ -549,7 +522,7 @@ export function SearchPage({
       sort: nextSort,
       startDate,
       endDate,
-      ...(platformRedesign ? { contentType, datasetId } : {}),
+      contentType, datasetId,
     }));
   }
 
@@ -562,7 +535,7 @@ export function SearchPage({
       page: 1,
       sort,
       ...nextRange,
-      ...(platformRedesign ? { contentType, datasetId } : {}),
+      contentType, datasetId,
     }));
   }
 
@@ -611,8 +584,8 @@ export function SearchPage({
     { value: "", label: contentTypeOption.allLabel },
     ...datasetOptions.map((option) => ({ value: option.id, label: option.label })),
   ];
-  const searchPlaceholder = platformRedesign ? `检索${contentTypeOption.label}正文` : "在JOJO看报上搜索";
-  const catalogUnavailable = platformRedesign && contentType === "book" && bookCatalogError;
+  const searchPlaceholder = `检索${contentTypeOption.label}正文`;
+  const catalogUnavailable = contentType === "book" && bookCatalogError;
   const catalogFailure = catalogUnavailable && (
     <div role="alert" className="my-4 border border-red/40 px-4 py-5 text-center">
       <p className="mb-3 text-sm font-bold text-red">书籍目录加载失败，请检查网络后重试。</p>
@@ -646,27 +619,20 @@ export function SearchPage({
     <div
       ref={scrollContainerRef}
       data-search-scroll-container
-      className={`h-full overflow-y-auto text-ink ${platformRedesign ? "app-search-page" : "bg-paper"}`}
+      className="h-full overflow-y-auto text-ink app-search-page"
     >
-      {loading && !platformRedesign && <LoadingSpinner text="搜索中" fullscreen />}
 
       {/* Centered search */}
       {beforeSearch && (
-        <div className={platformRedesign
-          ? "search-entry"
-          : "fixed inset-0 z-10 flex items-center justify-center"}
-        >
-          <div className={platformRedesign ? "search-entry-content" : "w-[90%] max-w-[640px]"}>
-            {platformRedesign && searchScopeSelector}
-            <div className={platformRedesign
-              ? "app-search-box search-query"
-              : "flex items-center gap-3 border-2 border-rule-dark bg-paper p-2 pl-4 transition-all focus-within:border-red focus-within:shadow-[4px_4px_0_rgba(139,26,26,.14)]"}
-            >
-              <input ref={inputRef} value={term} onChange={(e) => setTerm(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSearch()} aria-label={platformRedesign ? "全文检索关键词" : undefined} placeholder={searchPlaceholder} className="h-10 min-w-0 flex-1 border-0 bg-transparent p-0 text-base focus:border-0 focus:shadow-none" />
+        <div className="search-entry">
+          <div className="search-entry-content">
+            {searchScopeSelector}
+            <div className="app-search-box search-query">
+              <input ref={inputRef} value={term} onChange={(e) => setTerm(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSearch()} aria-label="全文检索关键词" placeholder={searchPlaceholder} className="h-10 min-w-0 flex-1 border-0 bg-transparent p-0 text-base focus:border-0 focus:shadow-none" />
               <Button onClick={handleSearch}>搜索</Button>
             </div>
             {catalogFailure}
-            {platformRedesign && contentType === "book" && !bookCatalogReady && !bookCatalogError && (
+            {contentType === "book" && !bookCatalogReady && !bookCatalogError && (
               <p role="status" className="mt-4 text-sm text-muted">正在加载书籍目录…</p>
             )}
           </div>
@@ -675,30 +641,28 @@ export function SearchPage({
 
       {/* Results */}
       {!beforeSearch && (
-        <div className={`max-w-[960px] mx-auto px-6 pb-12 ${platformRedesign ? "search-results" : ""}`}>
-          {platformRedesign && searchScopeSelector}
-          <div className={platformRedesign ? "app-search-box search-query" : "flex gap-3 py-5"}>
-            <input ref={inputRef} value={term} onChange={(e) => setTerm(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSearch()} aria-label={platformRedesign ? "全文检索关键词" : undefined} placeholder={searchPlaceholder} className="min-w-0 flex-1 h-10 text-sm" />
+        <div className="max-w-[960px] mx-auto px-6 pb-12 search-results">
+          {searchScopeSelector}
+          <div className="app-search-box search-query">
+            <input ref={inputRef} value={term} onChange={(e) => setTerm(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSearch()} aria-label="全文检索关键词" placeholder={searchPlaceholder} className="min-w-0 flex-1 h-10 text-sm" />
             <Button onClick={handleSearch}>搜索</Button>
           </div>
 
           {/* Filters */}
           <section className="mb-6 border-y border-rule bg-paper" aria-label="搜索筛选">
             <div className="flex flex-wrap items-center gap-3 px-4 py-3">
-              {platformRedesign && (
-                <Select
-                  ariaLabel={contentTypeOption.selectLabel}
-                  value={datasetId}
-                  options={datasetSelectOptions}
-                  onChange={handleDatasetChange}
-                  prefix={contentTypeOption.sourceLabel}
-                  searchable={contentType === "book"}
-                  searchPlaceholder="搜索书名"
-                  emptyText="未找到相关书籍"
-                  className="w-full min-w-0 sm:w-[240px]"
-                />
-              )}
-              {(!platformRedesign || contentTypeOption.supportsDate) && (
+              <Select
+                ariaLabel={contentTypeOption.selectLabel}
+                value={datasetId}
+                options={datasetSelectOptions}
+                onChange={handleDatasetChange}
+                prefix={contentTypeOption.sourceLabel}
+                searchable={contentType === "book"}
+                searchPlaceholder="搜索书名"
+                emptyText="未找到相关书籍"
+                className="w-full min-w-0 sm:w-[240px]"
+              />
+              {contentTypeOption.supportsDate && (
                 <DateRangePicker
                   startDate={startDate}
                   endDate={endDate}
@@ -714,7 +678,7 @@ export function SearchPage({
                   widthClassName="w-full sm:w-[250px]"
                 />
               )}
-              {(!platformRedesign || contentTypeOption.supportsSort) && (
+              {contentTypeOption.supportsSort && (
                 <Select
                   ariaLabel="排序"
                   value={sort}
@@ -728,7 +692,7 @@ export function SearchPage({
 
           {catalogFailure}
 
-          {platformRedesign && loading && !catalogUnavailable && (
+          {loading && !catalogUnavailable && (
             <p role="status" className="mb-4 border-l-2 border-red px-4 py-3 text-sm font-bold text-red">
               {results?.length ? "搜索中，暂时保留上次结果…" : "搜索中…"}
             </p>
@@ -742,15 +706,15 @@ export function SearchPage({
           )}
 
           {results && !error && !catalogUnavailable && (
-            <section aria-label="搜索结果" aria-busy={platformRedesign ? loading : undefined}>
+            <section aria-label="搜索结果" aria-busy={loading}>
               {results.length === 0 ? (
-                (!platformRedesign || !loading) && <div className="py-20 text-center"><p className="text-muted font-bold">没有找到相关结果</p></div>
+                !loading && <div className="py-20 text-center"><p className="text-muted font-bold">没有找到相关结果</p></div>
               ) : (
                 <ol className="list-none m-0 p-0">
                   {results.map((r, i) => (
                     <li key={i} className="relative pl-14 py-5 border-t border-rule first:border-rule-dark">
                       <span className="absolute left-0 top-5 w-9 pb-1.5 border-b-2 border-red text-red text-[13px] font-bold tracking-wider">
-                        {String(i + 1 + ((platformRedesign ? resultsPage : page) - 1) * pageSize).padStart(2, "0")}
+                        {String(i + 1 + (resultsPage - 1) * pageSize).padStart(2, "0")}
                       </span>
                       <Link
                         to={withSearchLocation(unifiedResultPath(r, bookDatasets), {
@@ -781,7 +745,7 @@ export function SearchPage({
                   ))}
                 </ol>
               )}
-              {(!platformRedesign || !loading) && (
+              {!loading && (
                 <Pagination current={page} total={Math.ceil(total / pageSize)} onChange={handlePageChange} />
               )}
             </section>

@@ -32,7 +32,6 @@ import { selectionHaptic } from "./src/lib/haptics";
 import { useMobileStore } from "./src/store/mobileStore";
 import { mobileTheme } from "./src/theme/tokens";
 import { AppUpdatePrompt } from "./src/components/AppUpdatePrompt";
-import { startSpeechFlagSync } from "./src/reading/featureFlag";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tabs = createBottomTabNavigator<MainTabParamList>();
@@ -154,7 +153,6 @@ export default function App() {
   }), [theme]);
 
   useEffect(() => { startMobileOfflineAccountSync(); return startMobileAuthSync(); }, []);
-  useEffect(() => startSpeechFlagSync(), []);
   useEffect(() => { void initializeMobileAnalytics(); }, []);
 
   return (

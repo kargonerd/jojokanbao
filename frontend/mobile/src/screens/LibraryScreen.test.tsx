@@ -1,7 +1,7 @@
 import { ARCHIVE_PUBLICATIONS, getLatestRmrbAvailableDate } from "@jojo/content";
 import { type ComponentProps, type ReactNode } from "react";
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
-vi.mock("../reading/featureFlag", () => ({ useMobileFeatureFlag: () => true }));
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LibraryScreen } from "./LibraryScreen";
 import { BookDetailsScreen } from "./BookDetailsScreen";

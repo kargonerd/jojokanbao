@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { createRequire } from "node:module";
 import { afterEach, describe, expect, it } from "vitest";
 
-const { resolveAccountConfig, resolveAnalyticsConfig, resolveFeatureFlagProvider } = createRequire(import.meta.url)("../../account-config.cjs");
+const { resolveAccountConfig, resolveAnalyticsConfig } = createRequire(import.meta.url)("../../account-config.cjs");
 const directories: string[] = [];
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), "jojo-account-config-"));
@@ -16,13 +16,7 @@ function fixture() {
 }
 afterEach(() => { for (const directory of directories.splice(0)) rmSync(directory, { recursive: true }); });
 describe("mobile account build config", () => {
-  it("only switches feature flag providers explicitly and honors Expo overrides", () => {
-    const mobile = fixture();
-    expect(resolveFeatureFlagProvider(mobile, {})).toBe("supabase");
-    writeFileSync(join(mobile, "../../.env.local"), "VITE_FEATURE_FLAG_PROVIDER=posthog\n");
-    expect(resolveFeatureFlagProvider(mobile, {})).toBe("posthog");
-    expect(resolveFeatureFlagProvider(mobile, { EXPO_PUBLIC_FEATURE_FLAG_PROVIDER: "supabase" })).toBe("supabase");
-  });
+
   it("only exposes public analytics configuration and allows builds without it", () => {
     const mobile = fixture();
     expect(resolveAnalyticsConfig(mobile, {})).toEqual({ token: "", host: "" });

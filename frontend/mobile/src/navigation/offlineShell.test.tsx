@@ -22,7 +22,7 @@ vi.mock("expo-status-bar", () => ({ StatusBar: "status" }));
 vi.mock("../config/appVariant", () => ({ IS_EINK_RELEASE: false }));
 vi.mock("../lib/haptics", () => ({ impactHaptic: vi.fn(), selectionHaptic: vi.fn() }));
 vi.mock("../store/mobileStore", () => ({ useMobileStore: (select: (state: unknown) => unknown) => select({ hapticsEnabled: false }) }));
-vi.mock("../reading/featureFlag", () => ({ startSpeechFlagSync: () => () => undefined }));
+
 vi.mock("../components/AppUpdatePrompt", () => ({ AppUpdatePrompt: () => null }));
 vi.mock("../screens/HomeScreen", () => ({ HomeScreen: () => null }));
 vi.mock("../screens/BookDetailsScreen", () => ({ BookDetailsScreen: () => null }));

@@ -4,7 +4,6 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { OfflineBookRecord } from "@jojo/content";
 import { BookshelfPage } from "../src/library/BookshelfPage";
 import { useAccountSessionStore } from "../src/account/session";
-import { useFeatureFlagStore } from "../src/featureFlags";
 
 const mocks = vi.hoisted(() => ({
   desktop: false, records: [] as OfflineBookRecord[], loading: false,
@@ -28,7 +27,6 @@ beforeEach(() => {
   mocks.load.mockResolvedValue([entry]); mocks.set.mockResolvedValue(undefined);
   mocks.persist.mockResolvedValue(undefined); mocks.download.mockResolvedValue(undefined); mocks.remove.mockResolvedValue(undefined);
   useAccountSessionStore.setState({ initialized: true, userId: "reader" });
-  useFeatureFlagStore.setState({ initialized: true, flags: { "library.bookshelf": true, "reader.annotations": false, "reader.speech": false } });
 });
 afterEach(cleanup);
 

@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { LoadingSpinner } from "@jojo/ui";
 import { useAccountSessionStore } from "../account/session";
-import { useFeatureFlag, useFeatureFlagStore } from "../featureFlags";
 import { loadBookshelf, setBookshelf, type BookshelfEntry } from "../rag/readerData";
 import { readerReturnState } from "../rag/readerNavigation";
 import { BookCover } from "./BookCover";
@@ -20,8 +19,6 @@ export function BookshelfPage() {
   const location = useLocation();
   const accountInitialized = useAccountSessionStore((state) => state.initialized);
   const userId = useAccountSessionStore((state) => state.userId);
-  const flagsInitialized = useFeatureFlagStore((state) => state.initialized);
-  const bookshelfEnabled = useFeatureFlag("library.bookshelf");
   const recentItems = useRecentReadingStore((state) => state.items);
   const offlineEnabled = supportsOfflineBooks();
   const offlineRecords = useOfflineBooksStore((state) => state.books);
@@ -37,8 +34,8 @@ export function BookshelfPage() {
   useEffect(() => { if (offlineEnabled) startOfflineAccountSync(); }, [offlineEnabled]);
 
   useEffect(() => {
-    if (!accountInitialized || !flagsInitialized || !userId || !bookshelfEnabled) {
-      setItems([]);
+    setItems([]);
+    if (!accountInitialized || !userId) {
       setLoading(false);
       setError("");
       return;
@@ -58,7 +55,7 @@ export function BookshelfPage() {
         if (active) setLoading(false);
       });
     return () => { active = false; };
-  }, [accountInitialized, bookshelfEnabled, flagsInitialized, offlineEnabled, reloadKey, userId]);
+  }, [accountInitialized, offlineEnabled, reloadKey, userId]);
 
   async function removeItem(entry: BookshelfEntry) {
     const key = entryKey(entry);
@@ -75,26 +72,24 @@ export function BookshelfPage() {
   }
 
   // A downloaded book must survive a failed cloud request or an offline cold start.
-  const cloudItems = userId && userId === itemsOwner && bookshelfEnabled ? items : [];
+  const cloudItems = userId && userId === itemsOwner ? items : [];
   const visibleItems = [...cloudItems];
   if (offlineEnabled) for (const record of offlineRecords) {
     if (!visibleItems.some((item) => item.datasetId === record.entry.datasetId && (item.itemId === record.item.itemId || item.itemId === record.item.itemKey))) {
       visibleItems.push({ datasetId: record.entry.datasetId, itemId: record.item.itemKey, title: record.item.title });
     }
   }
-  const status = visibleItems.length > 0 ? "ready" : !accountInitialized || (Boolean(userId) && !flagsInitialized) || (offlineEnabled && offlineLoading)
+  const status = visibleItems.length > 0 ? "ready" : !accountInitialized || (offlineEnabled && offlineLoading)
     ? "checking"
     : !userId
       ? "signed-out"
-      : !bookshelfEnabled
-        ? "unavailable"
-        : loading
-          ? "loading"
-          : error && items.length === 0
-            ? "error"
-            : items.length === 0
-              ? "empty"
-              : "ready";
+      : loading
+        ? "loading"
+        : error && items.length === 0
+          ? "error"
+          : items.length === 0
+            ? "empty"
+            : "ready";
 
   return (
     <main className="app-bookshelf">
@@ -107,18 +102,12 @@ export function BookshelfPage() {
       {offlineEnabled && offlineError ? <p className="bookshelf-notice" role="alert">{offlineError}</p> : null}
 
       {status === "checking" || status === "loading" ? (
-        <div className="bookshelf-loading"><LoadingSpinner text={status === "checking" ? "正在确认书架权限" : "正在整理书架"} /></div>
+        <div className="bookshelf-loading"><LoadingSpinner text={status === "checking" ? "正在恢复账号" : "正在整理书架"} /></div>
       ) : status === "signed-out" ? (
         <section className="bookshelf-empty" aria-label="登录后查看书架">
           <span aria-hidden="true">架</span>
           <div><h2>登录后查看你的书架</h2><p>收藏的书会同步到你的账号。</p></div>
           <Link to="/account?returnTo=%2Fbookshelf">登录&nbsp;→</Link>
-        </section>
-      ) : status === "unavailable" ? (
-        <section className="bookshelf-empty">
-          <span aria-hidden="true">架</span>
-          <div><h2>书架暂未开放</h2><p>你仍然可以在资料库中查找并阅读书籍。</p></div>
-          <Link to="/library?type=book">浏览书籍&nbsp;→</Link>
         </section>
       ) : status === "error" ? (
         <section className="bookshelf-empty">

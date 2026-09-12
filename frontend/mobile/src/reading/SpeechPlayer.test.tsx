@@ -6,7 +6,6 @@ import { NativeSpeechPlayer } from "./SpeechPlayer";
 
 const mocks = vi.hoisted(() => ({
   eInk: false, focused: true, user: { id: "reader" } as { id: string } | null,
-  enabled: true,
   loadChapter: vi.fn(), prefetch: vi.fn(async (_loaded: unknown, _id: string, _signal: AbortSignal) => undefined),
   navigate: vi.fn(), shelfContains: vi.fn(async () => false), setShelf: vi.fn(async () => undefined),
   state: { textScale: 1, bookLineHeight: 1.95, bookReadingMode: "paged", bookPaperColor: "white",
@@ -56,9 +55,7 @@ vi.mock("../theme/tokens", async (importOriginal) => {
   return { ...themes, get mobileTheme() { return mocks.eInk ? themes.eInkTheme : themes.editorialTheme; } };
 });
 vi.mock("../account/auth", () => ({ useMobileAuthStore: (select: (state: { user: typeof mocks.user }) => unknown) => select({ user: mocks.user }) }));
-vi.mock("./featureFlag", () => ({ useMobileFeatureFlag: () => true, useSpeechFlagStore: (select?: (state: unknown) => unknown) => {
-  const state = { enabled: mocks.enabled, userId: "reader" }; return select ? select(state) : state;
-} }));
+
 vi.mock("./useSpeechPlayback", () => ({ useSpeechPlayback: () => mocks.playback }));
 vi.mock("./speech", () => ({ speechTime: (value: number) => String(value), mobileSpeechSegments: () => ["正文"] }));
 vi.mock("../account/accountData", () => ({ mobileBookshelfContains: mocks.shelfContains, setMobileBookshelf: mocks.setShelf }));
@@ -97,7 +94,7 @@ async function renderReader() {
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   vi.useFakeTimers(); vi.clearAllMocks();
-  mocks.eInk = false; mocks.focused = true; mocks.enabled = true; mocks.user = { id: "reader" };
+  mocks.eInk = false; mocks.focused = true; mocks.user = { id: "reader" };
   mocks.playback.part = 0; mocks.playback.playing = true; mocks.playback.elapsed = 12;
   mocks.shelfContains.mockResolvedValue(false); mocks.setShelf.mockResolvedValue(undefined);
   mocks.loadChapter.mockReset().mockImplementation(async (_loaded, id: string) => ({ assetUrls: { portrait: "data:image/png;base64,test" },
@@ -181,8 +178,7 @@ describe.each([false, true])("reader listening visibility (eInk=%s)", (eInk) => 
     expect(view.root.findAllByProps({ accessibilityRole: "alert" })).toHaveLength(0);
     expect(view.root.findAllByProps({ testID: "reader-webview" })).toHaveLength(1);
   });
-  it("offers a labelled bookshelf action without enabling listening, including login and retry", async () => {
-    mocks.enabled = false;
+  it("offers a labelled bookshelf action with login and retry", async () => {
     mocks.shelfContains.mockRejectedValueOnce(new Error("offline"));
     await renderReader();
     const add = view.root.findByProps({ accessibilityLabel: "加入书架" });

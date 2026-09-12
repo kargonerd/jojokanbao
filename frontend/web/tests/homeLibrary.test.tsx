@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";
 import { useAccountSessionStore } from "../src/account/session";
 import { useRecentReadingStore } from "../src/library/recentReadingStore";
-import { useFeatureFlagStore } from "../src/featureFlags";
 
 const catalogMocks = vi.hoisted(() => ({
   list: vi.fn(),
@@ -44,15 +43,7 @@ function renderAt(path: string) {
 beforeEach(() => {
   window.localStorage.clear();
   useAccountSessionStore.setState({ initialized: true, userId: null, displayName: null });
-  useFeatureFlagStore.setState({
-    initialized: true,
-    revision: "test",
-    flags: {
-      "reader.speech": false,
-      "library.bookshelf": false,
-      "reader.annotations": false,
-    },
-  });
+
   useRecentReadingStore.setState({ items: [] });
   catalogMocks.list.mockReset();
   catalogMocks.getSources.mockReset();
@@ -219,11 +210,6 @@ describe("app homepage", () => {
 
     renderAt("/bookshelf");
     act(() => useAccountSessionStore.setState({ initialized: true, userId: "reader-1", displayName: "测试读者" }));
-    act(() => useFeatureFlagStore.setState((state) => ({
-      ...state,
-      initialized: true,
-      flags: { ...state.flags, "library.bookshelf": true },
-    })));
 
     const book = await screen.findByRole("link", { name: /毛泽东文集 第一卷/ });
     expect(book.getAttribute("href")).toBe("/book/mao/volume-1");
@@ -236,6 +222,24 @@ describe("app homepage", () => {
       added: false,
     }));
     expect(await screen.findByText("书架还是空的")).toBeTruthy();
+  });
+
+  it("clears the previous reader's shelf on account changes and ignores results after logout", async () => {
+    const firstBook = { datasetId: "mao", itemId: "volume-1", title: "第一位读者的收藏" };
+    const secondBook = { datasetId: "solo", itemId: "full-book", title: "第二位读者的收藏" };
+    let finishSecond!: (items: typeof firstBook[]) => void;
+    shelfMocks.loadBookshelf.mockResolvedValueOnce([firstBook]).mockImplementationOnce(() =>
+      new Promise<typeof firstBook[]>((resolve) => { finishSecond = resolve; }),
+    );
+    renderAt("/bookshelf");
+    act(() => useAccountSessionStore.setState({ initialized: true, userId: "reader-1" }));
+    await screen.findByRole("link", { name: /第一位读者的收藏/ });
+    act(() => useAccountSessionStore.setState({ userId: "reader-2" }));
+    expect(screen.queryByRole("link", { name: /第一位读者的收藏/ })).toBeNull();
+    act(() => useAccountSessionStore.setState({ userId: null }));
+    await act(async () => finishSecond([secondBook]));
+    expect(screen.queryByRole("link", { name: /第二位读者的收藏/ })).toBeNull();
+    expect(screen.getByText("登录后查看你的书架")).toBeTruthy();
   });
 
   it("keeps search and feedback inside the new app navigation", async () => {
@@ -428,11 +432,6 @@ describe("app library", () => {
   it("uses the signed-in reader's server bookshelf", async () => {
     renderAt("/library?type=book");
     act(() => useAccountSessionStore.setState({ initialized: true, userId: "reader-1", displayName: "测试读者" }));
-    act(() => useFeatureFlagStore.setState((state) => ({
-      ...state,
-      initialized: true,
-      flags: { ...state.flags, "library.bookshelf": true },
-    })));
 
     const addButton = await screen.findByRole("button", { name: "加入书架：青年政治经济学读本" });
     fireEvent.click(addButton);
@@ -455,11 +454,6 @@ describe("app library", () => {
   it("lets readers add individual volumes from a multi-volume collection", async () => {
     renderAt("/library/mao");
     act(() => useAccountSessionStore.setState({ initialized: true, userId: "reader-1", displayName: "测试读者" }));
-    act(() => useFeatureFlagStore.setState((state) => ({
-      ...state,
-      initialized: true,
-      flags: { ...state.flags, "library.bookshelf": true },
-    })));
 
     const addSecondVolume = await screen.findByRole("button", { name: "加入书架：毛泽东文集 第二卷" });
     fireEvent.click(addSecondVolume);

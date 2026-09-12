@@ -46,7 +46,8 @@ pnpm dev:admin
 修改历史。应用 `202609120001_posthog_runtime_config.sql` 后，`auth.signup`、
 `reader.annotations`、`ai.usage_limits`、`ops.email_quota` 的配置源为 PostHog；
 页面按 `configProvider` 显示只读参数、同步时间和远端版本，修改与回滚在 PostHog 完成。
-尚未迁移的数据库继续显示原参数输入和 Operator 发布、回滚入口。后续同类参数优先扩展现有机制，
+已退役的书架、听读、RAG/Olds 工作区开关从列表隐藏，批注只保留公开阈值参数；原数据库行与历史保留供旧客户端使用。
+尚未迁移的数据库继续显示参数输入和 Operator 发布、回滚入口，批注参数发布/回滚保留原规则。后续同类参数优先扩展现有机制，
 存储边界和接入步骤见 [运行配置复用](../../infrastructure/supabase/README.md#runtime-configuration-reuse)。
 
 评论审核页面位于 `http://127.0.0.1:4174/moderation`。它复用同一个

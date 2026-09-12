@@ -20,7 +20,6 @@ import { useMobileOfflineBooksStore } from "../offline/books";
 import { NativeSpeechPlayer } from "../reading/SpeechPlayer";
 import { mobileSpeechSegments } from "../reading/speech";
 import { useReadingProgress } from "../reading/useReadingProgress";
-import { useMobileFeatureFlag, useSpeechFlagStore } from "../reading/featureFlag";
 import { IS_EINK_RELEASE } from "../config/appVariant";
 import {
   askMobileBookAgent,
@@ -163,9 +162,8 @@ export function BookReaderScreen({ route, navigation }: Props) {
   const [readerNotice, setReaderNotice] = useState("");
   const [onBookshelf, setOnBookshelf] = useState<boolean>();
   const [bookshelfBusy, setBookshelfBusy] = useState(false);
-  const bookshelfEnabled = useMobileFeatureFlag("library.bookshelf");
   const [legacyResume, setLegacyResume] = useState<{ chapterId: string; chapterProgress: number }>();
-  const speechEnabled = useSpeechFlagStore((state) => state.enabled && state.userId === user?.id);
+  const speechAvailable = Boolean(user);
   const [speechCover, setSpeechCover] = useState<string>();
   const speechPositionSequence = useRef(0);
   const readingChapterRef = useRef(activeChapterId);
@@ -202,9 +200,9 @@ export function BookReaderScreen({ route, navigation }: Props) {
   useEffect(() => {
     let active = true;
     setSpeechCover(undefined);
-    if (loaded && speechEnabled) void loadMobileBookCover(loaded.book, itemKey).then((uri) => { if (active) setSpeechCover(uri); }).catch(() => undefined);
+    if (loaded && speechAvailable) void loadMobileBookCover(loaded.book, itemKey).then((uri) => { if (active) setSpeechCover(uri); }).catch(() => undefined);
     return () => { active = false; };
-  }, [loaded, itemKey, speechEnabled]);
+  }, [loaded, itemKey, speechAvailable]);
   const loadSpeechChapter = useCallback(async (id: string) => {
     if (!loaded) throw new Error("书籍尚未加载");
     const { fragment } = await loadMobileBookChapter(loaded, id, false);
@@ -220,7 +218,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
   useEffect(() => () => cancelAgentRef.current?.(), []);
 
   useEffect(() => {
-    if (!loaded || !user || !bookshelfEnabled) {
+    if (!loaded || !user) {
       setOnBookshelf(undefined);
       return undefined;
     }
@@ -230,7 +228,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
       .then((value) => { if (active) setOnBookshelf(value); })
       .catch(() => { if (active) setReaderNotice("书架状态暂时无法读取，点击书架按钮重试。"); });
     return () => { active = false; };
-  }, [datasetId, loaded, user, bookshelfEnabled]);
+  }, [datasetId, loaded, user]);
 
   useEffect(() => {
     let active = true;
@@ -646,7 +644,6 @@ export function BookReaderScreen({ route, navigation }: Props) {
   }
 
   async function toggleBookshelf() {
-    if (!bookshelfEnabled) return;
     if (!user) { navigation.navigate("Account"); return; }
     if (!loaded || bookshelfBusy) return;
     setBookshelfBusy(true);
@@ -785,7 +782,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
 
       {selection ? <ReaderSelectionToolbar selection={selection} frame={readerFrame} theme={theme} eInk={IS_EINK_RELEASE} onCopy={() => { void Clipboard.setStringAsync(selection.text); clearSelection(); }} onUnderline={underlineSelection} onThought={composeSelectionNote} onExplain={explainSelection} /> : null}
       <BookThoughtComposer quote={noteComposer?.quote} value={noteDraft} onChange={setNoteDraft} onCancel={() => { setNoteComposer(undefined); setNoteDraft(""); }} onSave={saveNote} theme={theme} />
-      {loaded && activeChapterId ? <NativeSpeechPlayer documentId={`book:${datasetId}:${itemKey}`} title={loaded.manifest.title} chapterId={activeChapterId} chapters={loaded.manifest.content.chapters ?? []} loadChapter={loadSpeechChapter} getReadingPosition={getSpeechPosition} onSpeechLocation={showSpeechLocation} cover={speechCover ? { uri: speechCover } : undefined} hidden={!chromeVisible || Boolean(activeTool || selection || noteComposer || activeAnnotationId || expandedImageUri)} bottom={insets.bottom + 64} onRead={(id, location) => location ? showSpeechLocation(location, true) : chooseChapter(id)} onBookshelf={bookshelfEnabled ? () => void toggleBookshelf() : undefined} onShelf={onBookshelf} bookshelfBusy={bookshelfBusy} /> : null}
+      {loaded && activeChapterId ? <NativeSpeechPlayer documentId={`book:${datasetId}:${itemKey}`} title={loaded.manifest.title} chapterId={activeChapterId} chapters={loaded.manifest.content.chapters ?? []} loadChapter={loadSpeechChapter} getReadingPosition={getSpeechPosition} onSpeechLocation={showSpeechLocation} cover={speechCover ? { uri: speechCover } : undefined} hidden={!chromeVisible || Boolean(activeTool || selection || noteComposer || activeAnnotationId || expandedImageUri)} bottom={insets.bottom + 64} onRead={(id, location) => location ? showSpeechLocation(location, true) : chooseChapter(id)} onBookshelf={() => void toggleBookshelf()} onShelf={onBookshelf} bookshelfBusy={bookshelfBusy} /> : null}
       {readerNotice ? <Pressable onPress={() => setReaderNotice("")} style={[styles.readerNotice, { top: insets.top + 72, borderColor: theme.red, backgroundColor: theme.paper }]}><Text style={[styles.readerNoticeText, { color: theme.red, fontFamily: theme.sans }]}>{readerNotice}</Text></Pressable> : null}
       <Modal visible={Boolean(expandedImageUri)} transparent={false} animationType={IS_EINK_RELEASE ? "none" : "fade"} onRequestClose={() => setExpandedImageUri(undefined)}>
         <SafeAreaView edges={["top", "bottom"]} style={[styles.imageModal, { backgroundColor: theme.paper }]}>

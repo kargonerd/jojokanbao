@@ -5,8 +5,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./browser": "./src/browser.ts",
-    "./flags": "./src/flags.ts",
-    "./browser-flags": "./src/browser-flags.ts",
+    "./config": "./src/config.ts",
+    "./browser-config": "./src/browser-config.ts",
     "./config-sync": "./src/config-sync.ts",
     "./preferences": "./src/preferences.ts",
     "./sanitize": "./src/sanitize.ts"

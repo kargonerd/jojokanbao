@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import axios from "axios";
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ARCHIVE_SEARCH_API, CONTENT_SEARCH_API, type JojoCatalog } from "@jojo/content";
+import { CONTENT_SEARCH_API, type JojoCatalog } from "@jojo/content";
 import { SearchPage } from "../src/archive/pages/SearchPage";
 import { useAccountSessionStore } from "../src/account/session";
 import { loadCatalog } from "../src/rag/content";
@@ -80,12 +80,12 @@ function LocationProbe() {
   );
 }
 
-function renderSearch(path = "/search", platformRedesign = false) {
+function renderSearch(path = "/search") {
   window.history.replaceState({}, "", path);
   return render(
     <MemoryRouter initialEntries={[path]}>
       <Routes>
-        <Route path="/search" element={<SearchPage platformRedesign={platformRedesign} />} />
+        <Route path="/search" element={<SearchPage />} />
       </Routes>
       <LocationProbe />
     </MemoryRouter>,
@@ -93,7 +93,7 @@ function renderSearch(path = "/search", platformRedesign = false) {
 }
 
 function searchResponse(results: ResultFixture[] = [defaultResult], total = results.length) {
-  return Promise.resolve({ data: { data: { results, total } } });
+  return Promise.resolve({ data: { data: { results: results.map(result => ({ ...result, type: "newspaper", datasetId: "rmrb", itemId: result.date.replaceAll("-", ""), source: "人民日报", metadata: {page: result.page} })), total } } });
 }
 
 function pendingSearchResponse() {
@@ -105,10 +105,10 @@ function pendingSearchResponse() {
 }
 
 function getLastRequestParams(): Record<string, unknown> {
-  const calls = vi.mocked(axios.get).mock.calls;
+  const calls = vi.mocked(axios.post).mock.calls;
   const call = calls.at(-1);
   if (!call) throw new Error("Search API was not called");
-  return (call[1] as { params: Record<string, unknown> }).params;
+  return call[1] as Record<string, unknown>;
 }
 
 beforeEach(() => {
@@ -116,7 +116,6 @@ beforeEach(() => {
   vi.mocked(axios.get).mockReset();
   vi.mocked(axios.post).mockReset();
   vi.mocked(loadCatalog).mockReset();
-  vi.mocked(axios.get).mockImplementation(() => searchResponse());
   vi.mocked(axios.post).mockImplementation(() => searchResponse());
   vi.mocked(loadCatalog).mockResolvedValue(searchCatalog);
   Object.defineProperty(HTMLElement.prototype, "scrollTo", {
@@ -134,54 +133,49 @@ afterEach(() => {
 
 describe("SearchPage initial search", () => {
   it.each([
-    { development: true, redesigned: true, endpoint: "/search-api/content/search" },
-    { development: true, redesigned: false, endpoint: "/search-api/search" },
-    { development: false, redesigned: true, endpoint: CONTENT_SEARCH_API },
-    { development: false, redesigned: false, endpoint: ARCHIVE_SEARCH_API },
-  ])("selects the search endpoint for development=$development, redesigned=$redesigned", async ({ development, redesigned, endpoint }) => {
+    { development: true, endpoint: "/search-api/content/search" },
+    { development: false, endpoint: CONTENT_SEARCH_API },
+  ])("selects the search endpoint for development=$development", async ({ development, endpoint }) => {
     vi.stubEnv("DEV", development);
-    renderSearch("/search?keyword=刘少奇", redesigned);
-    const request = vi.mocked(redesigned ? axios.post : axios.get);
+    renderSearch("/search?keyword=刘少奇");
+    const request = vi.mocked(axios.post);
     await waitFor(() => expect(request).toHaveBeenCalledTimes(1));
     expect(request.mock.calls[0]?.[0]).toBe(endpoint);
   });
 
-  it("uses the app canvas only in the redesigned shell", () => {
-    const { unmount } = renderSearch("/search", true);
+  it("uses the app canvas", () => {
+    renderSearch("/search");
     const redesignedContainer = document.querySelector("[data-search-scroll-container]");
     expect(redesignedContainer?.classList.contains("app-search-page")).toBe(true);
     expect(redesignedContainer?.classList.contains("bg-paper")).toBe(false);
 
-    unmount();
-    renderSearch();
-    expect(document.querySelector("[data-search-scroll-container]")?.classList.contains("bg-paper")).toBe(true);
   });
 
   it("focuses the empty search box and ignores blank submissions", () => {
     renderSearch();
-    const input = screen.getByPlaceholderText("在JOJO看报上搜索") as HTMLInputElement;
+    const input = screen.getByPlaceholderText("检索报刊正文") as HTMLInputElement;
 
     expect(document.activeElement).toBe(input);
     fireEvent.change(input, { target: { value: "   " } });
     fireEvent.keyDown(input, { key: "Enter" });
     fireEvent.click(screen.getByRole("button", { name: "搜索" }));
-    expect(axios.get).not.toHaveBeenCalled();
+    expect(axios.post).not.toHaveBeenCalled();
     expect(screen.getByTestId("location").textContent).toBe("/search");
   });
 
   it("submits on Enter, trims the page state, and syncs the keyword to the URL", async () => {
     renderSearch();
-    const input = screen.getByPlaceholderText("在JOJO看报上搜索");
+    const input = screen.getByPlaceholderText("检索报刊正文");
     fireEvent.change(input, { target: { value: "历史" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
     await waitFor(() => expect(screen.getByRole("heading", { name: highlightedTitleName })).toBeTruthy());
-    expect(getLastRequestParams()).toEqual({ keyword: "历史", page: 1, size: 10 });
+    expect(getLastRequestParams()).toMatchObject({ query: "历史", page: 1, size: 10 });
     expect(screen.getByTestId("location").textContent).toBe("/search?keyword=%E5%8E%86%E5%8F%B2");
   });
 
   it("lets readers select the full-text scope before submitting without losing their draft", async () => {
-    renderSearch("/search", true);
+    renderSearch("/search");
     expect(screen.getByRole("heading", { name: "全文检索" })).toBeTruthy();
     expect(screen.getByRole("tab", { name: "报刊" }).getAttribute("aria-selected")).toBe("true");
     const input = screen.getByRole("textbox", { name: "全文检索关键词" }) as HTMLInputElement;
@@ -208,9 +202,9 @@ describe("SearchPage initial search", () => {
   it("restores all filters from the URL and requests the matching page", async () => {
     renderSearch("/search?keyword=梁祝&page=2&sort=timeDesc&startDate=19600701&endDate=19940701");
 
-    await waitFor(() => expect(axios.get).toHaveBeenCalledTimes(1));
-    expect(getLastRequestParams()).toEqual({
-      keyword: "梁祝",
+    await waitFor(() => expect(axios.post).toHaveBeenCalledTimes(1));
+    expect(getLastRequestParams()).toMatchObject({
+      query: "梁祝",
       page: 2,
       size: 10,
       sort: "timeDesc",
@@ -227,7 +221,7 @@ describe("SearchPage results", () => {
     vi.mocked(loadCatalog)
       .mockRejectedValueOnce(new Error("offline"))
       .mockResolvedValueOnce(searchCatalog);
-    renderSearch("/search", true);
+    renderSearch("/search");
     fireEvent.click(screen.getByRole("tab", { name: "书籍" }));
     const input = screen.getByRole("textbox", { name: "全文检索关键词" }) as HTMLInputElement;
     fireEvent.change(input, { target: { value: "历史" } });
@@ -261,7 +255,7 @@ describe("SearchPage results", () => {
       total: 1,
       results: [{ type: "book", datasetId: "mao-selected", itemId: "mao-selected:volume-1", source: "毛泽东选集", title: "书籍检索结果" }],
     } } });
-    renderSearch("/search?keyword=历史&type=book&dataset=mao-selected", true);
+    renderSearch("/search?keyword=历史&type=book&dataset=mao-selected");
 
     expect(await screen.findByRole("alert")).toHaveProperty("textContent", expect.stringContaining("书籍目录加载失败"));
     expect(axios.post).not.toHaveBeenCalled();
@@ -286,7 +280,7 @@ describe("SearchPage results", () => {
   it("shows local loading with usable filters while the first redesigned search is pending", async () => {
     const pending = pendingSearchResponse();
     vi.mocked(axios.post).mockReturnValueOnce(pending.promise);
-    renderSearch("/search?keyword=历史", true);
+    renderSearch("/search?keyword=历史");
 
     expect(screen.getByText("搜索中…").getAttribute("role")).toBe("status");
     expect(document.querySelector(".fixed.inset-0.z-50")).toBeNull();
@@ -304,7 +298,7 @@ describe("SearchPage results", () => {
     vi.mocked(axios.post)
       .mockImplementationOnce(() => searchResponse([{ ...defaultResult, title: "上次结果" }], 25))
       .mockReturnValueOnce(pending.promise);
-    renderSearch("/search?keyword=历史&page=2", true);
+    renderSearch("/search?keyword=历史&page=2");
     await screen.findByRole("heading", { name: "上次结果" });
     expect(screen.getByText("11")).toBeTruthy();
 
@@ -330,7 +324,7 @@ describe("SearchPage results", () => {
     vi.mocked(axios.post)
       .mockImplementationOnce(() => searchResponse([], 0))
       .mockReturnValueOnce(pending.promise);
-    renderSearch("/search?keyword=不存在", true);
+    renderSearch("/search?keyword=不存在");
     await screen.findByText("没有找到相关结果");
 
     fireEvent.change(screen.getByRole("textbox", { name: "全文检索关键词" }), { target: { value: "历史" } });
@@ -358,7 +352,7 @@ describe("SearchPage results", () => {
       }],
     } } });
 
-    renderSearch("/search?keyword=历史&page=2&sort=timeDesc&startDate=19660701&endDate=19660731", true);
+    renderSearch("/search?keyword=历史&page=2&sort=timeDesc&startDate=19660701&endDate=19660731");
 
     const heading = await screen.findByRole("heading", { name: highlightedTitleName });
     expect(axios.get).not.toHaveBeenCalled();
@@ -391,14 +385,14 @@ describe("SearchPage results", () => {
       type: "newspaper", datasetId: "rmrb", itemId: "rmrb:1966-07-01", date: "1966-07-01",
       title: fullTitle, titleHighlights: ["<mark>历史</mark>文献……"], metadata: { page: 5 },
     }] } } });
-    renderSearch("/search?keyword=历史", true);
+    renderSearch("/search?keyword=历史");
     const heading = await screen.findByRole("heading", { name: /历史\s*文献……/ });
     const url = new URL(heading.closest("a")!.getAttribute("href")!, "https://reader.test");
     expect(url.searchParams.get("title")).toBe(fullTitle);
   });
 
   it("applies the two-level periodical and book scope filters", async () => {
-    renderSearch("/search?keyword=刘少奇&sort=timeDesc&startDate=19660701&endDate=19660731", true);
+    renderSearch("/search?keyword=刘少奇&sort=timeDesc&startDate=19660701&endDate=19660731");
 
     await waitFor(() => expect(axios.post).toHaveBeenCalledTimes(1));
     expect(screen.getByRole("tab", { name: "报刊" }).getAttribute("aria-selected")).toBe("true");
@@ -446,7 +440,7 @@ describe("SearchPage results", () => {
   });
 
   it("hides authenticated books and their search scope until the reader signs in", async () => {
-    const signedOutView = renderSearch("/search?keyword=历史&type=book", true);
+    const signedOutView = renderSearch("/search?keyword=历史&type=book");
 
     await waitFor(() => expect(axios.post).toHaveBeenCalledTimes(1));
     expect(vi.mocked(axios.post).mock.calls.at(-1)?.[1]).toMatchObject({
@@ -461,7 +455,7 @@ describe("SearchPage results", () => {
     cleanup();
     vi.mocked(axios.post).mockClear();
     useAccountSessionStore.setState({ initialized: true, userId: "reader-1", displayName: "测试读者" });
-    renderSearch("/search?keyword=历史&type=book", true);
+    renderSearch("/search?keyword=历史&type=book");
 
     await waitFor(() => expect(axios.post).toHaveBeenCalledTimes(1));
     expect(vi.mocked(axios.post).mock.calls.at(-1)?.[1]).toMatchObject({
@@ -474,7 +468,7 @@ describe("SearchPage results", () => {
   });
 
   it("ignores unsupported periodical dataset parameters", async () => {
-    renderSearch("/search?keyword=历史&dataset=ckxx", true);
+    renderSearch("/search?keyword=历史&dataset=ckxx");
 
     await waitFor(() => expect(axios.post).toHaveBeenCalledTimes(1));
     expect(vi.mocked(axios.post).mock.calls.at(-1)?.[1]).toMatchObject({
@@ -498,7 +492,7 @@ describe("SearchPage results", () => {
       }],
     } } });
 
-    renderSearch(`/search?keyword=刘少奇&type=book${scope}`, true);
+    renderSearch(`/search?keyword=刘少奇&type=book${scope}`);
 
     const heading = await screen.findByRole("heading", { name: "给刘少奇的信" });
     expect(vi.mocked(axios.post).mock.calls.at(-1)?.[1]).toEqual({
@@ -527,7 +521,7 @@ describe("SearchPage results", () => {
       ],
     } } });
 
-    renderSearch("/search?keyword=刘少奇&type=book", true);
+    renderSearch("/search?keyword=刘少奇&type=book");
 
     await screen.findByRole("heading", { name: "公开结果" });
     expect(screen.queryByRole("heading", { name: "受限结果" })).toBeNull();
@@ -536,7 +530,7 @@ describe("SearchPage results", () => {
   });
 
   it.each(["restricted-book", "draft-book", "unknown-book"])("does not search an unavailable book (%s)", async (datasetId) => {
-    renderSearch(`/search?keyword=刘少奇&type=book&dataset=${datasetId}`, true);
+    renderSearch(`/search?keyword=刘少奇&type=book&dataset=${datasetId}`);
 
     await screen.findByText("没有找到相关结果");
     expect(axios.post).not.toHaveBeenCalled();
@@ -558,7 +552,7 @@ describe("SearchPage results", () => {
       }],
     } } });
 
-    renderSearch("/search?keyword=修养&type=book&dataset=mao-selected&sort=timeDesc&startDate=19660701&endDate=19660731", true);
+    renderSearch("/search?keyword=修养&type=book&dataset=mao-selected&sort=timeDesc&startDate=19660701&endDate=19660731");
 
     const heading = await screen.findByRole("heading", { name: /论共产党员的\s*修养/ });
     expect(vi.mocked(axios.post).mock.calls.at(-1)?.[1]).not.toHaveProperty("sort");
@@ -571,14 +565,6 @@ describe("SearchPage results", () => {
     expect(resultUrl.searchParams.get("query")).toBe("修养");
     expect(screen.getByText("第一卷")).toBeTruthy();
     expect(screen.getByText("毛泽东选集", { selector: ".tag" })).toBeTruthy();
-  });
-
-  it("keeps the legacy frontend on the existing GET search API", async () => {
-    renderSearch("/search?keyword=历史", false);
-    await screen.findByRole("heading", { name: highlightedTitleName });
-
-    expect(axios.get).toHaveBeenCalledTimes(1);
-    expect(axios.post).not.toHaveBeenCalled();
   });
 
   it("renders safe result structure, highlights, line breaks, metadata, and links", async () => {
@@ -603,7 +589,7 @@ describe("SearchPage results", () => {
   });
 
   it("renders API HTML as inert text while preserving highlight markers", async () => {
-    vi.mocked(axios.get).mockImplementation(() => searchResponse([{
+    vi.mocked(axios.post).mockImplementation(() => searchResponse([{
       ...defaultResult,
       title: "标题<img src=x onerror=alert(1)>@highlight@历史@/highlight@",
       content: "<script>window.__searchXss = true</script>正文",
@@ -633,19 +619,19 @@ describe("SearchPage results", () => {
   });
 
   it("shows an explicit empty result state", async () => {
-    vi.mocked(axios.get).mockImplementation(() => searchResponse([], 0));
+    vi.mocked(axios.post).mockImplementation(() => searchResponse([], 0));
     renderSearch("/search?keyword=不存在");
 
     expect(await screen.findByText("没有找到相关结果")).toBeTruthy();
     expect(screen.queryByRole("list")).toBeNull();
   });
 
-  it.each([false, true])("recovers when a failed request is retried (redesigned: %s)", async (platformRedesign) => {
-    const request = vi.mocked(platformRedesign ? axios.post : axios.get);
+  it("recovers when a failed request is retried", async () => {
+    const request = vi.mocked(axios.post);
     request
       .mockRejectedValueOnce(new Error("offline"))
       .mockImplementationOnce(() => searchResponse());
-    renderSearch("/search?keyword=历史", platformRedesign);
+    renderSearch("/search?keyword=历史");
 
     await waitFor(() => expect(request).toHaveBeenCalledTimes(1));
     expect(screen.queryByRole("heading", { name: highlightedTitleName })).toBeNull();
@@ -655,16 +641,16 @@ describe("SearchPage results", () => {
     expect(request).toHaveBeenCalledTimes(2);
   });
 
-  it.each([false, true])("ignores an older response that finishes after a newer filter request (redesigned: %s)", async (platformRedesign) => {
+  it("ignores an older response that finishes after a newer filter request", async () => {
     let resolveFirst!: (value: Awaited<ReturnType<typeof searchResponse>>) => void;
     let resolveSecond!: (value: Awaited<ReturnType<typeof searchResponse>>) => void;
     const first = new Promise<Awaited<ReturnType<typeof searchResponse>>>((resolve) => { resolveFirst = resolve; });
     const second = new Promise<Awaited<ReturnType<typeof searchResponse>>>((resolve) => { resolveSecond = resolve; });
-    const request = vi.mocked(platformRedesign ? axios.post : axios.get);
+    const request = vi.mocked(axios.post);
     request
       .mockImplementationOnce(() => first)
       .mockImplementationOnce(() => second);
-    renderSearch("/search?keyword=历史", platformRedesign);
+    renderSearch("/search?keyword=历史");
     await waitFor(() => expect(request).toHaveBeenCalledTimes(1));
 
     fireEvent.click(screen.getByRole("combobox", { name: "排序" }));
@@ -680,22 +666,22 @@ describe("SearchPage results", () => {
   });
 
   it("resynchronizes controls and results after history navigation", async () => {
-    vi.mocked(axios.get).mockImplementation((_url, config) => {
-      const request = (config as { params: { keyword: string } }).params;
-      return searchResponse([{ ...defaultResult, title: `${request.keyword}结果` }], 25);
+    vi.mocked(axios.post).mockImplementation((_url, config) => {
+      const request = config as { query: string };
+      return searchResponse([{ ...defaultResult, title: `${request.query}结果` }], 25);
     });
     renderSearch("/search?keyword=第一&page=2");
     await screen.findByRole("heading", { name: "第一结果" });
 
     fireEvent.click(screen.getByTestId("navigate-second-search"));
     await screen.findByRole("heading", { name: "第二结果" });
-    expect((screen.getByPlaceholderText("在JOJO看报上搜索") as HTMLInputElement).value).toBe("第二");
-    expect(getLastRequestParams()).toMatchObject({ keyword: "第二", page: 1, sort: "timeDesc" });
+    expect((screen.getByPlaceholderText("检索报刊正文") as HTMLInputElement).value).toBe("第二");
+    expect(getLastRequestParams()).toMatchObject({ query: "第二", page: 1, sort: "timeDesc" });
 
     fireEvent.click(screen.getByTestId("navigate-back"));
     await screen.findByRole("heading", { name: "第一结果" });
-    expect((screen.getByPlaceholderText("在JOJO看报上搜索") as HTMLInputElement).value).toBe("第一");
-    expect(getLastRequestParams()).toMatchObject({ keyword: "第一", page: 2 });
+    expect((screen.getByPlaceholderText("检索报刊正文") as HTMLInputElement).value).toBe("第一");
+    expect(getLastRequestParams()).toMatchObject({ query: "第一", page: 2 });
   });
 });
 
@@ -736,8 +722,8 @@ describe("SearchPage filters", () => {
     expect(screen.getByRole("option", { name: "默认排序" }).getAttribute("aria-selected")).toBe("true");
     fireEvent.click(screen.getByRole("option", { name: "最佳匹配" }));
 
-    await waitFor(() => expect(getLastRequestParams()).toEqual({
-      keyword: "历史",
+    await waitFor(() => expect(getLastRequestParams()).toMatchObject({
+      query: "历史",
       page: 1,
       size: 10,
       sort: "match",
@@ -749,7 +735,7 @@ describe("SearchPage filters", () => {
   it("closes the sort menu with Escape and an outside click without searching", async () => {
     renderSearch("/search?keyword=历史");
     await screen.findByRole("heading", { name: highlightedTitleName });
-    const initialCalls = vi.mocked(axios.get).mock.calls.length;
+    const initialCalls = vi.mocked(axios.post).mock.calls.length;
     const trigger = screen.getByRole("combobox", { name: "排序" });
 
     fireEvent.click(trigger);
@@ -759,7 +745,7 @@ describe("SearchPage filters", () => {
     fireEvent.click(trigger);
     fireEvent.mouseDown(document.body);
     expect(screen.queryByRole("listbox", { name: "排序" })).toBeNull();
-    expect(axios.get).toHaveBeenCalledTimes(initialCalls);
+    expect(axios.post).toHaveBeenCalledTimes(initialCalls);
   });
 
   it("sends a changed start date together with the existing end date", async () => {
@@ -772,8 +758,8 @@ describe("SearchPage filters", () => {
     await waitFor(() => expect((screen.getByRole("textbox", { name: "开始日期" }) as HTMLInputElement).value).toBe("2026-07-15"));
     fireEvent.click(screen.getByRole("button", { name: "应用" }));
 
-    await waitFor(() => expect(getLastRequestParams()).toEqual({
-      keyword: "历史",
+    await waitFor(() => expect(getLastRequestParams()).toMatchObject({
+      query: "历史",
       page: 1,
       size: 10,
       startDate: "2026-07-15",
@@ -788,8 +774,8 @@ describe("SearchPage filters", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "清除日期" }));
 
-    await waitFor(() => expect(getLastRequestParams()).toEqual({
-      keyword: "梁祝",
+    await waitFor(() => expect(getLastRequestParams()).toMatchObject({
+      query: "梁祝",
       page: 1,
       size: 10,
     }));
@@ -803,19 +789,19 @@ describe("SearchPage filters", () => {
     vi.setSystemTime(new Date("2026-07-17T11:00:00Z"));
     renderSearch("/search?keyword=历史");
     await screen.findByRole("heading", { name: highlightedTitleName });
-    const callsBeforeDate = vi.mocked(axios.get).mock.calls.length;
+    const callsBeforeDate = vi.mocked(axios.post).mock.calls.length;
 
     fireEvent.click(screen.getByRole("button", { name: "日期范围：选择日期范围" }));
     fireEvent.click(screen.getByRole("button", { name: "开始日期：打开日历" }));
     fireEvent.click(screen.getByRole("button", { name: "1" }));
     await new Promise((resolve) => window.setTimeout(resolve, 0));
-    expect(axios.get).toHaveBeenCalledTimes(callsBeforeDate);
+    expect(axios.post).toHaveBeenCalledTimes(callsBeforeDate);
   });
 
   it("accepts a directly typed historical date range without calendar navigation", async () => {
     renderSearch("/search?keyword=历史");
     await screen.findByRole("heading", { name: highlightedTitleName });
-    const callsBeforeDate = vi.mocked(axios.get).mock.calls.length;
+    const callsBeforeDate = vi.mocked(axios.post).mock.calls.length;
     fireEvent.click(screen.getByRole("button", { name: "日期范围：选择日期范围" }));
     const startInput = screen.getByRole("textbox", { name: "开始日期" }) as HTMLInputElement;
     const endInput = screen.getByRole("textbox", { name: "结束日期" }) as HTMLInputElement;
@@ -823,15 +809,15 @@ describe("SearchPage filters", () => {
     fireEvent.change(startInput, { target: { value: "1946.9.25" } });
     fireEvent.keyDown(startInput, { key: "Enter" });
     await waitFor(() => expect(startInput.value).toBe("1946-09-25"));
-    expect(axios.get).toHaveBeenCalledTimes(callsBeforeDate);
+    expect(axios.post).toHaveBeenCalledTimes(callsBeforeDate);
 
     fireEvent.change(endInput, { target: { value: "1960.5.6" } });
     fireEvent.keyDown(endInput, { key: "Enter" });
-    expect(axios.get).toHaveBeenCalledTimes(callsBeforeDate);
+    expect(axios.post).toHaveBeenCalledTimes(callsBeforeDate);
     fireEvent.click(screen.getByRole("button", { name: "应用" }));
 
-    await waitFor(() => expect(getLastRequestParams()).toEqual({
-      keyword: "历史",
+    await waitFor(() => expect(getLastRequestParams()).toMatchObject({
+      query: "历史",
       page: 1,
       size: 10,
       startDate: "1946-09-25",
@@ -850,8 +836,8 @@ describe("SearchPage filters", () => {
     const periodButton = screen.getByRole("button", { name: "大跃进" });
     fireEvent.click(periodButton);
 
-    await waitFor(() => expect(getLastRequestParams()).toEqual({
-      keyword: "历史",
+    await waitFor(() => expect(getLastRequestParams()).toMatchObject({
+      query: "历史",
       page: 1,
       size: 10,
       startDate: "1958-01-01",
@@ -864,27 +850,19 @@ describe("SearchPage filters", () => {
 });
 
 describe("SearchPage pagination", () => {
-  it.each([false, true])("requests the next page and scrolls after rendering results with platformRedesign=%s", async (platformRedesign) => {
-    vi.mocked(axios.get).mockImplementation((_url, config) => {
-      const page = Number((config as { params: { page: number } }).params.page);
-      return searchResponse([{ ...defaultResult, title: `第${page}页结果` }], 25);
-    });
+  it("requests the next page and scrolls after rendering results", async () => {
     vi.mocked(axios.post).mockImplementation((_url, data) => {
       const page = Number((data as { page: number }).page);
       return searchResponse([{ ...defaultResult, title: `第${page}页结果` }], 25);
     });
-    renderSearch("/search?keyword=历史", platformRedesign);
+    renderSearch("/search?keyword=历史");
     await screen.findByRole("heading", { name: "第1页结果" });
     const container = document.querySelector<HTMLElement>("[data-search-scroll-container]")!;
 
     fireEvent.click(screen.getByRole("button", { name: "›" }));
 
     await screen.findByRole("heading", { name: "第2页结果" });
-    if (platformRedesign) {
-      expect(vi.mocked(axios.post).mock.calls.at(-1)?.[1]).toMatchObject({ query: "历史", page: 2, size: 10 });
-    } else {
-      expect(getLastRequestParams()).toEqual({ keyword: "历史", page: 2, size: 10 });
-    }
+    expect(vi.mocked(axios.post).mock.calls.at(-1)?.[1]).toMatchObject({ query: "历史", page: 2, size: 10 });
     expect(screen.getByText("11")).toBeTruthy();
     expect(screen.getByTestId("location").textContent).toBe("/search?keyword=%E5%8E%86%E5%8F%B2&page=2");
     expect(container.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "instant" });

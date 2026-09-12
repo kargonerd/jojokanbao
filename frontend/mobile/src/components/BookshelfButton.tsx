@@ -1,7 +1,6 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { Pressable, StyleSheet, Text } from "react-native";
 import { mobileTheme, type MobileTheme } from "../theme/tokens";
-import { useMobileFeatureFlag } from "../reading/featureFlag";
 
 export function BookshelfButton({ added, busy, disabled, label, onPress, theme = mobileTheme }: {
   added?: boolean;
@@ -11,8 +10,7 @@ export function BookshelfButton({ added, busy, disabled, label, onPress, theme =
   onPress: () => void;
   theme?: MobileTheme;
 }) {
-  const enabled = useMobileFeatureFlag("library.bookshelf");
-  if (!enabled) return null;
+
   return <Pressable
     accessibilityRole="button"
     accessibilityLabel={label ?? (added ? "移出书架" : "加入书架")}

@@ -5,7 +5,7 @@ import Constants from "expo-constants";
 import { create } from "zustand";
 import { DEFAULT_SUPPORT_CONFIG, SUPPORT_CONFIG_KEY, parseSupportConfig, type SupportConfig } from "@jojo/content";
 import { startConfigSync } from "@jojo/analytics/config-sync";
-import { flagStorageNamespace } from "@jojo/analytics/flags";
+import { configStorageNamespace } from "@jojo/analytics/config";
 
 export const useSupportConfigStore = create<SupportConfig>(() => ({ ...DEFAULT_SUPPORT_CONFIG }));
 export function useSupportConfig() {
@@ -14,10 +14,10 @@ export function useSupportConfig() {
     const token = process.env.EXPO_PUBLIC_POSTHOG_TOKEN || analytics?.token;
     const host = process.env.EXPO_PUBLIC_POSTHOG_HOST || analytics?.host || "https://us.i.posthog.com";
     if (!token) return;
-    const key = flagStorageNamespace(token, host, "validated-support-config");
+    const key = `${configStorageNamespace(token, host)}.validated`;
     const sync = startConfigSync({
       open: async () => {
-        const { openMobileConfigSession } = await import("../reading/posthogFlags");
+        const { openMobileConfigSession } = await import("./posthog");
         return openMobileConfigSession(SUPPORT_CONFIG_KEY);
       },
       parse: parseSupportConfig,
