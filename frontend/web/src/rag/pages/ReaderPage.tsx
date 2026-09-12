@@ -24,6 +24,9 @@ import { ReadingLoadingState } from "../../reading/ReadingLoadingState";
 import { SpeechPlayer } from "../../reading/SpeechPlayer";
 import { speechSegments } from "../../reading/speech";
 import { BookReader } from "../components/BookReader";
+import { useAccountSessionStore } from "../../account/session";
+import { browserOfflineBookIdentity } from "../../offline/identity";
+import { useOfflineBooksStore } from "../../offline/books";
 
 function flattenToc(nodes: JojoTocNode[] = [], depth = 0): Array<JojoTocNode & { depth: number }> {
   return nodes.flatMap((node) => [
@@ -221,27 +224,16 @@ export function ReaderPage() {
   const [focusAnchorId, setFocusAnchorId] = useState(requestedAnnotation);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [authState, setAuthState] = useState({ initialized: false, signedIn: false });
-
-  useEffect(() => {
-    let active = true;
-    let unsubscribe: (() => void) | undefined;
-    void import("../../account/auth").then(async ({ authClient }) => {
-      const { data } = await authClient.auth.getSession();
-      if (active) setAuthState({ initialized: true, signedIn: Boolean(data.session) });
-      const listener = authClient.auth.onAuthStateChange((_event, session) => {
-        if (active) setAuthState({ initialized: true, signedIn: Boolean(session) });
-      });
-      unsubscribe = () => listener.data.subscription.unsubscribe();
-    }).catch(() => {
-      if (active) setAuthState({ initialized: true, signedIn: false });
-    });
-    return () => { active = false; unsubscribe?.(); };
-  }, []);
+  const { initialized: authInitialized, userId } = useAccountSessionStore();
+  const offlineIdentityVersion = useOfflineBooksStore((state) => state.identityVersion);
+  const offlineIdentity = browserOfflineBookIdentity();
+  const readerUserId = loaded?.offline ? offlineIdentity.userId : userId;
+  const readerIdentityReady = loaded?.offline ? offlineIdentity.initialized : authInitialized;
 
   useEffect(() => {
     if (!datasetId || !itemKey) return;
     let active = true;
+    setLoaded(undefined); setFragment(undefined);
     setLoading(true); setError("");
     loadItem(datasetId, itemKey).then((value) => {
       if (!active) return;
@@ -258,7 +250,7 @@ export function ReaderPage() {
       setActiveChapter(requested?.id || value.manifest.content.chapters?.[0]?.id || "");
     }).catch((reason: Error) => { if (active) setError(reason.message); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [datasetId, itemKey, requestedAnnotation, requestedChapter, requestedQuote]);
+  }, [datasetId, itemKey, requestedAnnotation, requestedChapter, requestedQuote, authInitialized, userId, offlineIdentityVersion]);
 
   useEffect(() => {
     if (!datasetId || !itemKey) return;
@@ -268,10 +260,12 @@ export function ReaderPage() {
       if (active && url) setCoverUrl(url);
     }).catch(() => undefined);
     return () => { active = false; };
-  }, [datasetId, itemKey]);
+  }, [datasetId, itemKey, userId]);
 
   useEffect(() => {
     if (!loaded || !activeChapter) return;
+    const access = loaded.manifest.access ?? loaded.item.access ?? loaded.index.access ?? loaded.entry.access ?? "public";
+    if (access === "authenticated" && (!readerIdentityReady || !readerUserId || loaded.ownerId !== readerUserId)) return;
     let cancelled = false;
     const controller = new AbortController();
     setFragment(undefined); setError("");
@@ -291,7 +285,7 @@ export function ReaderPage() {
       setFragment(value);
     }).catch((reason: Error) => { if (!cancelled) setError(reason.message); });
     return () => { cancelled = true; controller.abort(); };
-  }, [activeChapter, loaded]);
+  }, [activeChapter, loaded, readerIdentityReady, readerUserId]);
 
   useEffect(() => () => Object.values(assetUrls).forEach((url) => URL.revokeObjectURL(url)), [assetUrls]);
 
@@ -347,8 +341,8 @@ export function ReaderPage() {
   if (loading) return <ReadingLoadingState kind="book" status="正在打开书籍" fullscreen />;
   if (!loaded) return <div className="p-8 text-center text-muted">{error || "内容不存在"}</div>;
   const access = loaded.manifest.access ?? loaded.item.access ?? loaded.index.access ?? loaded.entry.access ?? "public";
-  if (access === "authenticated" && (!authState.initialized || !authState.signedIn)) {
-    if (!authState.initialized) return <LoadingSpinner text="正在确认登录状态" fullscreen />;
+  if (access === "authenticated" && (!readerIdentityReady || !readerUserId)) {
+    if (!readerIdentityReady) return <LoadingSpinner text="正在确认登录状态" fullscreen />;
     const returnTo = `${window.location.pathname}${window.location.search}`;
     return <main className="flex min-h-screen items-center justify-center bg-paper px-6 text-center"><div className="max-w-md border-l-2 border-red pl-6 text-left"><p className="m-0 text-xs tracking-[.18em] text-red">登录后阅读</p><h1 className="my-4 text-2xl">{loaded.manifest.title}</h1><p className="text-sm leading-7 text-muted">这本书需要登录后阅读。登录后会回到这里。</p><Link className="text-sm font-bold text-red no-underline" to={`/account?returnTo=${encodeURIComponent(returnTo)}`}>登录 / 注册 →</Link></div></main>;
   }

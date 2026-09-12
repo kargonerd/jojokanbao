@@ -73,6 +73,16 @@ describe("book offline reading", () => {
     expect(offlineFetch).not.toHaveBeenCalled();
   });
 
+  it("does not trust an old unscoped cover or a known restricted book as a public offline cover", async () => {
+    const bytes = new TextEncoder().encode("data:image/png;base64,PRIVATE");
+    entries.set("jojo:book-cover:book:full", { bytes, expiresAt: Date.now() + 60_000 });
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Network request failed")));
+    const reader = await import("./books");
+    await expect(reader.loadMobileBookCover("book", "full")).rejects.toThrow("Network request failed");
+    entries.set("jojo:book-cover:public:book:full", { bytes, expiresAt: Date.now() + 60_000 });
+    await expect(reader.loadMobileBookCover({ datasetId: "book", title: "受限书", type: "book", indexObject: "books/test/index.jox", access: "authenticated" }, "full")).rejects.toThrow("Network request failed");
+  });
+
   it("retries a catalog that failed offline without restarting the app", async () => {
     const fetcher = vi.fn(onlineFetch).mockRejectedValueOnce(new TypeError("Network request failed"));
     vi.stubGlobal("fetch", fetcher);
