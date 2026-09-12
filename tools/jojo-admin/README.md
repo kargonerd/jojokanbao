@@ -42,9 +42,11 @@ pnpm dev:admin
 服务访问 Supabase：Flask 从仓库根目录 `.env` 读取现有的
 `JOJO_OPERATOR_TOKEN`，浏览器不接收、不保存这个密钥，也不需要单独登录。
 
-限额、阈值、超时等运行参数也在这个页面管理，复用同一 flag 的 `config`、发布原因、
-修改历史与回滚。`ai.usage_limits` 提供每分钟次数、每日次数和单次生成时限输入；
-`reader.annotations` 提供公开划线阈值输入。后续同类参数优先扩展现有入口，
+限额、阈值、超时等运行参数也在这个页面查看，复用同一 flag 的 `config`、发布原因和
+修改历史。应用 `202609120001_posthog_runtime_config.sql` 后，`auth.signup`、
+`reader.annotations`、`ai.usage_limits`、`ops.email_quota` 的配置源为 PostHog；
+页面按 `configProvider` 显示只读参数、同步时间和远端版本，修改与回滚在 PostHog 完成。
+尚未迁移的数据库继续显示原参数输入和 Operator 发布、回滚入口。后续同类参数优先扩展现有机制，
 存储边界和接入步骤见 [运行配置复用](../../infrastructure/supabase/README.md#runtime-configuration-reuse)。
 
 评论审核页面位于 `http://127.0.0.1:4174/moderation`。它复用同一个

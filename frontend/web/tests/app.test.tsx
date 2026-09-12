@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App, AppRoutes } from "../src/App";
 import { useAccountSessionStore } from "../src/account/session";
 import { AppLayout, buildAppNavigationItems } from "../src/shell/AppLayout";
+import { useSupportConfigStore } from "../src/supportConfig";
+import { DEFAULT_SUPPORT_CONFIG } from "@jojo/content";
 
 const appPdfMocks = vi.hoisted(() => ({
   usePdfDocument: vi.fn(),
@@ -31,6 +33,7 @@ function renderAt(path: string) {
 }
 
 beforeEach(() => {
+  useSupportConfigStore.setState(DEFAULT_SUPPORT_CONFIG);
   useAccountSessionStore.setState({ initialized: true, userId: null, displayName: null });
   appPdfMocks.usePdfDocument.mockReset();
   appPdfMocks.usePdfDocument.mockReturnValue({ document: null, numPages: 0, loading: false, error: null });
@@ -396,6 +399,13 @@ describe("JOJO Web navigation", () => {
 });
 
 describe("Support page", () => {
+  it("updates the displayed QQ group when remote configuration is refreshed", () => {
+    renderAt("/archive/support");
+    expect(screen.getByText("974380749")).toBeTruthy();
+    act(() => { useSupportConfigStore.setState({qqGroup: "123456789"}); });
+    expect(screen.getByText("123456789")).toBeTruthy();
+    expect(screen.queryByText("974380749")).toBeNull();
+  });
   it("keeps feedback, memorial, donation, copyright, and cloud download sections available", () => {
     renderAt("/archive/support");
 

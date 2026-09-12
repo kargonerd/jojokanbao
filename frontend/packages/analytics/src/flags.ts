@@ -16,9 +16,9 @@ export function flagValues(values?: Record<string, unknown>): FeatureFlagValues 
 }
 
 // Let the SDK persist decisions; the application only holds a view of the active account.
-export interface FlagSession {
-  cached(): FeatureFlagValues;
-  subscribe(listener: (flags: FeatureFlagValues) => void): () => void;
+export interface FlagSession<T = FeatureFlagValues> {
+  cached(): T;
+  subscribe(listener: (flags: T) => void): () => void;
   refresh(): void;
   dispose(): void;
 }

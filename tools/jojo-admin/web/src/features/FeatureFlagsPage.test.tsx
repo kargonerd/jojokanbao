@@ -347,4 +347,18 @@ describe("FeatureFlagsPage", () => {
     expect(await screen.findByText("无法连接功能开关")).toBeInTheDocument();
     expect(screen.getByText(/JOJO_OPERATOR_TOKEN 未配置/)).toBeInTheDocument();
   });
+
+  it("shows the synchronized config and audit history without a competing editor after migration", async () => {
+    api.list.mockResolvedValue([{...aiUsageFlag, configProvider: "posthog", configRemoteVersion: 12,
+      configSyncedAt: "2026-09-12T00:00:00Z"}]);
+    render(<FeatureFlagsPage />);
+    expect(await screen.findByText("ai_usage_limits_config")).toBeInTheDocument();
+    expect(screen.getByText(/PostHog 版本 12/)).toBeInTheDocument();
+    expect(screen.getByText(/"requestsPerMinute": 3/)).toBeInTheDocument();
+    expect(screen.getByRole("region", {name: "修改记录"})).toBeInTheDocument();
+    expect(screen.queryByRole("spinbutton")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", {name: "发布更改"})).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", {name: /回滚到 revision/})).not.toBeInTheDocument();
+    expect(api.publish).not.toHaveBeenCalled();
+  });
 });

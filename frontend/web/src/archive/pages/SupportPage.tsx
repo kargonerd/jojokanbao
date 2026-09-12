@@ -1,5 +1,6 @@
 import { useLayoutEffect } from "react";
-import { DONATION_RECORDS_URL, FEEDBACK_BILIBILI_URL, FEEDBACK_QQ_GROUP, PROJECT_COPYRIGHT_NOTICES } from "@jojo/content";
+import { DONATION_RECORDS_URL, FEEDBACK_BILIBILI_URL, PROJECT_COPYRIGHT_NOTICES } from "@jojo/content";
+import { useSupportConfig } from "../../supportConfig";
 import weixinImg from "../../../../packages/content/assets/support/weixin.png";
 import zfbImg from "../../../../packages/content/assets/support/zfb.png";
 import { rollout } from "../../rollout";
@@ -32,6 +33,7 @@ const downloads = [
 ];
 
 export function SupportPage({ platformRedesign = rollout.platformRedesign }: { platformRedesign?: boolean }) {
+  const { qqGroup } = useSupportConfig();
   const { hash } = useLocation();
 
   useLayoutEffect(() => {
@@ -57,7 +59,7 @@ export function SupportPage({ platformRedesign = rollout.platformRedesign }: { p
           <h1 id="关于" className="mb-4 scroll-mt-20 text-2xl font-bold tracking-wider text-ink">{platformRedesign ? "关于 JOJO 看报" : "反馈"}</h1>
           <p className="text-ink/80 leading-8">
             网站为业余时间开发制作，因此较为粗糙，如果网站有任何问题，或者希望对网站提出建议，可以进入QQ群:
-            <strong className="text-red"> {FEEDBACK_QQ_GROUP} </strong> 进行反馈，也可以在B站
+            <strong className="text-red"> {qqGroup} </strong> 进行反馈，也可以在B站
             <a href={FEEDBACK_BILIBILI_URL} target="_blank" rel="noreferrer" className="support-link font-bold"> JOJO看报账号</a>
             下留言或私信反馈
           </p>
