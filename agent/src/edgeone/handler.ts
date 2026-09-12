@@ -111,6 +111,10 @@ function requestBody(value: unknown): AgentRequestBody {
     return strings.length ? strings : undefined;
   };
   const datasetIds = stringList(scope?.datasetIds);
+  const contentType = scope?.contentType;
+  if (contentType !== undefined && contentType !== "book" && contentType !== "periodical") {
+    throw new AgentHttpError(400, "scope.contentType must be book or periodical");
+  }
   const itemIds = stringList(scope?.itemIds);
   const manifestObjects = stringList(scope?.manifestObjects);
   const mode = scope?.mode === "all" || scope?.mode === "selected"
@@ -152,7 +156,7 @@ function requestBody(value: unknown): AgentRequestBody {
       ...(prefix ? { prefix } : {}),
       ...(suffix ? { suffix } : {}),
     };
-    if (itemIds?.length !== 1 || manifestObjects?.length !== 1) {
+    if (contentType === "periodical" || itemIds?.length !== 1 || manifestObjects?.length !== 1) {
       throw new AgentHttpError(400, "focus requires one selected book item");
     }
   }
@@ -186,8 +190,9 @@ function requestBody(value: unknown): AgentRequestBody {
     message: message.trim(),
     ...(images.length ? { images } : {}),
     ...(history.length ? { history } : {}),
-    ...(mode || datasetIds || itemIds || manifestObjects
+    ...(contentType || mode || datasetIds || itemIds || manifestObjects
       ? { scope: {
+        ...(contentType ? { contentType } : {}),
         ...(mode ? { mode } : {}),
         ...(datasetIds ? { datasetIds } : {}),
         ...(itemIds ? { itemIds } : {}),

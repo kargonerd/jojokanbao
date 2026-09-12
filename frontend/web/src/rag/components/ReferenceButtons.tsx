@@ -1,4 +1,5 @@
 import type { RagReference } from "../types";
+import { isArchiveIssueId, withSearchLocation } from "@jojo/content";
 import { withReaderReturnTo } from "../readerNavigation";
 
 export interface AnswerCitation {
@@ -9,6 +10,15 @@ export interface AnswerCitation {
 export function referenceHref(reference: RagReference, returnTo?: string): string | undefined {
   if (!reference.datasetId || !reference.itemId || !reference.targetId) {
     return undefined;
+  }
+  if (reference.type === "newspaper" || reference.datasetId === "rmrb") {
+    const date = reference.date || reference.itemId.slice("rmrb:".length);
+    const issueId = date.replaceAll("-", "");
+    if (reference.datasetId !== "rmrb" || !isArchiveIssueId("rmrb", issueId)) return undefined;
+    const page = reference.page && Number.isSafeInteger(reference.page) && reference.page > 0 ? reference.page : undefined;
+    return withSearchLocation(`/archive/rmrb/${issueId}${page ? `#page-${page}` : ""}`, {
+      query: "", title: reference.title, page, returnTo,
+    });
   }
   const query = new URLSearchParams({ chapter: reference.targetId });
   if (reference.anchorId) query.set("anchor", reference.anchorId);
@@ -136,7 +146,7 @@ export function ReferenceButtons({
             <span
               key={`${reference.itemId ?? ""}:${reference.targetId}`}
               className="border border-rule px-2.5 py-1.5 text-muted"
-              title="这条引用缺少书籍定位信息"
+              title="这条引用缺少原文定位信息"
             >
               {numberedLabel}
             </span>

@@ -148,6 +148,22 @@ const result = await runPlatformAgent({
 
 ## 馆藏 RAG 工具
 
+请求通过 `scope.contentType` 选择 `book`（默认，兼容已有请求）或 `periodical`。
+Web 和原生移动端 AI 页面可切换书籍与报刊，历史对话保存该选择。报刊目前只开放《人民日报》
+（`datasetIds: ["rmrb"]`），由 `JOJO_AI_PERIODICAL_IDS` 维护；不依赖书籍目录的 AI 标记。
+两种范围提供各自的工具，报刊不下载书籍索引或报纸的整期 Manifest。
+
+- `search_periodicals`：调用现有 Reader Search 的 `POST /content/search` ES 接口，
+  固定限定已开放报刊与 `newspaper` 类型，支持日期范围、时间排序和分页，每次最多 8 篇。
+- `read_periodical_article`：按需读取本轮搜索命中的文章正文，默认每次 6000 字，
+  上限 12000 字，长文章按 `nextOffset` 继续读取。引用保留文章标识、日期及版次，
+  Web 跳转至对应 Archive 页面并定位文章标题。
+
+报刊复用 `@jojo/content` 的 `CONTENT_SEARCH_API`，无需在 Agent 中配置 ES 账号或新增服务。
+搜索服务失败会返回工具错误，不回退到书籍检索。
+
+书籍继续使用以下工具：
+
 - `list_library_books`：读取小型 `catalog.jox`，列出支持 AI 的书籍，不下载正文。
 - `list_book_items`：读取候选书的 Dataset Index，列出分卷与 Manifest 路径。
 - `search_content`：把最多 8 本候选书的随书 `search.jox` 下载到本次运行内存中检索，

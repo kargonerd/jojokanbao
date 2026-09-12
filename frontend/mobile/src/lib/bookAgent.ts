@@ -13,6 +13,9 @@ export interface MobileBookAgentRequest {
 }
 
 export interface MobileBookAgentReference {
+  type?: "newspaper";
+  date?: string;
+  page?: number;
   citationId?: string;
   datasetId?: string;
   itemId?: string;

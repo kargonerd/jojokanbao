@@ -100,6 +100,7 @@ export interface AgentRequestBody {
     content: string;
   }>;
   scope?: {
+    contentType?: "book" | "periodical";
     mode?: "all" | "selected";
     datasetIds?: string[];
     itemIds?: string[];

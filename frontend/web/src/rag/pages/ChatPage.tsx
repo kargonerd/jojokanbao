@@ -3,6 +3,7 @@ import { AppShell } from "@jojo/ui";
 import { AiExperimentalNotice } from "../components/AiBetaNotice";
 import { ReferenceButtons } from "../components/ReferenceButtons";
 import { useChatStore } from "../stores/chatStore";
+import { scopeNotebooks } from "../scope";
 import { formatChatMarkdown } from "../utils/markdown";
 
 function conversationDate(timestamp?: number): string {
@@ -116,27 +117,33 @@ function ConversationHistory({ compact = false }: { compact?: boolean }) {
 function ScopeSelector({ onClose }: { onClose?: () => void }) {
   const {
     notebooks,
+    contentType,
+    selectContentType,
     selectedNotebookIds,
     loading,
     streaming,
+    historyLoading,
     selectNotebook,
     toggleNotebook,
   } = useChatStore();
   const [query, setQuery] = useState("");
+  const sourceLabel = contentType === "book" ? "书籍" : "报刊";
+  const disabled = streaming || historyLoading;
   const visibleNotebooks = useMemo(() => {
+    const candidates = scopeNotebooks(notebooks, contentType);
     const normalized = query.trim().toLocaleLowerCase("zh-CN");
-    if (!normalized) return notebooks;
-    return notebooks.filter((notebook) => (
+    if (!normalized) return candidates;
+    return candidates.filter((notebook) => (
       notebook.title || notebook.name || ""
     ).toLocaleLowerCase("zh-CN").includes(normalized));
-  }, [notebooks, query]);
+  }, [notebooks, contentType, query]);
 
   return (
     <section aria-label="提问范围" className="p-4">
       <div className="mb-3 flex items-start justify-between gap-4">
         <div>
-          <h2 className="m-0 text-sm font-bold text-ink">选择书籍</h2>
-          <p className="mb-0 mt-1.5 font-sans text-[11px] leading-5 text-muted">不选时查询全部书籍，可以多选。</p>
+          <h2 className="m-0 text-sm font-bold text-ink">选择资料</h2>
+          <p className="mb-0 mt-1.5 font-sans text-[11px] leading-5 text-muted">{contentType === "book" ? "不选时查询全部书籍，可以多选。" : "报刊目前仅支持《人民日报》。"}</p>
         </div>
         <button
           type="button"
@@ -146,13 +153,27 @@ function ScopeSelector({ onClose }: { onClose?: () => void }) {
           完成
         </button>
       </div>
+      <div role="group" aria-label="资料类型" className="mb-3 flex border-b border-rule">
+        {(["book", "periodical"] as const).map((type) => (
+          <button
+            key={type}
+            type="button"
+            aria-pressed={contentType === type}
+            disabled={disabled}
+            onClick={() => { setQuery(""); selectContentType(type); }}
+            className={`flex-1 border-0 border-b-2 bg-transparent px-3 py-2 text-xs font-bold disabled:opacity-35 ${contentType === type ? "border-red text-red" : "border-transparent text-muted hover:text-red"}`}
+          >
+            {type === "book" ? "书籍" : "报刊"}
+          </button>
+        ))}
+      </div>
       <label className="block">
-        <span className="sr-only">筛选书目</span>
+        <span className="sr-only">筛选{sourceLabel}</span>
         <input
           type="search"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="输入书名筛选"
+          placeholder={contentType === "book" ? "输入书名筛选" : "输入报刊名筛选"}
           className="w-full border border-rule-dark bg-paper px-3 py-2 text-xs shadow-none focus:border-red focus:outline-none"
         />
       </label>
@@ -161,7 +182,7 @@ function ScopeSelector({ onClose }: { onClose?: () => void }) {
         <button
           type="button"
           aria-pressed={selectedNotebookIds.length === 0}
-          disabled={streaming}
+          disabled={disabled}
           onClick={() => selectNotebook(null)}
           className={`group mb-1 grid w-full grid-cols-[18px_minmax(0,1fr)] items-start gap-2 border-0 border-l-2 px-3 py-2.5 text-left transition-colors ${selectedNotebookIds.length === 0 ? "border-red bg-red/5 text-red" : "border-transparent bg-transparent text-ink hover:border-rule hover:bg-[#f5f4f1]"}`}
         >
@@ -172,13 +193,13 @@ function ScopeSelector({ onClose }: { onClose?: () => void }) {
             {selectedNotebookIds.length === 0 ? "✓" : "·"}
           </span>
           <span>
-            <strong className="block text-xs leading-5">全部书籍</strong>
+            <strong className="block text-xs leading-5">全部{sourceLabel}</strong>
             <small className="mt-0.5 block font-sans text-[9px] font-normal text-muted">默认范围</small>
           </span>
         </button>
         {loading ? <p className="px-2 text-xs text-muted">正在加载…</p> : null}
         {!loading && visibleNotebooks.length === 0 ? (
-          <p className="px-3 py-3 text-xs leading-5 text-muted">没有匹配的书籍。</p>
+          <p className="px-3 py-3 text-xs leading-5 text-muted">没有匹配的{sourceLabel}。</p>
         ) : null}
         {visibleNotebooks.map((notebook) => {
           const selected = selectedNotebookIds.includes(notebook.id);
@@ -188,7 +209,7 @@ function ScopeSelector({ onClose }: { onClose?: () => void }) {
               key={notebook.id}
               type="button"
               aria-pressed={selected}
-              disabled={streaming}
+              disabled={disabled}
               onClick={() => toggleNotebook(notebook.id)}
               className={`group mb-1 grid w-full grid-cols-[18px_minmax(0,1fr)] items-start gap-2 border-0 border-l-2 px-3 py-2.5 text-left transition-colors ${selected ? "border-red bg-red/5 text-red" : "border-transparent bg-transparent text-ink hover:border-rule hover:bg-[#f5f4f1]"}`}
             >
@@ -221,6 +242,7 @@ const assistantTextClass = [
 export function ChatPage() {
   const {
     notebooks,
+    contentType,
     selectedNotebookIds,
     messages,
     conversationId,
@@ -232,7 +254,6 @@ export function ChatPage() {
     streamStatus,
     loadNotebooks,
     sendMessage,
-    clearConversation,
   } = useChatStore();
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -243,16 +264,17 @@ export function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, streamContent, streamStatus]);
 
+  const availableNotebooks = scopeNotebooks(notebooks, contentType);
   const selectedTitles = selectedNotebookIds.map((id) => {
-    const notebook = notebooks.find((candidate) => candidate.id === id);
+    const notebook = availableNotebooks.find((candidate) => candidate.id === id);
     return notebook?.title || notebook?.name || "";
   }).filter(Boolean);
   const scopeLabel = selectedTitles.length === 0
-    ? "全部书籍"
+    ? (contentType === "book" ? "全部书籍" : "报刊 · 人民日报")
     : selectedTitles.length === 1
       ? `仅《${selectedTitles[0]}》`
-      : `限定 ${selectedTitles.length} 本书`;
-  const canSend = Boolean(input.trim() && notebooks.length && !loading && !historyLoading && !streaming);
+      : `限定 ${selectedTitles.length} ${contentType === "book" ? "本书" : "种报刊"}`;
+  const canSend = Boolean(input.trim() && availableNotebooks.length && !loading && !historyLoading && !streaming);
   const hasThread = Boolean(conversationId) || messages.length > 0 || streaming || Boolean(error);
   const handleSend = () => {
     if (!canSend) return;
@@ -296,12 +318,12 @@ export function ChatPage() {
       <div className="flex min-h-10 items-center justify-between gap-3 border-t border-rule px-3 font-sans">
         <details ref={scopeDetailsRef} className="group relative">
           <summary
-            aria-label={`选择书籍，当前${scopeLabel}`}
+            aria-label={`选择资料，当前${scopeLabel}`}
             className="cursor-pointer list-none px-1 py-2 text-[10px] font-bold text-red hover:underline focus-visible:outline-2 focus-visible:outline-red"
           >
             {scopeLabel} <span aria-hidden="true" className="ml-1 inline-block transition-transform group-open:rotate-180">⌃</span>
           </summary>
-          <div className={`absolute left-0 z-30 w-[min(24rem,calc(100vw-2rem))] border border-rule bg-paper shadow-[4px_4px_0_rgba(139,26,26,.14)] ${prominent ? "top-[calc(100%+8px)]" : "bottom-[calc(100%+8px)]"}`}>
+          <div className={`fixed inset-x-4 bottom-4 z-30 max-h-[calc(100dvh-2rem)] overflow-y-auto border border-rule bg-paper shadow-[4px_4px_0_rgba(139,26,26,.14)] sm:absolute sm:inset-x-auto sm:left-0 sm:w-[min(24rem,calc(100vw-2rem))] ${prominent ? "sm:bottom-auto sm:top-[calc(100%+8px)] sm:max-h-[calc(50dvh-6rem)]" : "sm:bottom-[calc(100%+8px)]"}`}>
             <ScopeSelector onClose={() => scopeDetailsRef.current?.removeAttribute("open")} />
           </div>
         </details>
@@ -332,7 +354,7 @@ export function ChatPage() {
             <h1 className="sr-only">馆藏问答</h1>
             <div className="mx-auto w-full max-w-[48rem]">
               {loading ? (
-                <p className="m-0 text-center font-sans text-xs text-muted">正在加载书籍…</p>
+                <p className="m-0 text-center font-sans text-xs text-muted">正在加载资料…</p>
               ) : historyLoading ? (
                 <p className="m-0 text-center font-sans text-xs text-muted">正在加载历史记录…</p>
               ) : renderComposer(true)}

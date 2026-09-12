@@ -32,6 +32,7 @@ describe("RAG chat scope", () => {
     localConversationApi.delete.mockResolvedValue(undefined);
     askStream.mockClear();
     useChatStore.setState({
+      contentType: "book",
       notebooks: [],
       selectedNotebookIds: [],
       messages: [],
@@ -62,6 +63,44 @@ describe("RAG chat scope", () => {
     expect(useChatStore.getState().selectedNotebookIds).toEqual(["book-b"]);
     useChatStore.getState().selectNotebook(null);
     expect(useChatStore.getState().selectedNotebookIds).toEqual([]);
+  });
+
+  it("sends and saves a periodical scope without loading book manifests", async () => {
+    await useChatStore.getState().selectContentType("periodical");
+    useChatStore.getState().selectNotebook("rmrb");
+    askStream.mockImplementationOnce((...args: unknown[]) => {
+      const [params, onChunk, onDone] = args as [
+        { contentType: string; datasetIds: string[] }, (text: string) => void,
+        (refs: unknown[], conversationId: string) => void,
+      ];
+      expect(params).toMatchObject({ contentType: "periodical", datasetIds: ["rmrb"] });
+      onChunk("报道原文");
+      onDone([], "conv_paper");
+      return vi.fn();
+    });
+    useChatStore.getState().sendMessage("人民日报如何报道黄河？");
+    await vi.waitFor(() => expect(localConversationApi.put).toHaveBeenCalledWith(expect.objectContaining({
+      conversation: expect.objectContaining({ scope: { contentType: "periodical", mode: "selected", datasetIds: ["rmrb"] } }),
+    })));
+    expect(notebookApi.getSources).not.toHaveBeenCalled();
+    const saved = localConversationApi.put.mock.calls[0]?.[0];
+    localConversationApi.get.mockResolvedValue(saved);
+    useChatStore.getState().selectContentType("book");
+    expect(useChatStore.getState()).toMatchObject({ messages: [], selectedNotebookIds: [], conversationId: null });
+    await useChatStore.getState().openConversation("conv_paper");
+    expect(useChatStore.getState()).toMatchObject({ contentType: "periodical", selectedNotebookIds: ["rmrb"] });
+  });
+
+  it("locks the source type during streaming and clears book selection when switching", () => {
+    useChatStore.setState({ notebooks: [{ id: "book-a" }], selectedNotebookIds: ["book-a"], streaming: true });
+    useChatStore.getState().selectContentType("periodical");
+    expect(useChatStore.getState().contentType).toBe("book");
+    useChatStore.setState({ streaming: false });
+    useChatStore.getState().selectContentType("periodical");
+    useChatStore.getState().toggleNotebook("book-a");
+    expect(useChatStore.getState().selectedNotebookIds).toEqual([]);
+    useChatStore.getState().sendMessage("黄河");
+    expect(askStream.mock.calls[0]?.[0]).toMatchObject({ contentType: "periodical", datasetIds: ["rmrb"], scopeMode: "all" });
   });
 
   it("sends every explicitly selected book as one scoped question", async () => {

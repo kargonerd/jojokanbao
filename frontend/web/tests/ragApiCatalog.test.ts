@@ -14,7 +14,7 @@ describe("AI Dataset catalog", () => {
     content.loadCatalog.mockReset();
   });
 
-  it("only exposes published Datasets with explicit AI support", async () => {
+  it("only exposes published AI books through the static book catalog", async () => {
     content.loadCatalog.mockResolvedValue({
       formatVersion: "jojo-catalog/1",
       revision: 1,
@@ -22,6 +22,7 @@ describe("AI Dataset catalog", () => {
       datasets: [
         { datasetId: "book", type: "book", title: "书籍", language: "zh-CN", indexObject: "content/books/book/index.jox", publicationStatus: "published", aiEnabled: true },
         { datasetId: "rmrb", type: "newspaper", title: "人民日报", language: "zh-CN", indexObject: "content/newspapers/rmrb/index.jox", publicationStatus: "published" },
+        { datasetId: "ckxx", type: "newspaper", title: "参考消息", language: "zh-CN", indexObject: "content/newspapers/ckxx/index.jox", publicationStatus: "published", aiEnabled: true },
         { datasetId: "times", type: "newspaper", title: "JOJO 时事", language: "mul", indexObject: "content/newspapers/times/index.jox", publicationStatus: "published", aiEnabled: false },
         { datasetId: "draft", type: "book", title: "草稿书", language: "zh-CN", indexObject: "content/books/draft/index.jox", publicationStatus: "draft", aiEnabled: true },
       ],

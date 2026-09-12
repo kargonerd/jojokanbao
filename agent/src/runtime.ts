@@ -33,6 +33,10 @@ function sourceReference(
   const citationId = stringField(value.citationId) ?? citationIdForLocation(value);
   return {
     ...(citationId ? { citationId } : {}),
+    ...(value.type === "newspaper" ? { type: "newspaper" as const } : {}),
+    ...(stringField(value.date) ? { date: stringField(value.date) } : {}),
+    ...(typeof value.page === "number" && Number.isSafeInteger(value.page) && value.page > 0
+      ? { page: value.page } : {}),
     ...(stringField(value.datasetId) || stringField(inherited.datasetId)
       ? { datasetId: stringField(value.datasetId) ?? stringField(inherited.datasetId) }
       : {}),

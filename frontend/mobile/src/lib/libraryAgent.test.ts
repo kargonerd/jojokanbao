@@ -37,6 +37,27 @@ describe("mobile library agent", () => {
     });
     expect(mobileAgentToolActivity("read_fragment").phase).toBe("reading");
     expect(mobileAgentToolActivity("search_content", undefined, true).message).toContain("调整检索方式");
+    expect(mobileAgentToolActivity("search_periodicals", { query: "黄河" }).message).toContain("正在人民日报中检索原文");
+    expect(mobileAgentToolActivity("read_periodical_article").phase).toBe("reading");
+  });
+
+  it("forwards the periodical scope and preserves newspaper references", async () => {
+    const reference = { citationId: "Jpaper", type: "newspaper", datasetId: "rmrb", itemId: "rmrb:1999-06-25", targetId: "article-1", date: "1999-06-25", page: 5 };
+    const frame = (event: string, payload: unknown) => `event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`;
+    streamingFetch.mockResolvedValue(new Response([
+      frame("tool_end", { references: [reference] }),
+      frame("text_delta", { delta: "报道[cite:Jpaper]" }),
+      frame("done", {}),
+    ].join("")));
+    await new Promise<void>((resolve, reject) => {
+      askMobileLibraryAgent({ contentType: "periodical", question: "黄河报道", datasetIds: ["rmrb"], scopeMode: "all" }, {
+        onChunk: vi.fn(), onError: reject,
+        onDone: (_id, references) => { expect(references).toEqual([reference]); resolve(); },
+      });
+    });
+    expect(JSON.parse(String(streamingFetch.mock.calls[0]?.[1]?.body))).toMatchObject({
+      scope: { contentType: "periodical", datasetIds: ["rmrb"], itemIds: [], manifestObjects: [] },
+    });
   });
 
   it("streams an all-library question and keeps only cited references", async () => {

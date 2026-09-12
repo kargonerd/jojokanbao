@@ -37,6 +37,7 @@ describe("RAG chat page", () => {
     localConversationApi.delete.mockReset();
     askStream.mockReset();
     useChatStore.setState({
+      contentType: "book",
       notebooks: [],
       selectedNotebookIds: [],
       messages: [],
@@ -64,7 +65,7 @@ describe("RAG chat page", () => {
 
     expect(first.getAttribute("aria-pressed")).toBe("true");
     expect(second.getAttribute("aria-pressed")).toBe("true");
-    expect(screen.getByLabelText("选择书籍，当前限定 2 本书")).toBeTruthy();
+    expect(screen.getByLabelText("选择资料，当前限定 2 本书")).toBeTruthy();
     expect(screen.getByRole("button", { name: "完成" })).toBeTruthy();
   });
 
@@ -74,10 +75,24 @@ describe("RAG chat page", () => {
 
     expect(screen.getByRole("form", { name: "提问" })).toBeTruthy();
     expect(screen.getByRole("note", { name: "AI 实验功能说明" }).textContent).toContain("回答可能不准确、遗漏或误解原文");
-    expect(screen.getByLabelText("选择书籍，当前全部书籍")).toBeTruthy();
+    expect(screen.getByLabelText("选择资料，当前全部书籍")).toBeTruthy();
     expect(screen.queryByText("馆藏原文 · 随问随查")).toBeNull();
     expect(screen.queryByText("想了解什么，直接问。")).toBeNull();
     expect(screen.queryByText("无需先选书")).toBeNull();
+  });
+
+  it("switches between books and the sole supported periodical and clears the filter", async () => {
+    render(<ChatPage />);
+    await screen.findByRole("textbox", { name: "输入问题" });
+    fireEvent.change(screen.getByRole("searchbox", { name: "筛选书籍" }), { target: { value: "甲" } });
+    fireEvent.click(screen.getByRole("button", { name: "报刊" }));
+    expect(screen.queryByRole("button", { name: "甲书" })).toBeNull();
+    expect(screen.getByRole("button", { name: "人民日报" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "参考消息" })).toBeNull();
+    expect(screen.getByLabelText("选择资料，当前报刊 · 人民日报")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "书籍" }));
+    expect(screen.getByRole("button", { name: "甲书" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "人民日报" })).toBeNull();
   });
 
   it("locks the composer while a historical conversation is loading", async () => {

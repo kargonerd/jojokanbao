@@ -12,6 +12,7 @@ const MAX_HISTORY_MESSAGES = 20;
 const MAX_HISTORY_CHARACTERS = 100_000;
 
 export interface MobileLibraryAgentRequest {
+  contentType?: "book" | "periodical";
   question: string;
   datasetIds: string[];
   scopeMode: "all" | "selected";
@@ -69,6 +70,10 @@ export function mobileAgentToolActivity(name: unknown, args?: unknown, isError =
       return { phase: "searching", message: `正在当前书籍中检索原文${suffix}` };
     case "search_content":
       return { phase: "searching", message: `正在馆藏中检索原文${suffix}` };
+    case "search_periodicals":
+      return { phase: "searching", message: `正在人民日报中检索原文${suffix}` };
+    case "read_periodical_article":
+      return { phase: "reading", message: "正在读取报刊文章原文…" };
     case "inspect_item":
       return { phase: "reading", message: "正在读取书籍概况…" };
     case "list_item_toc":
@@ -150,6 +155,7 @@ export function askMobileLibraryAgent(
         message: request.question,
         history: boundedMobileAgentHistory(request.history ?? []),
         scope: {
+          ...(request.contentType ? { contentType: request.contentType } : {}),
           mode: request.scopeMode,
           datasetIds: request.datasetIds,
           itemIds: request.itemIds ?? [],
