@@ -138,12 +138,49 @@ describe("app homepage", () => {
     await waitFor(() => expect(catalogMocks.list).toHaveBeenCalled());
     fireEvent.change(input, { target: { value: "毛文集" } });
     const book = await screen.findByRole("link", { name: "毛泽东文集" });
-    expect(screen.getByRole("button", { name: "找书" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "找书" })).toBeNull();
     fireEvent.submit(screen.getByRole("search"));
     expect(window.location.pathname).toBe("/");
-    expect(document.activeElement).toBe(screen.getByRole("region", { name: "书名匹配结果" }));
+    expect(screen.getByRole("region", { name: "书名匹配结果" })).toBeTruthy();
+    expect(document.activeElement).not.toBe(input);
     fireEvent.click(book);
     await waitFor(() => expect(window.location.pathname).toBe("/library/mao"));
+  });
+
+  it.each(["mao", "mzd"])("matches pinyin query %s while preserving book visibility", async (query) => {
+    catalogMocks.list.mockResolvedValue([
+      { id: "mao", title: "毛泽东文集", type: "book-series", sources_count: 2 },
+      { id: "solo", title: "青年政治经济学读本", type: "book", sources_count: 1 },
+      { id: "restricted-mao", title: "毛泽东研究资料", type: "book", sources_count: 1, access: "authenticated" },
+    ]);
+    renderAt("/");
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜索书名" }), { target: { value: query } });
+
+    const book = await screen.findByRole("link", { name: "毛泽东文集" });
+    expect(book.getAttribute("href")).toBe("/library/mao?returnTo=%2F");
+    expect(screen.queryByRole("link", { name: "青年政治经济学读本" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "毛泽东研究资料" })).toBeNull();
+    expect(screen.queryByText(/没有找到相近书名/)).toBeNull();
+
+    act(() => useAccountSessionStore.setState({ initialized: true, userId: "reader-1", displayName: "测试读者" }));
+    expect(await screen.findByRole("link", { name: "毛泽东研究资料" })).toBeTruthy();
+    expect(screen.getByRole<HTMLInputElement>("searchbox", { name: "搜索书名" }).value).toBe(query);
+  });
+
+  it("dismisses title suggestions outside the search area and reopens them on focus", async () => {
+    renderAt("/");
+    const input = screen.getByRole("searchbox", { name: "搜索书名" });
+    fireEvent.change(input, { target: { value: "毛文集" } });
+    const book = await screen.findByRole("link", { name: "毛泽东文集" });
+    fireEvent.pointerDown(book);
+    expect(screen.getByRole("region", { name: "书名匹配结果" })).toBeTruthy();
+    fireEvent.pointerDown(screen.getByRole("heading", { name: "继续阅读" }));
+    expect(screen.queryByRole("region", { name: "书名匹配结果" })).toBeNull();
+    expect((input as HTMLInputElement).value).toBe("毛文集");
+    fireEvent.focus(input);
+    expect(screen.getByRole("link", { name: "毛泽东文集" })).toBeTruthy();
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(screen.queryByRole("region", { name: "书名匹配结果" })).toBeNull();
   });
 
   it("distinguishes a loading or failed catalog from no matches and retries the current query", async () => {
@@ -489,6 +526,39 @@ describe("app library", () => {
     fireEvent.change(screen.getByRole("searchbox", { name: "搜索馆藏" }), { target: { value: "毛文集" } });
     expect(screen.getByRole("link", { name: /毛泽东文集/ })).toBeTruthy();
     expect(screen.queryByRole("link", { name: /人民日报/ })).toBeNull();
+  });
+
+  it.each(["mao", "maozedong", "mzd"])("filters library titles by %s without exposing restricted books", async (query) => {
+    catalogMocks.list.mockResolvedValue([
+      { id: "mao", title: "毛泽东文集", type: "book-series", sources_count: 2 },
+      { id: "solo", title: "青年政治经济学读本", type: "book", sources_count: 1 },
+      { id: "restricted-mao", title: "毛泽东研究资料", type: "book", sources_count: 1, access: "authenticated" },
+    ]);
+    renderAt("/library");
+    await screen.findByRole("link", { name: /毛泽东文集/ });
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜索馆藏" }), { target: { value: query } });
+    expect(screen.getByRole("link", { name: /毛泽东文集/ })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /青年政治经济学读本|毛泽东研究资料|人民日报/ })).toBeNull();
+    expect(screen.queryByText("没有找到匹配的资料。")).toBeNull();
+    act(() => useAccountSessionStore.setState({ userId: "reader-1", displayName: "读者" }));
+    expect(await screen.findByRole("link", { name: /毛泽东研究资料/ })).toBeTruthy();
+    expect(screen.getByRole<HTMLInputElement>("searchbox", { name: "搜索馆藏" }).value).toBe(query);
+  });
+
+  it.each(["mao", "maozedong", "mzd"])("filters collection volumes by %s while keeping draft and restricted items hidden", async (query) => {
+    catalogMocks.getSources.mockResolvedValue([
+      { id: "mao-1", itemKey: "volume-1", title: "毛泽东文集 第一卷", published: true },
+      { id: "restricted", itemKey: "private", title: "毛泽东研究资料", access: "authenticated", published: true },
+      { id: "draft", itemKey: "draft", title: "毛泽东资料草稿", published: false },
+      { id: "other", itemKey: "other", title: "青年政治经济学读本", published: true },
+    ]);
+    renderAt("/library/mao");
+    await screen.findByRole("link", { name: /毛泽东文集 第一卷/ });
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜索本书分卷" }), { target: { value: query } });
+    expect(screen.getByRole("link", { name: /毛泽东文集 第一卷/ })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /毛泽东研究资料|毛泽东资料草稿|青年政治经济学读本/ })).toBeNull();
+    expect(screen.queryByText("没有找到匹配的资料。")).toBeNull();
+    expect(window.location.pathname).toBe("/library/mao");
   });
 
   it("retries a failed library catalog without misreporting an empty collection", async () => {

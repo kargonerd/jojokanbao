@@ -53,7 +53,10 @@ vi.mock("../config/appVariant", () => ({ get IS_EINK_RELEASE() { return mocks.eI
 vi.mock("../components/BookCoverCard", () => ({ BookCoverCard: "book-card" }));
 vi.mock("../components/PeriodicalCoverCard", () => ({ PeriodicalCoverCard: "article" }));
 vi.mock("../components/ScreenHeader", () => ({ ScreenHeader: "header" }));
-vi.mock("../lib/books", () => ({ loadMobileBooks: () => mocks.loadBooks(), loadMobileBookVolumes: mocks.volumes, resolveMobileBookOpenTarget: mocks.openTarget }));
+vi.mock("../lib/books", async () => ({
+  loadMobileBooks: () => mocks.loadBooks(), loadMobileBookVolumes: mocks.volumes, resolveMobileBookOpenTarget: mocks.openTarget,
+  fuzzyBookTitleScore: (await import("@jojo/content/book-title-search")).fuzzyBookTitleScore,
+}));
 vi.mock("../lib/haptics", () => ({ impactHaptic: vi.fn() }));
 vi.mock("../store/mobileStore", () => ({
   useMobileStore: (select: (state: { hapticsEnabled: boolean; recentBooks: unknown[] }) => unknown) => select({ hapticsEnabled: false, recentBooks: [] }),
@@ -125,6 +128,28 @@ describe.each([false, true])("library direct periodical entry (eInk=%s)", (eInk)
     await act(async () => card.props.onOpen());
     expect(mocks.navigate).toHaveBeenCalledWith("Reader", { publication: "ckxx", issueId: card.props.publication.defaultIssueId });
     expect(view!.root.findAllByType("dialog")).toHaveLength(0);
+  });
+
+  it.each(["mao", "maozedong", "mzd"])("matches pinyin %s in the library and volume list", async (query) => {
+    const mao: MobileBook = { datasetId: "mao", title: "毛泽东文集", itemCount: 2, type: "book-series", indexObject: "mao.jox" };
+    mocks.loadBooks.mockResolvedValue([
+      mao,
+      { datasetId: "other", title: "青年政治经济学读本", itemCount: 1, type: "book", indexObject: "other.jox" },
+    ]);
+    await act(async () => { view = create(<LibraryScreen />); });
+    await act(async () => view!.root.findByProps({ accessibilityLabel: "搜索馆藏" }).props.onChangeText(query));
+    expect(view!.root.findAllByType(BookCoverCard).map((card) => card.props.title)).toEqual(["毛泽东文集"]);
+    expect(view!.root.findAllByType("article")).toHaveLength(0);
+
+    mocks.volumes.mockResolvedValueOnce([
+      { itemId: "mao:first", itemKey: "first", title: "毛泽东文集 第一卷", order: 1, manifestObject: "first.jox" },
+      { itemId: "mao:other", itemKey: "other", title: "青年政治经济学读本", order: 2, manifestObject: "other.jox" },
+    ]);
+    const props = { route: { params: { book: mao } }, navigation: { navigate: mocks.navigate, goBack: vi.fn() } } as unknown as ComponentProps<typeof BookDetailsScreen>;
+    await act(async () => { view!.update(<BookDetailsScreen {...props} />); });
+    await act(async () => view!.root.findByProps({ accessibilityLabel: "搜索本书分卷" }).props.onChangeText(query));
+    expect(view!.root.findAllByType(BookCoverCard).map((card) => card.props.title)).toEqual(["毛泽东文集 第一卷"]);
+    expect(mocks.navigate).not.toHaveBeenCalled();
   });
 
   const book: MobileBook = { datasetId: "test", title: "测试书", itemCount: 1, type: "book", indexObject: "test.jox" };

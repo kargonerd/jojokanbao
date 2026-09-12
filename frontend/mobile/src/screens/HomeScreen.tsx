@@ -1,8 +1,8 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { dailyQuote, type ArchivePublicationName } from "@jojo/content";
 import { useNavigation, type NavigationProp } from "@react-navigation/native";
-import { useEffect, useMemo, useState } from "react";
-import { Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Image, Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { publicationImages } from "../components/PeriodicalCoverCard";
 import { ScreenHeader } from "../components/ScreenHeader";
@@ -86,7 +86,8 @@ export function HomeScreen() {
   const [booksFailed, setBooksFailed] = useState(false);
   const [retryToken, setRetryToken] = useState(0);
   useRetryOnFailure(booksFailed && !loadingBooks, () => setRetryToken((value) => value + 1));
-  const [searchAttempted, setSearchAttempted] = useState(false);
+  const [resultsOpen, setResultsOpen] = useState(false);
+  const searchInputRef = useRef<TextInput>(null);
   const quote = useMemo(() => dailyQuote(), []);
 
   useEffect(() => {
@@ -135,65 +136,67 @@ export function HomeScreen() {
   ].sort((left, right) => right.updatedAt - left.updatedAt).slice(0, 4), [books, recentBooks, recentIssues]);
 
   function openBook(book: MobileBook) {
+    dismissSearch();
     void impactHaptic(hapticsEnabled);
     void navigateToBook(book);
   }
 
+  function dismissSearch() {
+    setResultsOpen(false);
+    searchInputRef.current?.blur();
+    Keyboard.dismiss();
+  }
+
   function submitSearch() {
-    if (matches[0]) {
-      openBook(matches[0]);
-      return;
-    }
-    setSearchAttempted(true);
+    searchInputRef.current?.blur();
+    Keyboard.dismiss();
+    setResultsOpen(Boolean(query.trim()));
   }
 
   return (
-    <SafeAreaView edges={["top"]} style={[styles.safe, { backgroundColor: theme.canvas }]}>
+    <SafeAreaView edges={["top"]} style={[styles.safe, { backgroundColor: theme.canvas }]} onTouchStart={dismissSearch}>
       <ScreenHeader title="首页" showAccount />
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        onScrollBeginDrag={dismissSearch}
         overScrollMode={IS_EINK_RELEASE ? "never" : "always"}
       >
         <View style={styles.hero}>
           <Text style={[styles.heroTitle, { color: theme.ink, fontFamily: theme.serif }]}>今天读什么？</Text>
-          <View style={[styles.searchBox, { borderColor: theme.ruleDark, backgroundColor: theme.paper }]}>
-            <Ionicons name="search-outline" size={18} color={theme.muted} />
-            <TextInput
-              value={query}
-              onChangeText={(value) => { setQuery(value); setSearchAttempted(false); }}
-              onSubmitEditing={submitSearch}
-              placeholder="搜索书名"
-              placeholderTextColor={theme.muted}
-              returnKeyType="search"
-              clearButtonMode="while-editing"
-              accessibilityLabel="搜索书名"
-              style={[styles.input, { color: theme.ink, fontFamily: theme.sans }]}
-            />
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="搜索"
-              disabled={!query.trim()}
-              onPress={submitSearch}
-              style={({ pressed }) => [styles.searchButton, { backgroundColor: theme.red, opacity: pressed && !IS_EINK_RELEASE ? 0.78 : 1 }]}
-            >
-              <Text style={[styles.searchButtonText, { color: theme.inverse, fontFamily: theme.sans }]}>搜索</Text>
-            </Pressable>
-          </View>
-
-          {query.trim() ? (
-            <View style={[styles.matches, { borderColor: theme.rule, backgroundColor: theme.paper }]}>
-              {matches.map((book) => (
-                <Pressable key={book.datasetId} accessibilityRole="button" onPress={() => void openBook(book)} style={[styles.match, { borderBottomColor: theme.rule }]}>
-                  <Text numberOfLines={1} style={[styles.matchTitle, { color: theme.ink, fontFamily: theme.serif }]}>{book.title}</Text>
-                </Pressable>
-              ))}
-              {matches.length === 0 && !loadingBooks ? (
-                <Text style={[styles.noMatch, { color: theme.muted, fontFamily: theme.sans }]}>{booksFailed ? "书籍目录暂时无法载入，正在自动重试。" : searchAttempted ? "没有匹配的书籍" : "没有找到相近书名"}</Text>
-              ) : null}
+          <View onTouchStart={(event) => event.stopPropagation()}>
+            <View style={[styles.searchBox, { borderColor: theme.ruleDark, backgroundColor: theme.paper }]}>
+              <Ionicons name="search-outline" size={18} color={theme.muted} />
+              <TextInput
+                ref={searchInputRef}
+                value={query}
+                onChangeText={(value) => { setQuery(value); setResultsOpen(true); }}
+                onFocus={() => setResultsOpen(true)}
+                onSubmitEditing={submitSearch}
+                placeholder="搜索书名"
+                placeholderTextColor={theme.muted}
+                returnKeyType="search"
+                clearButtonMode="while-editing"
+                accessibilityLabel="搜索书名"
+                style={[styles.input, { color: theme.ink, fontFamily: theme.sans }]}
+              />
             </View>
-          ) : null}
+
+            {resultsOpen && query.trim() ? (
+              <View style={[styles.matches, { borderColor: theme.rule, backgroundColor: theme.paper }]}>
+                {matches.map((book) => (
+                  <Pressable key={book.datasetId} accessibilityRole="button" onPress={() => void openBook(book)} style={[styles.match, { borderBottomColor: theme.rule }]}>
+                    <Text numberOfLines={1} style={[styles.matchTitle, { color: theme.ink, fontFamily: theme.serif }]}>{book.title}</Text>
+                  </Pressable>
+                ))}
+                {matches.length === 0 && !loadingBooks ? (
+                  <Text style={[styles.noMatch, { color: theme.muted, fontFamily: theme.sans }]}>{booksFailed ? "书籍目录暂时无法载入，正在自动重试。" : "没有找到相近书名"}</Text>
+                ) : null}
+              </View>
+            ) : null}
+          </View>
 
           {openingBook ? <Text accessibilityLiveRegion="polite" style={[styles.noMatch, { color: theme.red, fontFamily: theme.sans }]}>正在打开《{openingBook.title}》…</Text> : null}
 
@@ -271,8 +274,6 @@ const styles = StyleSheet.create({
   heroTitle: { marginBottom: 24, fontSize: 32, lineHeight: 42, fontWeight: "500", letterSpacing: -0.8, textAlign: "center" },
   searchBox: { minHeight: 59, borderWidth: 2, paddingLeft: 12, paddingRight: 8, flexDirection: "row", alignItems: "center", gap: 9 },
   input: { height: 54, flex: 1, minWidth: 0, paddingVertical: 0, fontSize: 15 },
-  searchButton: { width: 70, height: 40, alignItems: "center", justifyContent: "center" },
-  searchButtonText: { fontSize: 12, fontWeight: "900" },
   matches: { marginTop: 6, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 12 },
   match: { minHeight: 44, borderBottomWidth: StyleSheet.hairlineWidth, justifyContent: "center" },
   matchTitle: { fontSize: 13, fontWeight: "800" },

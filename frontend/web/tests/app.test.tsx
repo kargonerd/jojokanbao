@@ -180,12 +180,12 @@ describe("JOJO Web navigation", () => {
     expect(screen.getByRole("navigation", { name: "主导航" })).toBeTruthy();
   });
 
-  it("shows AI and Times only to signed-in readers and keeps About last", () => {
+  it("shows AI and Times only to signed-in readers and keeps Support immediately before About", () => {
     expect(buildAppNavigationItems(false).map((item) => item.label)).toEqual([
-      "首页", "资料库", "搜索", "关于",
+      "首页", "资料库", "搜索", "支持 JOJO 看报", "关于",
     ]);
     expect(buildAppNavigationItems(true).map((item) => item.label)).toEqual([
-      "首页", "资料库", "搜索", "AI", "时事", "关于",
+      "首页", "资料库", "搜索", "AI", "时事", "支持 JOJO 看报", "关于",
     ]);
     expect(buildAppNavigationItems(true).find((item) => item.href === "/rag")).toMatchObject({
       label: "AI",
@@ -396,11 +396,18 @@ describe("JOJO Web navigation", () => {
 });
 
 describe("Support page", () => {
-  it("keeps feedback, memorial, donation, copyright, and cloud download sections available", () => {
+  it("exposes Support above About when login services are unavailable", () => {
+    renderAt("/account");
+    const support = screen.getByRole("link", { name: /支持 JOJO 看报/ });
+    expect(support.getAttribute("href")).toBe("/donate");
+    expect(support.nextElementSibling).toBe(screen.getByRole("link", { name: /关于 JOJO 看报/ }));
+  });
+
+  it("keeps feedback, memorial, copyright, and cloud downloads in About without donation content", () => {
     renderAt("/archive/support");
 
     expect(screen.getAllByRole("heading").map((heading) => heading.textContent)).toEqual([
-      "关于 JOJO 看报", "捐助", "纪念缅怀", "版权说明", "数据下载",
+      "关于 JOJO 看报", "纪念缅怀", "版权说明", "数据下载",
     ]);
     expect(screen.queryByRole("link", { name: "打开旧版 JOJO 看报" })).toBeNull();
     expect(screen.getByRole("link", { name: /开源软件许可/ }).getAttribute("href")).toBe("/support/licenses");
@@ -410,8 +417,34 @@ describe("Support page", () => {
     expect(screen.getAllByRole("link", { name: "OneDrive下载" })).toHaveLength(5);
     expect(screen.getByRole("link", { name: "OneDrive备用下载" }).getAttribute("target")).toBe("_blank");
     expect(screen.getAllByRole("link", { name: "夸克网盘下载" })).toHaveLength(5);
+    expect(screen.queryByRole("img", { name: "微信捐助收款码" })).toBeNull();
+    expect(screen.queryByRole("img", { name: "支付宝捐助收款码" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "JOJO看报捐助列表" })).toBeNull();
+  });
+
+  it("opens the independent Support page from its sibling navigation entry", async () => {
+    renderAt("/support");
+    const navigation = screen.getByRole("navigation", { name: "主导航" });
+    const support = within(navigation).getByRole("link", { name: "支持 JOJO 看报" });
+    expect(support.nextElementSibling).toBe(within(navigation).getByRole("link", { name: "关于" }));
+    fireEvent.click(support);
+
+    await waitFor(() => expect(window.location.pathname).toBe("/donate"));
+    expect(screen.getByRole("heading", { name: "支持 JOJO 看报" })).toBeTruthy();
+    expect(support.className).toContain("is-active");
+    expect(within(navigation).getByRole("link", { name: "关于" }).className).not.toContain("is-active");
     expect(screen.getByRole("img", { name: "微信捐助收款码" })).toBeTruthy();
     expect(screen.getByRole("img", { name: "支付宝捐助收款码" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "JOJO看报捐助列表" }).getAttribute("target")).toBe("_blank");
+    expect(screen.queryByRole("heading", { name: "关于 JOJO 看报" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "版权说明" })).toBeNull();
+  });
+
+  it("preserves old donation section links by opening the independent page", async () => {
+    renderAt(`/support#${encodeURIComponent("捐助")}`);
+    await waitFor(() => expect(window.location.pathname).toBe("/donate"));
+    expect(screen.getByRole("heading", { name: "支持 JOJO 看报" })).toBeTruthy();
+    expect(screen.getByRole("img", { name: "微信捐助收款码" })).toBeTruthy();
   });
 
   it("shows the generated open-source software list and project license", async () => {

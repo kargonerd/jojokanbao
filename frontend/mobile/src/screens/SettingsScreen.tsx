@@ -443,10 +443,6 @@ export function SettingsScreen() {
                 <Ionicons name="open-outline" size={17} color={theme.muted} />
               </Pressable>
               {feedbackNotice ? <Text accessibilityLiveRegion="polite" style={[styles.feedbackNotice, { color: theme.muted, fontFamily: theme.sans }]}>{feedbackNotice}</Text> : null}
-              <Pressable accessibilityRole="button" onPress={() => navigation.navigate("Support")} style={[styles.actionRow, styles.actionRowTopDivider, { borderTopColor: theme.rule }]}>
-                <Text style={[styles.actionText, { color: theme.ink, fontFamily: theme.serif }]}>支持 JOJO 看报</Text>
-                <Ionicons name="heart-outline" size={17} color={theme.muted} />
-              </Pressable>
             </View>
           </View>
 

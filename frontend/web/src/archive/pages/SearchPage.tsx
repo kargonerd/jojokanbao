@@ -368,7 +368,6 @@ export function SearchPage({
       setTotal(0);
       setError(null);
       setLoading(false);
-      inputRef.current?.focus();
       return;
     }
 

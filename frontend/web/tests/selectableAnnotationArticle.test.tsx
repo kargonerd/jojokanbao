@@ -48,6 +48,7 @@ describe("SelectableAnnotationArticle", () => {
       expect.objectContaining({ quote: "报刊正文" }),
       "报刊评论",
       "public",
+      "user-1",
     ));
   });
 

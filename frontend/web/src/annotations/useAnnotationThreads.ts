@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   addAnnotationComment,
   createAnnotation,
@@ -12,6 +12,8 @@ import type {
   AnnotationVisibility,
   TextAnchor,
 } from "./types";
+
+const EMPTY_THREADS: AnnotationThread[] = [];
 
 function compatibleThread(
   thread: AnnotationThread,
@@ -36,10 +38,10 @@ function compatibleThread(
 }
 
 export function useAnnotationThreads(subject: AnnotationSubject, enabled: boolean, currentUserId?: string | null) {
-  const [threads, setThreads] = useState<AnnotationThread[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const subjectKey = `${subject.contentType}:${subject.contentId}:${subject.sectionId}`;
+  const subjectKey = JSON.stringify([subject.contentType, subject.contentId, subject.sectionId, currentUserId ?? null]);
+  const canAccess = enabled && Boolean(currentUserId);
+  const context = useMemo(() => ({ subjectKey, canAccess }), [subjectKey, canAccess]);
+  const [state, setState] = useState({ context, threads: [] as AnnotationThread[], loading: false, error: "" });
   const stableSubject = useMemo<AnnotationSubject>(() => ({
     contentType: subject.contentType,
     contentId: subject.contentId,
@@ -47,81 +49,90 @@ export function useAnnotationThreads(subject: AnnotationSubject, enabled: boolea
     contentTitle: subject.contentTitle,
     contentUrl: subject.contentUrl,
   }), [subject.contentId, subject.contentTitle, subject.contentType, subject.contentUrl, subject.sectionId]);
-  const activeSubjectKey = useRef(subjectKey);
-  const displayedSubjectKey = useRef(subjectKey);
+  const activeContext = useRef(context);
+  const mounted = useRef(false);
   const requestId = useRef(0);
-  activeSubjectKey.current = subjectKey;
+  activeContext.current = context;
+
+  useLayoutEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+
+  const isCurrent = useCallback(() => mounted.current && activeContext.current === context, [context]);
 
   const refresh = useCallback(async () => {
+    if (!isCurrent()) return;
     const currentRequest = ++requestId.current;
-    if (!enabled) {
-      setThreads([]);
-      setError("");
-      setLoading(false);
+    if (!canAccess || !currentUserId) {
+      setState({ context, threads: [], loading: false, error: "" });
       return;
     }
-    if (displayedSubjectKey.current !== subjectKey) {
-      displayedSubjectKey.current = subjectKey;
-      setThreads([]);
-    }
-    setLoading(true);
-    setError("");
+    setState((current) => ({ context, threads: current.context === context ? current.threads : [], loading: true, error: "" }));
     try {
-      const loaded = await loadAnnotationThreads(stableSubject);
-      if (requestId.current === currentRequest) {
+      const loaded = await loadAnnotationThreads(stableSubject, currentUserId);
+      if (isCurrent() && requestId.current === currentRequest) {
         const compatible = loaded.flatMap((thread) => {
           const normalized = compatibleThread(thread, currentUserId);
           return normalized ? [normalized] : [];
         });
-        setThreads((current) => current.length === 0 && compatible.length === 0 ? current : compatible);
+        setState({ context, threads: compatible, loading: false, error: "" });
       }
     } catch (reason) {
-      if (requestId.current === currentRequest) {
-        setError(reason instanceof Error ? reason.message : String(reason));
-        setThreads([]);
+      if (isCurrent() && requestId.current === currentRequest) {
+        setState({ context, threads: [], loading: false, error: reason instanceof Error ? reason.message : String(reason) });
       }
-    } finally {
-      if (requestId.current === currentRequest) setLoading(false);
     }
-  }, [currentUserId, enabled, stableSubject, subjectKey]);
+  }, [canAccess, context, currentUserId, isCurrent, stableSubject]);
 
   useEffect(() => {
     void refresh();
     return () => { requestId.current += 1; };
   }, [refresh]);
 
-  const actions = useMemo(() => ({
-    async create(anchor: TextAnchor, initialComment?: string, visibility: AnnotationVisibility = "public") {
-      const actionSubjectKey = subjectKey;
-      const created = await createAnnotation(stableSubject, anchor, initialComment, visibility);
-      const compatible = compatibleThread(created, currentUserId, true)!;
-      if (activeSubjectKey.current === actionSubjectKey) {
-        setThreads((current) => current.some((thread) => thread.id === compatible.id)
-          ? current.map((thread) => thread.id === compatible.id ? compatible : thread)
-          : [...current, compatible]);
-      }
-      return compatible;
-    },
-    async comment(annotationId: string, body: string, parentCommentId?: string, visibility: AnnotationVisibility = "public") {
-      const actionSubjectKey = subjectKey;
-      const created = await addAnnotationComment(annotationId, body, parentCommentId, visibility);
-      if (activeSubjectKey.current === actionSubjectKey) {
-        setThreads((current) => current.map((thread) => thread.id === annotationId
+  const actions = useMemo(() => {
+    const requireCurrentUser = () => {
+      if (!canAccess || !currentUserId || !isCurrent()) throw new Error("登录状态已变化，请重新打开笔记");
+      return currentUserId;
+    };
+    const updateThreads = (update: (threads: AnnotationThread[]) => AnnotationThread[]) => {
+      setState((current) => {
+        if (!isCurrent()) return current;
+        const previous = current.context === context ? current : { context, threads: [], loading: false, error: "" };
+        return { ...previous, threads: update(previous.threads) };
+      });
+    };
+    return {
+      async create(anchor: TextAnchor, initialComment?: string, visibility: AnnotationVisibility = "public") {
+        const expectedUserId = requireCurrentUser();
+        const created = await createAnnotation(stableSubject, anchor, initialComment, visibility, expectedUserId);
+        requireCurrentUser();
+        const compatible = compatibleThread(created, currentUserId, true)!;
+        updateThreads((threads) => threads.some((thread) => thread.id === compatible.id)
+          ? threads.map((thread) => thread.id === compatible.id ? compatible : thread)
+          : [...threads, compatible]);
+        return compatible;
+      },
+      async comment(annotationId: string, body: string, parentCommentId?: string, visibility: AnnotationVisibility = "public") {
+        const expectedUserId = requireCurrentUser();
+        const created = await addAnnotationComment(annotationId, body, parentCommentId, visibility, expectedUserId);
+        requireCurrentUser();
+        updateThreads((threads) => threads.map((thread) => thread.id === annotationId
           ? { ...thread, comments: [...thread.comments, created] }
           : thread));
-      }
-      return created;
-    },
-    async report(annotationId: string, commentId: string, reason: AnnotationReportReason, details?: string) {
-      const actionSubjectKey = subjectKey;
-      await reportAnnotationComment(commentId, reason, details);
-      if (activeSubjectKey.current === actionSubjectKey) {
-        setThreads((current) => current.map((thread) => thread.id === annotationId
+        return created;
+      },
+      async report(annotationId: string, commentId: string, reason: AnnotationReportReason, details?: string) {
+        const expectedUserId = requireCurrentUser();
+        await reportAnnotationComment(commentId, reason, details, expectedUserId);
+        requireCurrentUser();
+        updateThreads((threads) => threads.map((thread) => thread.id === annotationId
           ? { ...thread, comments: thread.comments.map((comment) => comment.id === commentId ? { ...comment, reportedByMe: true } : comment) }
           : thread));
-      }
-    },
-  }), [currentUserId, stableSubject, subjectKey]);
+      },
+    };
+  }, [canAccess, context, currentUserId, isCurrent, stableSubject]);
 
-  return { threads, loading, error, refresh, ...actions };
+  const visible = canAccess && state.context === context;
+  return { threads: visible ? state.threads : EMPTY_THREADS, loading: visible && state.loading, error: visible ? state.error : "", refresh, ...actions };
 }

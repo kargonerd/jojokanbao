@@ -1,8 +1,8 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AnnotationDiscussionPanel } from "../src/annotations/AnnotationDiscussionPanel";
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 const thread = {
   id: "annotation-1",
@@ -32,6 +32,63 @@ const thread = {
 };
 
 describe("AnnotationDiscussionPanel", () => {
+  it("keeps the visibility choice and draft while the mobile keyboard opens, pans, and closes", async () => {
+    const viewport = Object.assign(new EventTarget(), { height: 844, offsetTop: 0 });
+    const removeViewportListener = vi.spyOn(viewport, "removeEventListener");
+    vi.stubGlobal("visualViewport", viewport);
+    vi.stubGlobal("innerHeight", 844);
+    const onComment = vi.fn(async () => undefined);
+    const { unmount } = render(<AnnotationDiscussionPanel thread={thread} currentUserId="user-1" onClose={vi.fn()} onComment={onComment} onReport={vi.fn()} />);
+    const panel = screen.getByRole("complementary", { name: "划线详情" });
+    const draft = screen.getByPlaceholderText<HTMLTextAreaElement>("写下你的想法……");
+    fireEvent.change(draft, { target: { value: "只留给自己的想法" } });
+    fireEvent.click(screen.getByRole("radio", { name: "仅自己可见" }));
+
+    viewport.height = 380;
+    act(() => { viewport.dispatchEvent(new Event("resize")); });
+    expect(panel.style.getPropertyValue("--annotation-viewport-height")).toBe("380px");
+    viewport.offsetTop = 48;
+    act(() => { viewport.dispatchEvent(new Event("scroll")); });
+    expect(panel.style.getPropertyValue("--annotation-viewport-top")).toBe("48px");
+    expect(draft.value).toBe("只留给自己的想法");
+    expect(screen.getByRole("radio", { name: "仅自己可见" }).getAttribute("aria-checked")).toBe("true");
+
+    viewport.height = 844;
+    viewport.offsetTop = 0;
+    act(() => { viewport.dispatchEvent(new Event("resize")); });
+    expect(panel.style.getPropertyValue("--annotation-viewport-height")).toBe("844px");
+    expect(panel.style.getPropertyValue("--annotation-viewport-top")).toBe("0px");
+    fireEvent.click(screen.getByRole("button", { name: "发表想法" }));
+    await waitFor(() => expect(onComment).toHaveBeenCalledWith("只留给自己的想法", undefined, "private"));
+    unmount();
+    expect(removeViewportListener).toHaveBeenCalledWith("resize", expect.any(Function));
+    expect(removeViewportListener).toHaveBeenCalledWith("scroll", expect.any(Function));
+  });
+
+  it("adapts to window resize when visualViewport is unavailable", () => {
+    vi.stubGlobal("visualViewport", undefined);
+    vi.stubGlobal("innerHeight", 844);
+    render(<AnnotationDiscussionPanel thread={thread} currentUserId="user-1" onClose={vi.fn()} onComment={vi.fn()} onReport={vi.fn()} />);
+    const panel = screen.getByRole("complementary", { name: "划线详情" });
+    expect(panel.style.getPropertyValue("--annotation-viewport-height")).toBe("844px");
+    vi.stubGlobal("innerHeight", 420);
+    fireEvent(window, new Event("resize"));
+    expect(panel.style.getPropertyValue("--annotation-viewport-height")).toBe("420px");
+    expect(panel.style.getPropertyValue("--annotation-viewport-top")).toBe("0px");
+  });
+
+  it("keeps a long quote keyboard-accessible with comments and the composer outside its scroll area", () => {
+    const quote = "很长的所选原文。".repeat(200);
+    render(<AnnotationDiscussionPanel thread={{ ...thread, quote }} currentUserId="user-1" onClose={vi.fn()} onComment={vi.fn()} onReport={vi.fn()} />);
+    const quoteRegion = screen.getByLabelText("划线原文内容");
+    expect(quoteRegion.textContent).toBe(quote);
+    expect(quoteRegion.tabIndex).toBe(0);
+    expect(quoteRegion.contains(screen.getByText("第一条评论"))).toBe(false);
+    expect(quoteRegion.contains(screen.getByPlaceholderText("写下你的想法……"))).toBe(false);
+    expect(screen.getByRole("radio", { name: "公开" })).toBeTruthy();
+    expect(screen.getByRole("radio", { name: "仅自己可见" })).toBeTruthy();
+  });
+
   it("continues another reader's comment as a reply", async () => {
     const onComment = vi.fn(async () => undefined);
     render(<AnnotationDiscussionPanel thread={thread} currentUserId="user-1" onClose={vi.fn()} onComment={onComment} onReport={vi.fn()} />);

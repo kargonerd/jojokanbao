@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { JojoFragment } from "@jojo/content";
 import {
   findReferencedAnnotation,
+  flattenToc,
   parseAnnotationReference,
   renderedBody,
   shouldRenderChapterTitle,
@@ -17,6 +18,17 @@ describe("content visibility compatibility", () => {
 });
 
 describe("RAG content Reader annotations", () => {
+  it("retains structural TOC groups and inherits a chapter for nested anchor-only sections", () => {
+    expect(flattenToc([{ id: "part", order: 1, title: "第一部", children: [
+      { id: "chapter", order: 1, title: "第一章", targetId: "chapter-1", children: [
+        { id: "section", order: 1, title: "一、背景", anchorId: "background" },
+      ] },
+    ] }])).toMatchObject([
+      { id: "part", depth: 0, targetId: undefined },
+      { id: "chapter", depth: 1, targetId: "chapter-1" },
+      { id: "section", depth: 2, targetId: "chapter-1", anchorId: "background" },
+    ]);
+  });
   it("shows a heading with a footnote once and preserves its original round-trip link", () => {
     const title = "非洲当前的任务是反对帝国主义，不是反对资本主义";
     const fragment: JojoFragment = {

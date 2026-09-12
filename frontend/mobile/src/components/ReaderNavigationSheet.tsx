@@ -2,17 +2,18 @@ import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react
 import { BackHandler, Keyboard, PanResponder, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import type { MobileTheme } from "../theme/tokens";
 
-export function ReaderNavigationSheet({ tab, onTabChange, onClose, bottom, top, theme, children }: {
-  tab: "toc" | "search";
-  onTabChange: (tab: "toc" | "search") => void;
+export function ReaderNavigationSheet({ tab, onTabChange, onClose, bottom, top, theme, children, compact = false }: {
+  tab?: "toc" | "search";
+  onTabChange?: (tab: "toc" | "search") => void;
   onClose: () => void;
   bottom: number;
   top: number;
   theme: MobileTheme;
   children: ReactNode;
+  compact?: boolean;
 }) {
   const { height } = useWindowDimensions();
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(!compact);
   const [drag, setDrag] = useState(0);
   const dismiss = useCallback(() => { Keyboard.dismiss(); onClose(); }, [onClose]);
   useEffect(() => {
@@ -32,19 +33,19 @@ export function ReaderNavigationSheet({ tab, onTabChange, onClose, bottom, top, 
     onPanResponderTerminate: () => setDrag(0),
   }), [dismiss]);
   const availableHeight = height - bottom - top;
-  const sheetHeight = Math.max(120, Math.min(availableHeight, (expanded ? availableHeight : height * .66) - drag));
+  const sheetHeight = Math.max(120, Math.min(availableHeight, (expanded ? availableHeight : Math.min(390, height * .6)) - drag));
 
   return <>
-    <Pressable accessibilityRole="button" accessibilityLabel="关闭书内导航" onPress={dismiss} style={[styles.backdrop, { bottom }]} />
+    <Pressable accessibilityRole="button" accessibilityLabel="关闭阅读工具" onPress={dismiss} style={[styles.backdrop, { bottom }]} />
     <View style={[styles.sheet, { bottom, height: sheetHeight, backgroundColor: theme.paper }]}>
-      <View {...pan.panHandlers} accessible accessibilityRole="adjustable" accessibilityLabel="调整书内导航高度" accessibilityActions={[{ name: "increment", label: "展开" }, { name: "decrement", label: "关闭" }]} onAccessibilityAction={(event) => event.nativeEvent.actionName === "increment" ? setExpanded(true) : dismiss()} style={styles.handle}>
+      <View {...pan.panHandlers} accessible accessibilityRole="adjustable" accessibilityLabel="调整阅读工具高度" accessibilityActions={[{ name: "increment", label: "展开" }, { name: "decrement", label: "关闭" }]} onAccessibilityAction={(event) => event.nativeEvent.actionName === "increment" ? setExpanded(true) : dismiss()} style={styles.handle}>
         <View style={[styles.grip, { backgroundColor: theme.muted }]} />
       </View>
-      <View accessibilityRole="tablist" style={[styles.tabs, { backgroundColor: theme.paperSoft }]}>
-        {(["search", "toc"] as const).map((value) => <Pressable key={value} accessibilityRole="tab" accessibilityState={{ selected: tab === value }} onPress={() => onTabChange(value)} style={[styles.tab, tab === value && { backgroundColor: theme.paper }]}>
+      {tab ? <View accessibilityRole="tablist" style={[styles.tabs, { backgroundColor: theme.paperSoft }]}>
+        {(["search", "toc"] as const).map((value) => <Pressable key={value} accessibilityRole="tab" accessibilityState={{ selected: tab === value }} onPress={() => { Keyboard.dismiss(); onTabChange?.(value); }} style={[styles.tab, tab === value && { backgroundColor: theme.paper }]}>
           <Text style={{ fontSize: 14, fontWeight: tab === value ? "700" : "400", color: tab === value ? theme.red : theme.muted, fontFamily: theme.serif }}>{value === "search" ? "⌕ 搜本书" : "目录"}</Text>
         </Pressable>)}
-      </View>
+      </View> : null}
       {children}
     </View>
   </>;

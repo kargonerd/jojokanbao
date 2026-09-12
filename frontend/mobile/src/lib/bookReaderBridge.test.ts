@@ -1,10 +1,11 @@
 import { runInNewContext } from "node:vm";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   createBookReaderApplyAnnotationScript,
   createBookReaderBridgeScript,
   createBookReaderClearSelectionScript,
   createBookReaderGoToScrollProgressScript,
+  createBookReaderGoToChapterProgressScript,
   createBookReaderGoToSpreadScript,
   createBookReaderLocateTextScript,
   createBookReaderMeasureScript,
@@ -56,7 +57,7 @@ describe("book reader bridge", () => {
     const window = { innerWidth: 100, innerHeight: 100, getSelection: () => selection, ReactNativeWebView: { postMessage: (message: string) => messages.push(JSON.parse(message)) }, requestAnimationFrame() {}, setTimeout() {}, addEventListener() {} };
     runInNewContext(createBookReaderBridgeScript("start", false), { document, window });
     handlers.get("selectionchange")!();
-    expect(messages).toEqual([{ type: "reader-selection", text: "选中文字", start: 0, end: 4, rect, viewport: { width: 100, height: 100 } }]);
+    expect(messages).toEqual([{ type: "reader-selection", text: "选中文字", start: 0, end: 4, prefix: "", suffix: "", rect, viewport: { width: 100, height: 100 } }]);
     handlers.get("selectionchange")!();
     expect(messages).toHaveLength(1);
     rect.top = 20;
@@ -117,6 +118,15 @@ describe("book reader bridge", () => {
     expect(parseBookReaderMessage('{"type":"reader-page","paged":true}')).toBeNull();
   });
 
+  it("accepts bounded optional selection context and rejects invalid context or oversized selections", () => {
+    const selection = { type: "reader-selection", text: "正文", start: 10, end: 12, chapterId: "chapter", prefix: "前文", suffix: "后文" };
+    expect(parseBookReaderMessage(JSON.stringify(selection))).toEqual(selection);
+    expect(parseBookReaderMessage(JSON.stringify({ ...selection, prefix: null }))).toBeNull();
+    expect(parseBookReaderMessage(JSON.stringify({ ...selection, suffix: 5 }))).toBeNull();
+    expect(parseBookReaderMessage(JSON.stringify({ ...selection, prefix: "字".repeat(81) }))).toBeNull();
+    expect(parseBookReaderMessage(JSON.stringify({ ...selection, text: "字".repeat(4001), end: 4011 }))).toBeNull();
+  });
+
   it("creates an instant horizontal page-turn bridge", () => {
     const startScript = createBookReaderBridgeScript("start");
     const endScript = createBookReaderBridgeScript("end");
@@ -153,12 +163,60 @@ describe("book reader bridge", () => {
     expect(createBookReaderGoToSpreadScript(Number.NaN)).toContain("(0)");
     expect(createBookReaderGoToScrollProgressScript(1.4)).toContain("(1)");
     expect(createBookReaderGoToScrollProgressScript(-1)).toContain("(0)");
+    expect(createBookReaderGoToChapterProgressScript(1.5)).toContain("(1)");
+    expect(createBookReaderGoToChapterProgressScript(Number.NaN)).toContain("(0)");
     expect(createBookReaderLocateTextScript('</script>正文')).toContain('<\\/script>正文');
     expect(createBookReaderMeasureScript()).toContain("__jojoReaderMeasurePages");
     expect(createBookReaderApplyAnnotationScript({ id: "a", start: 2, end: 5 })).toContain("__jojoReaderApplyAnnotation");
     expect(createBookReaderRemoveAnnotationScript("a")).toContain("__jojoReaderRemoveAnnotation");
     expect(createBookReaderClearSelectionScript()).toContain("__jojoReaderClearSelection");
     expect(createBookReaderRevealAnchorScript("note-1")).toContain("__jojoReaderRevealAnchor");
+  });
+
+  it("follows the finger, snaps cancelled drags back, and keeps tap navigation instant", () => {
+    const { handlers, root, window } = readerHarness("paged");
+    window.__jojoReaderGoToChapterProgress(.3);
+    expect(root.style.transform).toBe("translate3d(-100px, 0, 0)");
+    handlers.get("touchstart")!({ changedTouches: [{ clientX: 80, clientY: 50 }] });
+    const preventDefault = vi.fn();
+    handlers.get("touchmove")!({ changedTouches: [{ clientX: 45, clientY: 50 }], touches: [{}], preventDefault });
+    expect(preventDefault).toHaveBeenCalled();
+    expect(root.style.transform).toBe("translate3d(-135px, 0, 0)");
+    handlers.get("touchcancel")!();
+    expect(root.style.transform).toBe("translate3d(-100px, 0, 0)");
+    handlers.get("click")!({ target: { closest: () => null }, clientX: 90, clientY: 50 });
+    expect(root.style.transform).toBe("translate3d(-200px, 0, 0)");
+    expect(root.style.transition).toBe("none");
+  });
+
+  it("leaves native scroll gestures free without chapter boundary jumps or chapter buttons", () => {
+    const { handlers, messages, scrolling } = readerHarness("scroll");
+    scrolling.scrollTop = 400;
+    handlers.get("touchstart")!({ changedTouches: [{ clientX: 50, clientY: 90 }] });
+    expect(messages.some((message) => message.type === "reader-boundary")).toBe(false);
+    expect(handlers.has("touchend")).toBe(false);
+    expect(messages.filter((message) => message.type === "reader-boundary")).toEqual([]);
+    expect(createBookReaderBridgeScript("start")).not.toContain("下一章 · 继续上滑阅读");
+  });
+
+  it("keeps long presses available for text selection instead of turning the page", () => {
+    const { handlers, root, advanceTime } = readerHarness("paged");
+    handlers.get("touchstart")!({ changedTouches: [{ clientX: 80, clientY: 50 }] });
+    advanceTime(600);
+    const preventDefault = vi.fn();
+    handlers.get("touchmove")!({ changedTouches: [{ clientX: 20, clientY: 50 }], touches: [{}], preventDefault });
+    handlers.get("touchend")!({ changedTouches: [{ clientX: 20, clientY: 50 }] });
+    expect(preventDefault).not.toHaveBeenCalled();
+    expect(root.style.transform).toBe("translate3d(0px, 0, 0)");
+  });
+
+  it("reports the deepest currently visible TOC anchor after moving across nested sections", () => {
+    const { messages, window } = readerHarness("paged", { opening: 10, section: 140, later: 310 });
+    expect(messages.at(-1)).toMatchObject({ type: "reader-page", anchorId: "opening" });
+    window.__jojoReaderGoToChapterProgress(.4);
+    expect(messages.at(-1)).toMatchObject({ type: "reader-page", anchorId: "section" });
+    window.__jojoReaderGoToChapterProgress(1);
+    expect(messages.at(-1)).toMatchObject({ type: "reader-page", anchorId: "later" });
   });
 
   it("injects persisted highlights and selection reporting", () => {
@@ -169,3 +227,29 @@ describe("book reader bridge", () => {
     expect(script).toContain("__jojoReaderLocateText");
   });
 });
+
+function readerHarness(mode: "paged" | "scroll", anchors: Record<string, number> = {}) {
+  const handlers = new Map<string, (event?: any) => void>();
+  const messages: Array<{ type: string; [key: string]: unknown }> = [];
+  const nodes: Record<string, any> = {};
+  const createElement = () => ({ style: {} as Record<string, string>, textContent: "", setAttribute() {}, addEventListener() {}, appendChild() {}, querySelectorAll: () => [{ style: {} }, { style: {} }] });
+  const root = { ...createElement(), scrollWidth: 400 };
+  for (const [id, left] of Object.entries(anchors)) nodes[id] = { getBoundingClientRect: () => ({ left: left + Number(root.style.transform?.match(/translate3d\((-?[\d.]+)px/)?.[1] ?? 0), top: 20 }) };
+  const scrolling = { scrollTop: 0, scrollHeight: 500 };
+  const document = {
+    body: { dataset: { readingMode: mode }, scrollWidth: 400, appendChild: (element: any) => { if (element.id) nodes[element.id] = element; } },
+    documentElement: { scrollWidth: 400 }, scrollingElement: scrolling,
+    querySelector: (selector: string) => selector === "article" ? root : null,
+    querySelectorAll: () => [], getElementById: (id: string) => nodes[id], createElement,
+    addEventListener: (name: string, handler: (event?: any) => void) => handlers.set(name, handler),
+  };
+  const window: any = { innerWidth: 100, innerHeight: 100, matchMedia: () => ({ matches: false }),
+    getSelection: () => ({ isCollapsed: true, rangeCount: 0, toString: () => "" }),
+    ReactNativeWebView: { postMessage: (message: string) => messages.push(JSON.parse(message)) },
+    requestAnimationFrame: (callback: () => void) => callback(), setTimeout() {}, clearTimeout() {}, addEventListener() {},
+    scrollTo: (_: number, y: number) => { scrolling.scrollTop = y; },
+  };
+  let now = 1_000_000;
+  runInNewContext(createBookReaderBridgeScript("start", false, [], undefined, undefined, undefined, { hasNext: true, hasPrevious: false, tocAnchorIds: Object.keys(anchors) }), { document, window, Date: { now: () => now } });
+  return { handlers, messages, root, window, scrolling, advanceTime: (milliseconds: number) => { now += milliseconds; } };
+}

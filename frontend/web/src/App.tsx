@@ -3,7 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-route
 import { Layout } from "./archive/components/Layout";
 import { HomePage as ArchiveHomePage } from "./archive/pages/HomePage";
 import { SearchPage } from "./archive/pages/SearchPage";
-import { SupportPage } from "./archive/pages/SupportPage";
+import { DonationPage, SupportPage } from "./archive/pages/SupportPage";
 import { PUBLICATIONS, PUBLICATION_NAMES } from "./archive/publications";
 import { NotFoundPage } from "./NotFoundPage";
 import { AppLayout } from "./shell/AppLayout";
@@ -150,6 +150,7 @@ function RedesignedRoutes() {
           <Route path="download" element={<LazyRoute><DownloadPage /></LazyRoute>} />
           <Route path="download/iphone" element={<LazyRoute><IphoneInstallPage /></LazyRoute>} />
           <Route path="support" element={<SupportPage platformRedesign />} />
+          <Route path="donate" element={<DonationPage />} />
           <Route path="support/licenses" element={<LazyRoute><OpenSourceLicensesPage /></LazyRoute>} />
           <Route path="notifications" element={<NotificationsPage />} />
           <Route path="rag/*" element={<AuthenticatedRoute><LazyRoute><RagRoutes /></LazyRoute></AuthenticatedRoute>} />

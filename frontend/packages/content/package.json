@@ -7,6 +7,8 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./annotations": "./src/annotations.ts",
+    "./book-title-search": "./src/book-title-search.ts",
     "./speech": "./src/speech-client.ts",
     "./speech-dom": "./src/speech-dom.ts",
     "./speech-dom-script": "./src/speech-dom.generated.ts"
@@ -22,6 +24,7 @@
     "vitest": "^3.2.0"
   },
   "dependencies": {
-    "fflate": "^0.8.2"
+    "fflate": "^0.8.2",
+    "pinyin-pro": "3.28.1"
   }
 }

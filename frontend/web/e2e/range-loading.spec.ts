@@ -635,10 +635,19 @@ test("PDF region zooms in place, pans, and exits without a floating lens", async
   await expect(interactionLayer).not.toHaveClass(/selecting/);
   const canvasWidthBeforeZoom = await source.evaluate((canvas) => (canvas as HTMLCanvasElement).width);
   const toggle = page.getByRole("button", { name: "开启区域缩放" });
+  const toolbarPosition = await toggle.boundingBox();
+  expect(toolbarPosition).not.toBeNull();
+  const expectToolbarPosition = async () => {
+    const position = await page.getByRole("button", { name: /^(开启|关闭)区域缩放$/ }).boundingBox();
+    expect(position).not.toBeNull();
+    expect(position!.x).toBeCloseTo(toolbarPosition!.x, 0);
+    expect(position!.y).toBeCloseTo(toolbarPosition!.y, 0);
+  };
   await toggle.click();
   await expect(page.getByRole("button", { name: "关闭区域缩放" })).toHaveAttribute("aria-pressed", "true");
   const viewer = page.locator("[data-pdf-viewer]");
   await expect(viewer).toHaveAttribute("data-zoom", "1.5");
+  await expectToolbarPosition();
   await expect(page.locator("[data-pdf-magnifier-lens]")).toHaveCount(0);
   const reader = page.locator("[data-reader-scroll-container]");
   const scrollHeightBeforeZoom = await reader.evaluate((element) => element.scrollHeight);
@@ -711,6 +720,7 @@ test("PDF region zooms in place, pans, and exits without a floating lens", async
   await page.mouse.move(panStart.x + panDeltaX, panStart.y - 30, { steps: 5 });
   await page.mouse.up();
   expect(await reader.evaluate((element) => element.scrollLeft)).not.toBe(horizontalScroll.current);
+  await expectToolbarPosition();
 
   await page.keyboard.down("Control");
   await page.mouse.wheel(0, -100);
@@ -720,6 +730,7 @@ test("PDF region zooms in place, pans, and exits without a floating lens", async
   await page.keyboard.press("Escape");
   await expect(viewer).toHaveAttribute("data-zoom", "1");
   await expect(page.getByRole("button", { name: "开启区域缩放" })).toHaveAttribute("aria-pressed", "false");
+  await expectToolbarPosition();
 
   // Playwright exposes synthetic multi-touch through CDP only in Chromium.
   // WebKit/Firefox still cover layout zoom above; pointer logic has unit coverage.

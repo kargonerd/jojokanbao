@@ -132,7 +132,6 @@ export function SearchScreen() {
             returnKeyType="search"
             clearButtonMode="while-editing"
             autoCorrect={false}
-            autoFocus={beforeSearch}
             style={[styles.input, { color: theme.ink, fontFamily: theme.sans }]}
             accessibilityLabel="在JOJO看报上搜索"
           />

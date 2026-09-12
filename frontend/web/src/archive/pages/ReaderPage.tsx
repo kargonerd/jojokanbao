@@ -1,5 +1,5 @@
 import { useParams, useNavigate, useSearchParams, useLocation } from "react-router-dom";
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { type CSSProperties, useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { fetchPdfDownloadBytes, findPdfOutlineLocation, resolvePdfOutlineDestination, PdfViewer, usePdfDocument, type PdfOutlineItem, type PdfOutlineLocation, type PdfSearchResult } from "@jojo/pdf-viewer";
 import { formatArchiveIssueLabel } from "@jojo/content";
 import { EmptyState, DatePicker, Toolbar, YearPicker } from "@jojo/ui";
@@ -746,7 +746,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
           {config?.resolutionControl && (
             <div>
               <label className="block text-xs font-bold text-muted mb-2 tracking-wide">清晰度 ({resolutionRate})</label>
-              <input type="range" min={1} max={3} value={resolutionRate} onChange={(e) => setResolutionRate(Number(e.target.value))} className="w-full accent-red" aria-label="清晰度" />
+              <input type="range" min={1} max={3} value={resolutionRate} onChange={(e) => setResolutionRate(Number(e.target.value))} className="reader-range w-full" style={{ "--reader-range-fill": `${(resolutionRate - 1) * 50}%` } as CSSProperties} aria-label="清晰度" />
             </div>
           )}
           <div>
@@ -758,7 +758,8 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
               step={0.25}
               value={zoom}
               onChange={(event) => setZoom(Number(event.target.value))}
-              className="w-full accent-red"
+              className="reader-range w-full"
+              style={{ "--reader-range-fill": `${(zoom - 1) * 50}%` } as CSSProperties}
               aria-label="页面缩放"
             />
           </div>
@@ -777,7 +778,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
       {/* SEO hidden heading */}
       <h1 className="hidden">{config?.label || name} - {id}</h1>
 
-      <div className="sticky top-0 z-[80]" data-reader-controls>
+      <div className="sticky left-0 top-0 z-[80]" data-reader-controls>
       {/* Toolbar: Magazine mode */}
       {type === "magazine" ? (
         <Toolbar sticky data-reader-toolbar>

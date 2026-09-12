@@ -7,7 +7,7 @@ afterEach(cleanup);
 
 describe("book navigation sheet", () => {
   function renderSheet(onClose = vi.fn()) {
-    render(<BookNavigationSheet tab="toc" onTabChange={vi.fn()} onClose={onClose} panelClass=""><div>章节列表</div></BookNavigationSheet>);
+    render(<BookNavigationSheet mobile tab="toc" onTabChange={vi.fn()} onClose={onClose} panelClass=""><div>章节列表</div></BookNavigationSheet>);
     const handle = screen.getByRole("button", { name: "调整书内导航高度" });
     handle.setPointerCapture = vi.fn();
     return { handle, onClose };

@@ -570,7 +570,10 @@ a.jojo-citation:hover {
 .recent-meta { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .recent-copy p { overflow: hidden; margin: 5px 0 10px; color: var(--app-gray); font-size: .78rem; text-overflow: ellipsis; white-space: nowrap; }
 .recent-meta span { flex: none; color: var(--color-red); font-family: ui-monospace, monospace; font-size: .7rem; font-weight: 700; }
-.recent-copy progress { display: block; width: 100%; height: 3px; border: 0; accent-color: var(--color-red); }
+.recent-copy progress { display: block; width: 100%; height: 3px; appearance: none; -webkit-appearance: none; border: 0; border-radius: 0; overflow: hidden; color: var(--color-red); background: var(--color-rule); accent-color: var(--color-red); }
+.recent-copy progress::-webkit-progress-bar { background: var(--color-rule); border-radius: 0; }
+.recent-copy progress::-webkit-progress-value { background: var(--color-red); border-radius: 0; }
+.recent-copy progress::-moz-progress-bar { background: var(--color-red); border-radius: 0; }
 .recent-card-periodical .recent-copy p { margin-bottom: 0; }
 
 .recent-empty {
@@ -935,6 +938,12 @@ a.jojo-citation:hover {
 @media (max-width: 980px) {
   .bookshelf-grid { grid-template-columns: repeat(4, minmax(100px, 1fr)); }
   .cover-grid { grid-template-columns: repeat(3, minmax(100px, 1fr)); }
+}
+
+@media (min-width: 721px) and (max-width: 980px) {
+  .app-brand-full { display: none; }
+  .app-brand-mark { display: block; }
+  .app-header > nav { gap: 16px; }
 }
 
 @media (max-width: 720px) {

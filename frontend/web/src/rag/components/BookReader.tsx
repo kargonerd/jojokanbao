@@ -1,4 +1,5 @@
 import {
+  type CSSProperties,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
@@ -10,8 +11,8 @@ import {
   useState,
 } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { IoCopyOutline, IoCreateOutline, IoSparklesOutline } from "react-icons/io5";
-import type { SpeechLocation } from "@jojo/content";
+import { IoBookOutline, IoCopyOutline, IoCreateOutline, IoDownloadOutline, IoListOutline, IoRadioButtonOnOutline, IoSearchOutline, IoSparklesOutline, IoTextOutline } from "react-icons/io5";
+import { bookProgressPercent, bookProgressLocation, estimatedReadingMinutes, formatReadingTime, type SpeechLocation } from "@jojo/content";
 import { createSpeechReader, SPEECH_EXCLUDED_ELEMENTS } from "@jojo/content/speech-dom";
 import type { ReaderSelectionRect } from "@jojo/ui/reader-selection";
 import { AnnotationDiscussionPanel } from "../../annotations/AnnotationDiscussionPanel";
@@ -31,8 +32,12 @@ import type { RagAnswerMetadata, RagFocusContext, RagReference, RagSearchHit } f
 import { BookAiPanel } from "./BookAiPanel";
 import { BookSearchPanel } from "./BookSearchPanel";
 import { BookNavigationSheet } from "./BookNavigationSheet";
+import { ContinuousBookContent, type ContinuousBookContentHandle } from "./ContinuousBookContent";
 import { ReaderSelectionPopover } from "../../reading/ReaderSelectionPopover";
 import { BookThoughtComposer } from "./BookThoughtComposer";
+import { useBookReadingTime } from "../../reading/readingStats";
+import { loadMyBookAnnotations } from "../../annotations/api";
+import type { AnnotationThread } from "../../annotations/types";
 import "./BookReader.css";
 import {
   bookshelfContains,
@@ -45,32 +50,35 @@ import {
 
 export type BookReaderPaperColor = "ivory" | "white" | "dark";
 export type BookReaderMode = "paged" | "scroll";
-type ReaderToolPopover = "font" | "color" | "display" | "progress";
+type ReaderToolPopover = "display" | "progress" | "notes";
 type ReaderToolIconName = "toc" | "search" | "ai" | "progress" | "display";
 
 function ReaderToolIcon({ name }: { name: ReaderToolIconName }) {
-  if (name === "ai") {
-    return <span className="relative font-serif text-[17px] font-bold leading-none" aria-hidden="true">AI<span className="absolute -right-2 -top-2 text-[9px] text-red">✦</span></span>;
-  }
-  if (name === "display") {
-    return <span className="font-serif text-[22px] font-semibold leading-none" aria-hidden="true">A</span>;
-  }
-  if (name === "toc") {
-    return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h2M4 12h2M4 18h2M9 6h11M9 12h11M9 18h11" /></svg>;
-  }
-  if (name === "search") {
-    return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m15.5 15.5 5 5" /></svg>;
-  }
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h18" /><rect x="9" y="8" width="6" height="8" /></svg>;
+  const Icon = { toc: IoListOutline, search: IoSearchOutline, ai: IoSparklesOutline, progress: IoRadioButtonOnOutline, display: IoTextOutline }[name];
+  return <Icon aria-hidden="true" />;
+}
+
+const RANGE_KEYS = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown"];
+
+function rangeFill(percent: number): CSSProperties {
+  return { "--reader-range-fill": `${Math.max(0, Math.min(100, percent))}%` } as CSSProperties;
+}
+
+function scopedAnchor(root: HTMLElement | null | undefined, id: string): HTMLElement | undefined {
+  if (!root || !id) return;
+  const candidate = document.getElementById(id);
+  return candidate && root.contains(candidate) ? candidate : Array.from(root.querySelectorAll<HTMLElement>("[id]")).find((element) => element.id === id);
 }
 
 export interface BookReaderChapter {
   id: string;
   title: string;
+  characterCount?: number;
 }
 
 export interface BookReaderTocItem extends BookReaderChapter {
   targetId?: string;
+  anchorId?: string;
   depth: number;
 }
 
@@ -96,6 +104,8 @@ export interface BookReaderProps {
   onInternalLink?: (chapterId: string, anchorId?: string) => void;
   onSearch: (query: string) => Promise<RagSearchHit[]>;
   onDownload?: () => void;
+  loadChapter?: (chapterId: string, signal: AbortSignal) => Promise<ReactNode>;
+  onVisibleChapterChange?: (chapterId: string) => void;
   speechControl?: ReactNode;
   children: ReactNode;
 }
@@ -106,6 +116,7 @@ interface ExpandedImage {
 }
 
 interface ReaderTextSelection {
+  chapterId?: string;
   text: string;
   anchor: TextAnchor;
   rect: ReaderSelectionRect;
@@ -165,7 +176,7 @@ export function BookReader({
   chapterKey,
   focusAnchorId,
   focusText,
-  contentLoading = false,
+  contentLoading: chapterLoading = false,
   error,
   backHref,
   onChapterChange,
@@ -173,6 +184,8 @@ export function BookReader({
   onInternalLink,
   onSearch,
   onDownload,
+  loadChapter,
+  onVisibleChapterChange,
   speechControl,
   children,
 }: BookReaderProps) {
@@ -189,6 +202,9 @@ export function BookReader({
   const [paperColor, setPaperColor] = useState<BookReaderPaperColor>(storedPaperColor);
   const [paperTexture, setPaperTexture] = useState(storedPaperTexture);
   const [mode, setMode] = useState<BookReaderMode>(storedMode);
+  const continuous = mode === "scroll" && Boolean(loadChapter);
+  const [continuousReady, setContinuousReady] = useState(false);
+  const contentLoading = continuous ? !continuousReady : chapterLoading;
   const [tocOpen, setTocOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
@@ -206,6 +222,7 @@ export function BookReader({
   const [aiExplanationQuote, setAiExplanationQuote] = useState<string>();
   const [aiFocus, setAiFocus] = useState<RagFocusContext>();
   const [activeAnnotationId, setActiveAnnotationId] = useState<string>();
+  const [discussionChapterId, setDiscussionChapterId] = useState<string>();
   const [annotationSaving, setAnnotationSaving] = useState(false);
   const [onBookshelf, setOnBookshelf] = useState(false);
   const [bookshelfBusy, setBookshelfBusy] = useState(false);
@@ -213,6 +230,13 @@ export function BookReader({
   const [popular, setPopular] = useState<ReusableExplanation[]>([]);
   const [expandedImage, setExpandedImage] = useState<ExpandedImage>();
   const [readingProgress, setReadingProgress] = useState(0);
+  const [progressPreview, setProgressPreview] = useState<number>();
+  const [bookNotes, setBookNotes] = useState<AnnotationThread[]>([]);
+  const [notesError, setNotesError] = useState("");
+  const [notesLoading, setNotesLoading] = useState(false);
+  const [notesRevision, setNotesRevision] = useState(0);
+  const [activeTocId, setActiveTocId] = useState<string>();
+  const [positionRevision, setPositionRevision] = useState(0);
   const [columnsPerSpread, setColumnsPerSpread] = useState(() => window.innerWidth >= 900 ? 2 : 1);
   const [mobileViewport, setMobileViewport] = useState(() => window.innerWidth < 768);
   const [chromeHidden, setChromeHidden] = useState(false);
@@ -222,33 +246,86 @@ export function BookReader({
   const [speechLauncherTarget, setSpeechLauncherTarget] = useState<HTMLDivElement | null>(null);
   const [pageMetrics, setPageMetrics] = useState<PageMetrics>(DEFAULT_PAGE_METRICS);
   const [trailingBlankPage, setTrailingBlankPage] = useState(false);
-  const [pageTransitioning, setPageTransitioning] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const flowRef = useRef<HTMLDivElement>(null);
+  const continuousRef = useRef<ContinuousBookContentHandle>(null);
+  const visibleChapterRef = useRef(activeChapterId);
+  const requestedScrollChapterRef = useRef<string | undefined>(undefined);
   const tocPanelRef = useRef<HTMLDivElement>(null);
   const currentPageRef = useRef(0);
   const pendingPageRef = useRef<"start" | "end" | null>("start");
-  const transitionTimerRef = useRef<number | undefined>(undefined);
+  const pendingProgressRef = useRef<{ chapterId: string; progress: number }>(undefined);
+  const swipeRef = useRef<{ x: number; y: number; time: number; dragging: boolean; start: number; distance: number }>(undefined);
+  const suppressSwipeClickRef = useRef(false);
   const jumpTimerRef = useRef<number | undefined>(undefined);
   const aiPreparationRef = useRef(0);
 
   const activeChapterIndex = Math.max(0, chapters.findIndex((chapter) => chapter.id === activeChapterId));
+  const annotationChapterId = thoughtSelection?.chapterId || textSelection?.chapterId || (activeAnnotationId && discussionChapterId) || activeChapterId;
   const annotationSubject = useMemo(() => ({
     contentType: "book" as const,
     contentId: `${datasetId}:${itemId}`,
-    sectionId: activeChapterId,
-    contentTitle: `${bookTitle} · ${chapters[activeChapterIndex]?.title || "正文"}`,
-    contentUrl: `${window.location.pathname}?${new URLSearchParams({ chapter: activeChapterId })}`,
-  }), [activeChapterId, activeChapterIndex, bookTitle, chapters, datasetId, itemId]);
+    sectionId: annotationChapterId,
+    contentTitle: `${bookTitle} · ${chapters.find((chapter) => chapter.id === annotationChapterId)?.title || "正文"}`,
+    contentUrl: `${window.location.pathname}?${new URLSearchParams({ chapter: annotationChapterId })}`,
+  }), [annotationChapterId, bookTitle, chapters, datasetId, itemId]);
+
+  const chapterRoot = useCallback((id = activeChapterId): HTMLElement | null => continuous
+    ? continuousRef.current?.getChapterRoot(id)?.querySelector<HTMLElement>("[data-speech-content]") ?? null
+    : mode === "paged" ? flowRef.current : scrollRef.current, [activeChapterId, continuous, mode]);
+
+  const continuousPosition = useCallback((id: string, progress: number) => {
+    requestedScrollChapterRef.current = undefined;
+    setReadingProgress(progress);
+    if (visibleChapterRef.current !== id) {
+      visibleChapterRef.current = id;
+      onVisibleChapterChange?.(id);
+    }
+  }, [onVisibleChapterChange]);
+
+  const continuousContentReady = useCallback(() => {
+    setContinuousReady(true);
+    setPositionRevision((revision) => revision + 1);
+  }, []);
+
+  useEffect(() => {
+    if (!continuous) { setContinuousReady(false); return; }
+    if (activeChapterId === visibleChapterRef.current || requestedScrollChapterRef.current === activeChapterId) return;
+    requestedScrollChapterRef.current = activeChapterId;
+    const pending = pendingProgressRef.current;
+    continuousRef.current?.seek(activeChapterId, pending?.chapterId === activeChapterId ? pending.progress : 0);
+    pendingProgressRef.current = undefined;
+  }, [activeChapterId, continuous]);
   const annotationAccess = annotationsEnabled && Boolean(currentUserId);
   const annotations = useAnnotationThreads(annotationSubject, annotationAccess, currentUserId);
   const activeAnnotation = annotations.threads.find((thread) => thread.id === activeAnnotationId);
   const readerOverlayOpen = aiOpen || tocOpen || searchOpen || Boolean(toolPopover || thoughtSelection || activeAnnotation || expandedImage);
   const previousChapter = chapters[activeChapterIndex - 1];
   const nextChapter = chapters[activeChapterIndex + 1];
-  const bookProgress = chapters.length
-    ? Math.min(100, Math.round(((activeChapterIndex + readingProgress / 100) / chapters.length) * 100))
-    : 0;
+  const exactBookProgress = bookProgressPercent(chapters, activeChapterId, readingProgress);
+  const bookProgress = Math.round(exactBookProgress * 10) / 10;
+  const readingSeconds = useBookReadingTime(`${currentUserId || "guest"}:${datasetId}:${itemId}`, !contentLoading && !error && !readerOverlayOpen);
+  const remainingMinutes = estimatedReadingMinutes(characterCount, exactBookProgress);
+  const previewLocation = bookProgressLocation(chapters, progressPreview ?? exactBookProgress);
+
+  const annotationSectionIds = useMemo(() => [activeChapterId, ...chapters.map((chapter) => chapter.id).filter((id) => id !== activeChapterId)], [activeChapterId, chapters]);
+
+  useEffect(() => { setBookNotes([]); setNotesError(""); }, [currentUserId, datasetId, itemId]);
+
+  useEffect(() => {
+    if (toolPopover !== "notes" && toolPopover !== "progress") return;
+    if (!annotationAccess) { setBookNotes([]); return; }
+    let active = true;
+    const controller = new AbortController();
+    setNotesLoading(true); setNotesError("");
+    void loadMyBookAnnotations(`${datasetId}:${itemId}`, annotationSectionIds, currentUserId ?? null, {
+      signal: controller.signal,
+      onProgress: ({ notes }) => { if (active) setBookNotes(notes); },
+    }).then((notes) => { if (active) setBookNotes(notes); })
+      .catch(() => { if (active) setNotesError("笔记暂时无法读取，请重试。"); })
+      .finally(() => { if (active) setNotesLoading(false); });
+    return () => { active = false; controller.abort(); };
+  }, [annotationAccess, currentUserId, datasetId, itemId, toolPopover, annotations.threads, annotationSectionIds, notesRevision]);
 
   useEffect(() => {
     if (contentLoading || !activeChapterId) return;
@@ -279,7 +356,7 @@ export function BookReader({
 
   const measurePages = useCallback(() => {
     const flow = flowRef.current;
-    if (!flow || mode !== "paged") return;
+    if (!flow || mode !== "paged" || swipeRef.current?.dragging) return;
     const gap = Number.parseFloat(window.getComputedStyle(flow).columnGap) || 64;
     const columnStep = (flow.clientWidth + gap) / columnsPerSpread;
     const measuredPages = Math.max(1, Math.ceil((flow.scrollWidth + gap - 1) / columnStep));
@@ -288,17 +365,21 @@ export function BookReader({
     if (needsTrailingBlankPage !== trailingBlankPage) setTrailingBlankPage(needsTrailingBlankPage);
     const spreads = Math.max(1, Math.ceil(physicalPages / columnsPerSpread));
     const step = flow.clientWidth + gap;
-    const requestedPage = pendingPageRef.current === "end"
+    const pendingProgress = pendingProgressRef.current;
+    const requestedPage = pendingProgress?.chapterId === activeChapterId
+      ? Math.round(pendingProgress.progress / 100 * (spreads - 1))
+      : pendingPageRef.current === "end"
       ? spreads - 1
       : pendingPageRef.current === "start"
         ? 0
         : Math.min(currentPageRef.current, spreads - 1);
     pendingPageRef.current = null;
+    if (pendingProgress?.chapterId === activeChapterId) pendingProgressRef.current = undefined;
     currentPageRef.current = requestedPage;
     flow.scrollLeft = requestedPage * step;
     setPageMetrics({ page: requestedPage, spreads, physicalPages, columnsPerSpread, step });
     setReadingProgress(spreads <= 1 ? 100 : Math.round((requestedPage / (spreads - 1)) * 100));
-  }, [columnsPerSpread, mode, trailingBlankPage]);
+  }, [activeChapterId, columnsPerSpread, mode, trailingBlankPage]);
 
   useEffect(() => {
     window.localStorage.setItem("jojo-reader-font-size", String(fontSize));
@@ -313,7 +394,6 @@ export function BookReader({
   }, [mode]);
 
   useEffect(() => () => {
-    if (transitionTimerRef.current) window.clearTimeout(transitionTimerRef.current);
     if (jumpTimerRef.current) window.clearTimeout(jumpTimerRef.current);
   }, []);
 
@@ -323,7 +403,7 @@ export function BookReader({
       tocPanelRef.current?.querySelector<HTMLElement>("[data-toc-active='true']")?.scrollIntoView({ block: "center" });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [tocOpen, tocQuery]);
+  }, [tocOpen, tocQuery, activeTocId]);
 
   useEffect(() => {
     const closePanels = (event: KeyboardEvent): void => {
@@ -351,7 +431,8 @@ export function BookReader({
     return () => window.removeEventListener("resize", updateViewport);
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    if (continuous) return;
     scrollRef.current?.scrollTo({ top: 0 });
     flowRef.current?.scrollTo({ left: 0 });
     currentPageRef.current = 0;
@@ -361,7 +442,50 @@ export function BookReader({
     setExpandedImage(undefined);
     setTextSelection(undefined);
     setThoughtSelection(undefined);
-  }, [chapterKey]);
+  }, [chapterKey, continuous]);
+
+  useLayoutEffect(() => {
+    if (mode !== "scroll" || continuous || contentLoading) return;
+    const reader = scrollRef.current;
+    if (!reader) return;
+    const pending = pendingProgressRef.current;
+    const progress = pending?.chapterId === activeChapterId ? pending.progress : pendingPageRef.current === "end" ? 100 : 0;
+    if (pending?.chapterId === activeChapterId || pendingPageRef.current) {
+      reader.scrollTop = Math.max(0, reader.scrollHeight - reader.clientHeight) * progress / 100;
+      setReadingProgress(progress);
+      pendingProgressRef.current = undefined;
+      pendingPageRef.current = null;
+    }
+  }, [activeChapterId, contentLoading, continuous, mode]);
+
+  useEffect(() => {
+    if (contentLoading) return;
+    const surface = mode === "paged" ? flowRef.current : scrollRef.current;
+    if (!surface) return;
+    const bounds = surface.getBoundingClientRect();
+    const candidates = toc.filter((item) => item.targetId === activeChapterId);
+    let current = candidates[0];
+    for (const item of candidates) {
+      if (!item.anchorId) continue;
+      const element = scopedAnchor(chapterRoot(), item.anchorId);
+      if (!element) continue;
+      const rect = element.getBoundingClientRect();
+      if (mode === "scroll" ? rect.top <= bounds.top + 60 : rect.left < bounds.right && rect.top <= bounds.bottom) current = item;
+    }
+    setActiveTocId(current?.id);
+  }, [activeChapterId, contentLoading, mode, positionRevision, readingProgress, toc, chapterRoot]);
+
+  useEffect(() => {
+    const flow = flowRef.current;
+    if (!flow || mode !== "paged") return;
+    let timer: number | undefined;
+    const settled = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => setPositionRevision((value) => value + 1), 100);
+    };
+    flow.addEventListener("scroll", settled);
+    return () => { flow.removeEventListener("scroll", settled); window.clearTimeout(timer); };
+  }, [mode, chapterKey]);
 
   useEffect(() => {
     if (!agentAccess) {
@@ -388,13 +512,16 @@ export function BookReader({
   }, [bookshelfEnabled, datasetId, itemId]);
 
   useEffect(() => {
-    const root = mode === "paged" ? flowRef.current : scrollRef.current;
+    const root = chapterRoot(annotationChapterId);
     if (!root || contentLoading) return;
-    renderAnnotationMarks(root, annotations.threads, setActiveAnnotationId);
-  }, [annotations.threads, contentLoading, mode, pageMetrics.step]);
+    renderAnnotationMarks(root, annotations.threads.filter((thread) => thread.sectionId === annotationChapterId), (id) => {
+      setDiscussionChapterId(annotationChapterId);
+      setActiveAnnotationId(id);
+    });
+  }, [annotations.threads, annotationChapterId, contentLoading, chapterRoot, pageMetrics.step, positionRevision]);
 
   useEffect(() => {
-    const root = mode === "paged" ? flowRef.current : scrollRef.current;
+    const root = chapterRoot();
     if (!root || contentLoading) return;
     renderReaderExplanationMarks(root, popular.map((explanation) => ({
       quote: explanation.quote,
@@ -424,15 +551,7 @@ export function BookReader({
       openPanel("ai");
     });
     return () => clearReaderExplanationMarks(root);
-  }, [activeChapterId, activeChapterTitle, contentLoading, mode, pageMetrics.step, popular]);
-
-  useEffect(() => {
-    currentPageRef.current = 0;
-    scrollRef.current?.scrollTo({ top: 0 });
-    flowRef.current?.scrollTo({ left: 0 });
-    setReadingProgress(0);
-    setPageMetrics((current) => ({ ...current, page: 0 }));
-  }, [mode]);
+  }, [activeChapterId, activeChapterTitle, contentLoading, chapterRoot, pageMetrics.step, popular, positionRevision]);
 
   useLayoutEffect(() => {
     if (mode !== "paged" || contentLoading) return;
@@ -466,10 +585,18 @@ export function BookReader({
   const chooseChapter = useCallback((chapterId: string | undefined, destination: "start" | "end" = "start"): void => {
     if (!chapterId) return;
     setTocOpen(false);
+    if (continuous) {
+      const pending = pendingProgressRef.current;
+      requestedScrollChapterRef.current = chapterId;
+      continuousRef.current?.seek(chapterId, pending?.chapterId === chapterId ? pending.progress : destination === "end" ? 100 : 0);
+      pendingProgressRef.current = undefined;
+      if (chapterId !== activeChapterId) onChapterChange(chapterId);
+      return;
+    }
     if (chapterId === activeChapterId) return;
     pendingPageRef.current = destination;
     onChapterChange(chapterId);
-  }, [activeChapterId, onChapterChange]);
+  }, [activeChapterId, continuous, onChapterChange]);
 
   const speechReaderRef = useRef<ReturnType<typeof createSpeechReader> | null>(null);
   const [speechLocation, setSpeechLocation] = useState<SpeechLocation | null>(null);
@@ -482,12 +609,12 @@ export function BookReader({
   }, [chooseChapter]);
   useEffect(() => {
     const surface = mode === "paged" ? flowRef.current : scrollRef.current;
-    const root = surface?.querySelector<HTMLElement>("[data-speech-content]");
+    const root = continuous ? chapterRoot() : surface?.querySelector<HTMLElement>("[data-speech-content]");
     if (!surface || !root || contentLoading) return;
     const reader = createSpeechReader(root, () => surface.getBoundingClientRect(), SPEECH_EXCLUDED_ELEMENTS);
     speechReaderRef.current = reader;
     return () => { speechReaderRef.current = null; };
-  }, [mode, contentLoading, chapterKey]);
+  }, [mode, contentLoading, chapterKey, chapterRoot, continuous, positionRevision]);
   useEffect(() => {
     const reader = speechReaderRef.current;
     if (!reader) return;
@@ -514,32 +641,25 @@ export function BookReader({
     if (value === mode) return;
     pendingPageRef.current = "start";
     currentPageRef.current = 0;
+    setReadingProgress(0);
+    setPageMetrics((current) => ({ ...current, page: 0 }));
     setMode(value);
   }
 
-  const changePageWithFade = useCallback((applyChange: () => void) => {
-    if (pageTransitioning) return;
-    applyChange();
-    if (typeof window.matchMedia !== "function" || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    if (transitionTimerRef.current) window.clearTimeout(transitionTimerRef.current);
-    setPageTransitioning(true);
-    transitionTimerRef.current = window.setTimeout(() => setPageTransitioning(false), 160);
-  }, [pageTransitioning]);
-
   const previousPage = useCallback(() => {
-    if (pageTransitioning) return;
-    if (pageMetrics.page > 0) changePageWithFade(() => goToPage(pageMetrics.page - 1, "auto"));
-    else if (previousChapter) changePageWithFade(() => chooseChapter(previousChapter.id, "end"));
-  }, [changePageWithFade, chooseChapter, goToPage, pageMetrics.page, pageTransitioning, previousChapter]);
+    if (contentLoading) return;
+    if (pageMetrics.page > 0) goToPage(pageMetrics.page - 1, "auto");
+    else if (previousChapter) chooseChapter(previousChapter.id, "end");
+  }, [contentLoading, chooseChapter, goToPage, pageMetrics.page, previousChapter]);
 
   const nextPage = useCallback(() => {
-    if (pageTransitioning) return;
-    if (pageMetrics.page < pageMetrics.spreads - 1) changePageWithFade(() => goToPage(pageMetrics.page + 1, "auto"));
-    else if (nextChapter) changePageWithFade(() => chooseChapter(nextChapter.id));
-  }, [changePageWithFade, chooseChapter, goToPage, nextChapter, pageMetrics.page, pageMetrics.spreads, pageTransitioning]);
+    if (contentLoading) return;
+    if (pageMetrics.page < pageMetrics.spreads - 1) goToPage(pageMetrics.page + 1, "auto");
+    else if (nextChapter) chooseChapter(nextChapter.id);
+  }, [contentLoading, chooseChapter, goToPage, nextChapter, pageMetrics.page, pageMetrics.spreads]);
 
   useEffect(() => {
-    if (mode !== "paged") return;
+    if (mode !== "paged" || readerOverlayOpen) return;
     const turnWithKeyboard = (event: KeyboardEvent): void => {
       const target = event.target;
       if (target instanceof HTMLElement && target.matches("input, textarea, select, button")) return;
@@ -554,7 +674,7 @@ export function BookReader({
     };
     window.addEventListener("keydown", turnWithKeyboard);
     return () => window.removeEventListener("keydown", turnWithKeyboard);
-  }, [mode, nextPage, previousPage]);
+  }, [mode, nextPage, previousPage, readerOverlayOpen]);
 
   const highlightJumpTarget = useCallback((target: HTMLElement): void => {
     document.querySelectorAll("[data-book-jump-target]").forEach((element) => {
@@ -582,20 +702,20 @@ export function BookReader({
   }, [goToPage, highlightJumpTarget, mode, pageMetrics.step]);
 
   const revealAnchor = useCallback((anchorId: string) => {
-    const target = document.getElementById(anchorId);
+    const target = scopedAnchor(chapterRoot(), anchorId);
     if (target) revealElement(target);
-  }, [revealElement]);
+  }, [revealElement, chapterRoot]);
 
   useEffect(() => {
     if (!focusAnchorId || contentLoading) return;
     const timer = window.setTimeout(() => revealAnchor(focusAnchorId), 80);
     return () => window.clearTimeout(timer);
-  }, [contentLoading, focusAnchorId, pageMetrics.step, revealAnchor]);
+  }, [contentLoading, focusAnchorId, pageMetrics.step, revealAnchor, positionRevision]);
 
   useEffect(() => {
     if (!focusText?.text || contentLoading) return;
     const timer = window.setTimeout(() => {
-      const root = mode === "paged" ? flowRef.current : scrollRef.current;
+      const root = chapterRoot();
       if (!root) return;
       root.querySelectorAll("mark[data-book-search-target]").forEach((mark) => mark.replaceWith(...mark.childNodes));
       root.normalize();
@@ -617,15 +737,20 @@ export function BookReader({
         }
         node = walker.nextNode();
       }
-      const anchorTarget = focusAnchorId ? document.getElementById(focusAnchorId) : null;
+      const anchorTarget = focusAnchorId ? scopedAnchor(root, focusAnchorId) : null;
       if (anchorTarget) return;
       const title = root.querySelector<HTMLElement>("h1,h2,h3");
       if (title) revealElement(title);
     }, 140);
     return () => window.clearTimeout(timer);
-  }, [contentLoading, focusAnchorId, focusText, mode, pageMetrics.step, revealElement]);
+  }, [contentLoading, focusAnchorId, focusText, mode, pageMetrics.step, revealElement, chapterRoot, positionRevision]);
 
   function startReaderTap(event: ReactPointerEvent<HTMLElement>): void {
+    suppressSwipeClickRef.current = false;
+    if (mode === "paged" && !contentLoading && !readerOverlayOpen && event.pointerType !== "mouse" && event.isPrimary !== false
+      && !(event.target as Element).closest("a,button,input,textarea,[role='button']") && !window.getSelection()?.toString()) {
+      swipeRef.current = { x: event.clientX, y: event.clientY, time: Date.now(), dragging: false, start: currentPageRef.current * pageMetrics.step, distance: 0 };
+    }
     if (!mobileViewport) return;
     if (event.isPrimary === false) {
       cancelReaderTap();
@@ -640,13 +765,52 @@ export function BookReader({
   function moveReaderTap(event: ReactPointerEvent<HTMLElement>): void {
     const tap = readerTapRef.current;
     if (tap && Math.hypot(event.clientX - tap.x, event.clientY - tap.y) > 10) tap.cancelled = true;
+    const swipe = swipeRef.current;
+    if (!swipe || !flowRef.current) return;
+    const dx = event.clientX - swipe.x;
+    const dy = event.clientY - swipe.y;
+    if (!swipe.dragging) {
+      if (Math.abs(dy) > Math.abs(dx) + 8 || Date.now() - swipe.time > 450 || window.getSelection()?.toString()) { swipeRef.current = undefined; return; }
+      if (Math.abs(dx) < 10 || Math.abs(dx) < Math.abs(dy) * 1.3) return;
+      swipe.dragging = true;
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+    }
+    event.preventDefault();
+    swipe.distance = dx;
+    const target = swipe.start - dx;
+    const maximum = (pageMetrics.spreads - 1) * pageMetrics.step;
+    flowRef.current.scrollLeft = Math.max(0, Math.min(maximum, target));
+    const overshoot = target < 0 ? -target : target > maximum ? maximum - target : 0;
+    flowRef.current.style.transform = overshoot ? `translateX(${overshoot * .3}px)` : "";
+  }
+
+  function finishReaderPointer(event: ReactPointerEvent<HTMLElement>): void {
+    const swipe = swipeRef.current;
+    swipeRef.current = undefined;
+    if (!swipe?.dragging) { capturePointerTextSelection(); return; }
+    suppressSwipeClickRef.current = true;
+    if (flowRef.current) flowRef.current.style.transform = "";
+    const distance = swipe.distance;
+    const duration = Math.max(1, Date.now() - swipe.time);
+    const turn = Math.abs(distance) > Math.min(90, pageMetrics.step * .2) || (Math.abs(distance) > 24 && Math.abs(distance) / duration > .45);
+    const target = pageMetrics.page + (turn ? (distance < 0 ? 1 : -1) : 0);
+    if (target < 0 && previousChapter) chooseChapter(previousChapter.id, "end");
+    else if (target >= pageMetrics.spreads && nextChapter) chooseChapter(nextChapter.id);
+    else goToPage(target, window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth");
   }
 
   function cancelReaderTap(): void {
     if (readerTapRef.current) readerTapRef.current.cancelled = true;
+    if (swipeRef.current?.dragging && flowRef.current) {
+      flowRef.current.style.transform = "";
+      flowRef.current.scrollLeft = currentPageRef.current * pageMetrics.step;
+      suppressSwipeClickRef.current = true;
+    }
+    swipeRef.current = undefined;
   }
 
   function handleReaderClick(event: ReactMouseEvent<HTMLElement>): void {
+    if (suppressSwipeClickRef.current) { suppressSwipeClickRef.current = false; event.preventDefault(); return; }
     const tap = readerTapRef.current;
     readerTapRef.current = null;
     if (mobileViewport && (tap?.cancelled || (tap && Date.now() - tap.started > 450))) return;
@@ -680,9 +844,11 @@ export function BookReader({
       onInternalLink?.(targetId, anchorId || undefined);
       return;
     }
-    if (!anchorId || !document.getElementById(anchorId)) return;
+    const sourceChapter = link.closest<HTMLElement>("[data-book-chapter-id]");
+    const target = scopedAnchor(sourceChapter ?? chapterRoot(), anchorId);
+    if (!anchorId || !target) return;
     event.preventDefault();
-    revealAnchor(anchorId);
+    revealElement(target);
   }
 
   const captureTextSelection = useCallback((): void => {
@@ -696,16 +862,20 @@ export function BookReader({
     const range = selection.getRangeAt(0);
     const ancestor = range.commonAncestorContainer;
     const insideReader = Boolean(flowRef.current?.contains(ancestor) || scrollRef.current?.contains(ancestor));
-    const root = mode === "paged" ? flowRef.current : scrollRef.current;
+    const selectionElement = ancestor instanceof Element ? ancestor : ancestor.parentElement;
+    const selectedChapter = selectionElement?.closest<HTMLElement>("[data-book-chapter-id]");
+    const root = selectedChapter?.querySelector<HTMLElement>("[data-speech-content]") ?? chapterRoot();
+    if (selectedChapter && (!selectedChapter.contains(range.startContainer) || !selectedChapter.contains(range.endContainer))) { setTextSelection(undefined); return; }
     const anchor = root && textAnchorFromRange(root, range, 1_200);
-    if (!insideReader || !anchor) return;
+    if (!insideReader || !anchor) { setTextSelection(undefined); return; }
     const rect = range.getBoundingClientRect();
     setTextSelection({
+      chapterId: selectedChapter?.dataset.bookChapterId ?? activeChapterId,
       text: anchor.quote,
       anchor,
       rect: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom },
     });
-  }, [mode, readerOverlayOpen]);
+  }, [activeChapterId, chapterRoot, readerOverlayOpen]);
 
   useEffect(() => {
     const onContextMenu = (event: MouseEvent) => {
@@ -794,6 +964,7 @@ export function BookReader({
     setThoughtError("");
     try {
       const saved = await annotations.create(anchor, thought.trim(), thoughtVisibility);
+      setDiscussionChapterId(thoughtSelection?.chapterId || activeChapterId);
       clearSelection();
       setActiveAnnotationId(saved.id);
       setThought("");
@@ -806,9 +977,10 @@ export function BookReader({
     if (!textSelection) return;
     const preparationId = ++aiPreparationRef.current;
     const quote = textSelection.text;
+    const selectionChapterId = textSelection.chapterId || activeChapterId;
     setAiFocus({
-      chapterId: activeChapterId,
-      ...(activeChapterTitle ? { chapterTitle: activeChapterTitle } : {}),
+      chapterId: selectionChapterId,
+      chapterTitle: chapters.find((chapter) => chapter.id === selectionChapterId)?.title,
       quote,
       prefix: textSelection.anchor.prefix,
       suffix: textSelection.anchor.suffix,
@@ -827,7 +999,7 @@ export function BookReader({
       return;
     }
     try {
-      const reusable = await reusableExplanation(datasetId, itemId, activeChapterId, quote, {
+      const reusable = await reusableExplanation(datasetId, itemId, selectionChapterId, quote, {
         prefix: textSelection.anchor.prefix,
         suffix: textSelection.anchor.suffix,
       });
@@ -893,6 +1065,7 @@ export function BookReader({
 
   function updateScrollProgress(): void {
     cancelReaderTap();
+    if (continuous) { setTextSelection(undefined); return; }
     const reader = scrollRef.current;
     if (!reader) return;
     const range = reader.scrollHeight - reader.clientHeight;
@@ -918,6 +1091,7 @@ export function BookReader({
 
   function seekReadingProgress(progress: number): void {
     const bounded = Math.max(0, Math.min(100, progress));
+    if (continuous) { continuousRef.current?.seek(activeChapterId, bounded); return; }
     if (mode === "paged") {
       const targetPage = Math.round((bounded / 100) * Math.max(0, pageMetrics.spreads - 1));
       goToPage(targetPage, "auto");
@@ -930,24 +1104,36 @@ export function BookReader({
     setReadingProgress(bounded);
   }
 
+  function commitBookProgress(percent: number): void {
+    const destination = bookProgressLocation(chapters, percent);
+    setProgressPreview(undefined);
+    if (!destination) return;
+    if (destination.chapterId === activeChapterId && !contentLoading) seekReadingProgress(destination.chapterProgress);
+    else {
+      pendingProgressRef.current = { chapterId: destination.chapterId, progress: destination.chapterProgress };
+      chooseChapter(destination.chapterId);
+    }
+  }
+
   const isDark = paperColor === "dark";
   const shellClass = isDark ? "bg-[#151716] text-[#deded8]" : paperColor === "white" ? "bg-[#edf0f0] text-ink" : "bg-[#e8e9e4] text-ink";
   const pageClass = isDark ? "bg-[#202321]" : paperColor === "white" ? "bg-white" : "bg-[#fbfaf6]";
   const panelClass = isDark ? "bg-[#242725] text-[#deded8] border-[#393d3a]" : "bg-[#fbfaf6] text-ink border-[#d8d8d1]";
   const chromeClass = isDark ? "border-[#303431] bg-[#151716]/90" : paperColor === "white" ? "border-[#d6d8d3] bg-[#edf0f0]/90" : "border-[#d6d8d3] bg-[#e8e9e4]/90";
-  const controlClass = `flex h-11 w-11 shrink-0 items-center justify-center border bg-transparent font-sans text-[10px] leading-none cursor-pointer transition-colors focus-visible:outline-2 focus-visible:outline-red md:h-12 md:w-12 md:text-xs ${isDark ? "border-[#444844] hover:bg-[#2b2f2c]" : "border-[#d2d3ce] hover:bg-white"}`;
   const firstPhysicalPage = pageMetrics.page * pageMetrics.columnsPerSpread + 1;
   const lastPhysicalPage = Math.min(firstPhysicalPage + pageMetrics.columnsPerSpread - 1, pageMetrics.physicalPages);
 
   const tocList = <div ref={tocPanelRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-    <ol className="m-0 list-none px-4 py-3">{(mobileViewport ? toc : filteredToc).map((item) => <li key={item.id}><button type="button" data-toc-active={activeChapterId === item.targetId ? "true" : undefined} onClick={() => chooseChapter(item.targetId)} style={{ paddingLeft: `${16 + item.depth * 16}px` }} className={`relative block w-full border-0 bg-transparent py-3 pr-4 text-left font-serif text-[13px] leading-relaxed cursor-pointer ${activeChapterId === item.targetId ? "font-bold text-red before:absolute before:inset-y-2 before:right-0 before:w-[2px] before:bg-red" : "text-current hover:text-red"}`}>{item.title}</button></li>)}</ol>
-    {filteredToc.length === 0 && !mobileViewport && <p className="px-7 py-10 text-center font-sans text-xs text-muted">没有匹配的目录项</p>}
+    <ol className="book-toc-list">{filteredToc.map((item) => <li key={item.id} style={{ paddingLeft: `${item.depth * 20}px` }}>
+      {item.targetId ? <button type="button" data-toc-active={activeTocId === item.id ? "true" : undefined} aria-current={activeTocId === item.id ? "location" : undefined} onClick={() => {
+        setTocOpen(false);
+        if (item.targetId === activeChapterId && item.anchorId) revealAnchor(item.anchorId);
+        else if (item.anchorId) onInternalLink?.(item.targetId!, item.anchorId);
+        else chooseChapter(item.targetId);
+      }}><span>{item.title}</span>{activeTocId === item.id && <small><IoBookOutline aria-hidden="true" /> 当前读到</small>}</button> : <div className="book-toc-group">{item.title}</div>}
+    </li>)}</ol>
+    {filteredToc.length === 0 && <p className="px-7 py-10 text-center font-sans text-xs text-muted">没有匹配的目录项</p>}
   </div>;
-
-  const chapterNavigation = !contentLoading && <nav aria-label="章节导航" className="mt-20 grid grid-cols-2 border-t border-rule pt-8 font-sans text-xs [break-inside:avoid]">
-    <button type="button" disabled={!previousChapter} onClick={() => chooseChapter(previousChapter?.id, "end")} className="border-0 bg-transparent py-4 pr-4 text-left text-current cursor-pointer disabled:cursor-default disabled:opacity-30"><span className="mb-1 block text-muted">上一节</span>{previousChapter?.title ?? "已经是第一节"}</button>
-    <button type="button" disabled={!nextChapter} onClick={() => chooseChapter(nextChapter?.id)} className="border-0 border-l border-rule bg-transparent py-4 pl-4 text-right text-current cursor-pointer disabled:cursor-default disabled:opacity-30"><span className="mb-1 block text-muted">下一节</span>{nextChapter?.title ?? "已经是最后一节"}</button>
-  </nav>;
 
   return <ReadingBookshelfContext.Provider value={{
     available: bookshelfEnabled,
@@ -959,70 +1145,24 @@ export function BookReader({
     showSpeechLocation,
     chromeHidden: mobileChromeHidden || readerOverlayOpen,
   }}><div data-reader-chrome-hidden={mobileChromeHidden || undefined} className={`book-reader book-reader-root h-screen overflow-hidden ${isDark ? "book-reader-dark" : ""} ${shellClass}`}>
-    {mobileViewport ? <nav {...chromeProps} data-book-toolbar data-reader-mobile-toolbar aria-label="阅读工具" className={`book-mobile-toolbar z-30 grid-cols-4 border-t backdrop-blur-md ${chromeClass}`}>
-      <button type="button" onClick={() => openPanel("toc")} className="book-mobile-tool" aria-label="打开目录" aria-pressed={tocOpen}>
-        <ReaderToolIcon name="toc" /><span>目录</span>
-      </button>
-      <button type="button" onClick={openBookAi} className="book-mobile-tool" aria-label="打开书内 AI" aria-pressed={aiOpen}>
-        <ReaderToolIcon name="ai" /><span>AI</span>
-      </button>
-      <button type="button" onClick={() => openTool("progress")} className="book-mobile-tool" aria-label="阅读进度" aria-pressed={toolPopover === "progress"}>
-        <ReaderToolIcon name="progress" /><span>{bookProgress}%</span>
-      </button>
-      <button type="button" onClick={() => openTool("display")} className="book-mobile-tool" aria-label="显示设置" aria-pressed={toolPopover === "display"}>
-        <ReaderToolIcon name="display" /><span>显示</span>
-      </button>
-    </nav> : <nav data-book-toolbar aria-label="阅读工具" className={`fixed bottom-auto left-auto right-5 top-1/2 z-30 flex -translate-y-1/2 flex-col gap-2 overflow-visible border-0 p-0 backdrop-blur-md ${chromeClass}`}>
-      <button type="button" onClick={() => openPanel("toc")} className={controlClass} aria-label="打开目录" title="目录">目录</button>
-      <button type="button" onClick={() => openPanel("search")} className={controlClass} aria-label="搜索全书" title="搜索全书">搜索</button>
-      <button type="button" onClick={openBookAi} className={`${controlClass} relative`} aria-label="打开书内 AI" title={agentAccess ? "书内 AI · Beta（实验功能）" : "登录后使用书内 AI"}>AI<span aria-hidden="true" className="absolute right-1.5 top-1.5 text-[6px] font-bold leading-none tracking-normal text-red">Beta</span></button>
-      {speechEnabled && speechControl && <div ref={setSpeechLauncherTarget} className="h-12 w-12 shrink-0" />}
-      <button type="button" onClick={() => openTool("font")} className={controlClass} aria-label="调整字号" title="字号">字号</button>
-      <button type="button" onClick={() => openTool("color")} className={controlClass} aria-label="选择纸张颜色" title="纸张颜色"><span className={`h-4 w-4 border ${isDark ? "border-white/50 bg-[#202321]" : paperColor === "white" ? "border-[#aaa] bg-white" : "border-[#b8ad96] bg-[#fbfaf6]"}`} aria-hidden="true" /></button>
-      <button type="button" aria-pressed={paperTexture} onClick={() => setPaperTexture((value) => !value)} className={`${controlClass} ${paperTexture ? "text-red" : ""}`} aria-label="切换纸张纹理" title={paperTexture ? "关闭纸张纹理" : "开启纸张纹理"}>纹理</button>
-      <button type="button" data-reader-mode={mode} onClick={() => changeMode(mode === "paged" ? "scroll" : "paged")} className={controlClass} aria-label="切换阅读模式" title={mode === "paged" ? "切换为上下滚动" : "切换为双页阅读"}>{mode === "paged" ? "双页" : "滚动"}</button>
-      {onDownload && <button type="button" onClick={onDownload} className={`${controlClass} mt-3`} aria-label="下载整本 EPUB" title="下载整本 EPUB"><svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 20h14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square" /></svg></button>}
-    </nav>}
-    {speechEnabled && speechControl}
+    <nav {...chromeProps} data-book-toolbar data-reader-mobile-toolbar={mobileViewport || undefined} aria-label="阅读工具" className={`${mobileViewport ? "book-mobile-toolbar grid-cols-5 border-t" : "book-desktop-toolbar fixed right-5 top-1/2 -translate-y-1/2"} z-30 ${chromeClass}`}>
+      <button type="button" onClick={() => tocOpen ? setTocOpen(false) : openPanel("toc")} className="book-mobile-tool" aria-label="打开目录" aria-pressed={tocOpen || searchOpen}><ReaderToolIcon name="toc" /><span>目录</span></button>
+      <button type="button" onClick={() => aiOpen ? closeAiPanel() : openBookAi()} className="book-mobile-tool" aria-label="打开书内 AI" aria-pressed={aiOpen}><ReaderToolIcon name="ai" /><span>AI</span></button>
+      <button type="button" onClick={() => openTool("progress")} className="book-mobile-tool" aria-label="阅读进度" aria-pressed={toolPopover === "progress"}><ReaderToolIcon name="progress" /><span>进度</span></button>
+      <button type="button" onClick={() => openTool("notes")} className="book-mobile-tool" aria-label="阅读笔记" aria-pressed={toolPopover === "notes"}><IoCreateOutline aria-hidden="true" /><span>笔记</span></button>
+      <button type="button" onClick={() => openTool("display")} className="book-mobile-tool" aria-label="文字设置" aria-pressed={toolPopover === "display"}><ReaderToolIcon name="display" /><span>文字</span></button>
+      {!mobileViewport && speechEnabled && speechControl && <div ref={setSpeechLauncherTarget} className="book-desktop-speech shrink-0" />}
+      {!mobileViewport && onDownload && <button type="button" onClick={onDownload} className="book-mobile-tool" aria-label="下载整本 EPUB"><IoDownloadOutline aria-hidden="true" /><span>下载</span></button>}
+    </nav>
+    {!mobileViewport && speechEnabled && speechControl}
 
-    {mobileViewport && (tocOpen || searchOpen) && <BookNavigationSheet tab={tocOpen ? "toc" : "search"} onTabChange={openPanel} onClose={() => { setTocOpen(false); setSearchOpen(false); }} panelClass={panelClass}>
-      {tocOpen ? tocList : <BookSearchPanel embedded bookTitle={bookTitle} panelClass={panelClass} onClose={() => setSearchOpen(false)} onJump={locateSearchResult} onSearch={onSearch} />}
+    {(tocOpen || searchOpen) && <BookNavigationSheet mobile={mobileViewport} tab={tocOpen ? "toc" : "search"} onTabChange={openPanel} onClose={() => { setTocOpen(false); setSearchOpen(false); }} panelClass={panelClass}>
+      {tocOpen ? <><div className="book-toc-book-title"><strong>{bookTitle}</strong><span>{logicalChapterCount ? `${logicalChapterCount} 章 · ` : ""}{characterCount.toLocaleString()} 字</span></div><label className="book-toc-filter"><input value={tocQuery} onChange={(event) => setTocQuery(event.target.value)} placeholder="筛选目录" aria-label="搜索目录" className="book-toc-search" /></label>{tocList}</> : <BookSearchPanel embedded bookTitle={bookTitle} panelClass={panelClass} onClose={() => setSearchOpen(false)} onJump={locateSearchResult} onSearch={onSearch} />}
     </BookNavigationSheet>}
 
-    {!mobileViewport && tocOpen && <>
-      <button type="button" aria-label="关闭目录" onClick={() => setTocOpen(false)} className="fixed inset-0 z-40 border-0 bg-black/20 cursor-default" />
-      <aside aria-label="目录面板" className={`fixed inset-y-0 right-0 z-50 flex w-full flex-col overflow-hidden border-l shadow-[-18px_0_50px_rgba(0,0,0,.12)] sm:w-[min(88vw,420px)] ${panelClass}`}>
-        <div className={`z-10 shrink-0 border-b ${panelClass}`}>
-          <div className="px-6 py-5">
-          <div className="flex items-start justify-between gap-4">
-            <div><p className="m-0 font-sans text-[11px] tracking-[.22em] text-muted">目录</p><h2 className="mb-1 mt-2 text-xl leading-snug">{bookTitle}</h2><p className="m-0 font-sans text-xs text-muted">{logicalChapterCount ? `${logicalChapterCount} 章 · ` : ""}{characterCount.toLocaleString()} 字</p></div>
-            <button type="button" onClick={() => setTocOpen(false)} className="border-0 bg-transparent text-2xl cursor-pointer text-current" aria-label="关闭目录">×</button>
-          </div>
-          <label className={`book-toc-search-shell mt-5 flex h-10 items-center gap-3 border-0 border-b px-0 font-sans text-xs ${isDark ? "border-[#4a4d4a]" : "border-[#b9bab4]"}`}>
-            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0 text-muted" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" strokeWidth="1.5" /><path d="m15.5 15.5 5 5" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg>
-            <input value={tocQuery} onChange={(event) => setTocQuery(event.target.value)} placeholder="搜索目录" aria-label="搜索目录" className="book-toc-search min-w-0 flex-1 text-base text-current placeholder:text-muted" />
-          </label>
-          </div>
-        </div>
-        {tocList}
-      </aside>
-    </>}
-
-    {!mobileViewport && searchOpen && <><button type="button" aria-label="关闭全书搜索" onClick={() => setSearchOpen(false)} className="fixed inset-0 z-40 border-0 bg-black/20 cursor-default" /><BookSearchPanel bookTitle={bookTitle} panelClass={panelClass} onClose={() => setSearchOpen(false)} onJump={locateSearchResult} onSearch={onSearch} /></>}
-
-    {agentAccess && aiOpen && <><button type="button" aria-label="关闭书内 AI" onClick={closeAiPanel} className="fixed inset-0 z-40 border-0 bg-black/20 cursor-default" /><BookAiPanel key={`${aiQuestion || "book-ai"}:${aiInitialAnswer || ""}`} bookTitle={bookTitle} datasetId={datasetId} itemId={itemId} manifestObject={manifestObject} initialQuestion={aiQuestion} initialAnswer={aiInitialAnswer} initialReferences={aiInitialReferences} preparing={aiPreparing} explanationQuote={aiExplanationQuote} focus={aiFocus} panelClass={panelClass} onClose={closeAiPanel} onExplanationComplete={(quote: string, answer: string, references?: RagReference[], metadata?: RagAnswerMetadata) => {
-      if (quote.length <= 2_000) void saveExplanation({
-        datasetId,
-        itemId,
-        chapterId: aiFocus?.chapterId ?? activeChapterId,
-        quote,
-        prefix: aiFocus?.prefix,
-        suffix: aiFocus?.suffix,
-        answer,
-        references,
-        metadata,
-      }).catch(() => undefined);
-    }} /></>}
+    {agentAccess && aiOpen && <BookNavigationSheet mobile={mobileViewport} title="书内 AI" label="AI面板" onClose={closeAiPanel} panelClass={panelClass}><BookAiPanel embedded key={`${aiQuestion || "book-ai"}:${aiInitialAnswer || ""}`} bookTitle={bookTitle} datasetId={datasetId} itemId={itemId} manifestObject={manifestObject} initialQuestion={aiQuestion} initialAnswer={aiInitialAnswer} initialReferences={aiInitialReferences} preparing={aiPreparing} explanationQuote={aiExplanationQuote} focus={aiFocus} panelClass={panelClass} onClose={closeAiPanel} onExplanationComplete={(quote: string, answer: string, references?: RagReference[], metadata?: RagAnswerMetadata) => {
+      if (quote.length <= 2_000) void saveExplanation({ datasetId, itemId, chapterId: aiFocus?.chapterId ?? activeChapterId, quote, prefix: aiFocus?.prefix, suffix: aiFocus?.suffix, answer, references, metadata }).catch(() => undefined);
+    }} /></BookNavigationSheet>}
 
     {activeAnnotation && currentUserId ? <AnnotationDiscussionPanel key={activeAnnotation.id}
       thread={activeAnnotation}
@@ -1032,46 +1172,43 @@ export function BookReader({
       onReport={(commentId, reason, details) => annotations.report(activeAnnotation.id, commentId, reason, details)}
     /> : null}
 
-    {toolPopover && <>
-      <button type="button" aria-label="关闭阅读工具" onClick={() => setToolPopover(undefined)} className={`fixed inset-0 z-20 border-0 cursor-default ${mobileViewport ? "bg-black/15" : "bg-transparent"}`} />
-      <section className={`${mobileViewport ? "book-mobile-sheet fixed inset-x-0 z-40 border-t px-5 pb-5 pt-3 shadow-[0_-16px_45px_rgba(0,0,0,.16)]" : "fixed bottom-auto left-auto right-20 top-1/2 z-40 w-64 -translate-y-1/2 border p-4 shadow-[6px_10px_30px_rgba(0,0,0,.14)]"} ${panelClass}`} aria-label={toolPopover === "font" ? "字号工具" : toolPopover === "color" ? "纸张颜色工具" : toolPopover === "progress" ? "阅读进度面板" : "显示设置面板"}>
-        {mobileViewport && <div className="mb-3 flex items-center justify-between border-b border-rule pb-3">
-          <div><p className="m-0 font-sans text-[10px] font-bold tracking-[.18em] text-red">阅读工具</p><h2 className="mb-0 mt-1 font-serif text-lg">{toolPopover === "progress" ? "阅读进度" : "显示设置"}</h2></div>
-          <button type="button" onClick={() => setToolPopover(undefined)} className="flex h-10 w-10 items-center justify-center border-0 bg-transparent text-2xl text-current" aria-label="关闭阅读工具">×</button>
-        </div>}
-        {toolPopover === "progress" ? <div className="pb-2">
-          <div className="mb-5 grid grid-cols-2 divide-x divide-rule border-y border-rule py-4 text-center font-sans">
-            <div><strong className="block font-serif text-2xl font-semibold text-red">{bookProgress}%</strong><span className="mt-1 block text-[11px] text-muted">全书进度</span></div>
-            <div><strong className="block font-serif text-base font-semibold">{mode === "paged" ? `${firstPhysicalPage}${firstPhysicalPage === lastPhysicalPage ? "" : `–${lastPhysicalPage}`} / ${pageMetrics.physicalPages} 页` : `本章 ${readingProgress}%`}</strong><span className="mt-2 block max-w-[15rem] truncate px-3 text-[11px] text-muted">{chapters[activeChapterIndex]?.title || "正文"}</span></div>
+    {toolPopover && <BookNavigationSheet mobile={mobileViewport} key={toolPopover} compact={toolPopover !== "notes"} title={toolPopover === "progress" ? "阅读进度" : toolPopover === "notes" ? "阅读笔记" : "文字设置"} label={toolPopover === "progress" ? "阅读进度面板" : toolPopover === "notes" ? "阅读笔记面板" : "文字设置面板"} onClose={() => { setToolPopover(undefined); setProgressPreview(undefined); }} panelClass={panelClass}>
+      <div className="book-tool-sheet-body">
+        {toolPopover === "progress" ? <div>
+          <div className="book-progress-stats">
+            <div><strong>{bookProgress}<small>%</small></strong><span>{remainingMinutes ? `约${formatReadingTime(remainingMinutes * 60)}后读完` : "已读完"}</span></div>
+            <div><strong className="book-progress-duration">{formatReadingTime(readingSeconds)}</strong><span>阅读时长</span></div>
+            <button type="button" onClick={() => openTool("notes")}><strong>{bookNotes.length}<small>条</small></strong><span>笔记</span></button>
           </div>
-          <label className="mb-2 flex items-center justify-between font-sans text-[11px] text-muted"><span>本章开头</span><span>本章结尾</span></label>
-          <input type="range" min="0" max="100" value={readingProgress} onChange={(event) => seekReadingProgress(+event.target.value)} className="book-reader-range book-reader-range--mobile w-full" aria-label="本章进度" />
-        </div> : toolPopover === "display" ? <div className="space-y-5 pb-1">
+          <div className="book-progress-preview" aria-live="polite"><strong>{chapters.find((chapter) => chapter.id === previewLocation?.chapterId)?.title || "正文"}</strong><span>{(progressPreview ?? bookProgress).toFixed(1)}%</span></div>
+          <div className="book-progress-rail"><button type="button" aria-label="上一章" disabled={!previousChapter} onClick={() => chooseChapter(previousChapter?.id)}>‹</button><input type="range" min="0" max="100" step="0.1" value={progressPreview ?? exactBookProgress} onChange={(event) => setProgressPreview(+event.target.value)} onPointerUp={(event) => commitBookProgress(+event.currentTarget.value)} onKeyUp={(event) => { if (RANGE_KEYS.includes(event.key)) commitBookProgress(+event.currentTarget.value); }} onBlur={(event) => { if (progressPreview !== undefined) commitBookProgress(+event.currentTarget.value); }} onPointerCancel={() => setProgressPreview(undefined)} style={rangeFill(progressPreview ?? exactBookProgress)} className="reader-range book-reader-range" aria-label="全书进度" aria-valuetext={`${(progressPreview ?? bookProgress).toFixed(1)}%，${chapters.find((chapter) => chapter.id === previewLocation?.chapterId)?.title || "正文"}`} /><button type="button" aria-label="下一章" disabled={!nextChapter} onClick={() => chooseChapter(nextChapter?.id)}>›</button></div>
+          <div className="book-progress-endpoints"><span>全书开头</span><span>全书结尾</span></div>
+        </div> : toolPopover === "notes" ? <div className="book-notes-list">
+          {!annotationAccess ? <p>登录后可查看和保存阅读笔记。</p> : <>
+            {notesError && <div className="book-notes-error" role="alert"><p>{notesError}</p><button type="button" onClick={() => setNotesRevision((revision) => revision + 1)}>重试</button></div>}
+            {notesLoading && <p role="status">正在读取笔记…</p>}
+            {!notesLoading && !notesError && !bookNotes.length && <p>还没有笔记。选中正文，可以划线或写下想法。</p>}
+            {bookNotes.map((note) => <button type="button" key={note.id} onClick={() => { setToolPopover(undefined); onLocate(note.sectionId, note.quote); }}><span>{chapters.find((chapter) => chapter.id === note.sectionId)?.title || "正文"}</span><blockquote>{note.quote}</blockquote>{note.comments.filter((comment) => comment.authorId === currentUserId).map((comment) => <p key={comment.id}>{comment.body}</p>)}</button>)}
+          </>}
+        </div> : <div className="space-y-5 pb-1">
           <div>
             <div className="mb-2 flex items-center justify-between font-sans text-xs text-muted"><span>字号</span><span className="font-serif text-base text-current">{fontSize}px</span></div>
-            <div className="grid grid-cols-[24px_1fr_28px] items-center gap-3"><span className="font-serif text-sm">A</span><input type="range" min="14" max="24" value={fontSize} onChange={(event) => setFontSize(+event.target.value)} className="book-reader-range book-reader-range--mobile w-full" aria-label="字号" /><span className="font-serif text-2xl">A</span></div>
+            <div className="grid grid-cols-[24px_1fr_28px] items-center gap-3"><span className="font-serif text-sm">A</span><input type="range" min="14" max="24" value={fontSize} onChange={(event) => setFontSize(+event.target.value)} onPointerUp={() => setToolPopover(undefined)} onKeyUp={(event) => { if (RANGE_KEYS.includes(event.key)) setToolPopover(undefined); }} style={rangeFill((fontSize - 14) * 10)} className="reader-range book-reader-range w-full" aria-label="字号" /><span className="font-serif text-2xl">A</span></div>
           </div>
           <div>
             <p className="mb-2 mt-0 font-sans text-xs text-muted">纸张颜色</p>
-            <div className="grid grid-cols-3 gap-2">{(["ivory", "white", "dark"] as BookReaderPaperColor[]).map((value) => <button type="button" key={value} aria-pressed={paperColor === value} onClick={() => setPaperColor(value)} className={`book-paper-choice h-14 border font-sans text-xs ${value === "ivory" ? "bg-[#fbfaf6] text-ink" : value === "white" ? "bg-white text-ink" : "bg-[#202321] text-white"} ${paperColor === value ? "border-red outline outline-2 outline-offset-[-3px] outline-red" : "border-rule"}`}>{value === "ivory" ? "米白" : value === "white" ? "纯白" : "夜间"}</button>)}</div>
+            <div className="grid grid-cols-3 gap-2">{(["ivory", "white", "dark"] as BookReaderPaperColor[]).map((value) => <button type="button" key={value} aria-pressed={paperColor === value} onClick={() => { setPaperColor(value); setToolPopover(undefined); }} className={`book-paper-choice h-14 border font-sans text-xs ${value === "ivory" ? "bg-[#fbfaf6] text-ink" : value === "white" ? "bg-white text-ink" : "bg-[#202321] text-white"} ${paperColor === value ? "border-red is-active" : "border-rule"}`}>{value === "ivory" ? "米白" : value === "white" ? "纯白" : "夜间"}</button>)}</div>
           </div>
           <div className="grid grid-cols-2 gap-2 font-sans text-xs">
-            <button type="button" aria-label="纸张纹理" aria-pressed={paperTexture} onClick={() => setPaperTexture((value) => !value)} className={`book-setting-choice ${paperTexture ? "is-active" : ""}`}><span>纸张纹理</span><strong>{paperTexture ? "开" : "关"}</strong></button>
+            <button type="button" aria-label="纸张纹理" aria-pressed={paperTexture} onClick={() => { setPaperTexture((value) => !value); setToolPopover(undefined); }} className={`book-setting-choice ${paperTexture ? "is-active" : ""}`}><span>纸张纹理</span><strong>{paperTexture ? "开" : "关"}</strong></button>
             <div className="grid grid-cols-2 border border-rule p-1">
-              <button type="button" aria-pressed={mode === "paged"} onClick={() => changeMode("paged")} className={`border-0 px-1 py-3 ${mode === "paged" ? "bg-red text-white" : "bg-transparent text-current"}`}>翻页</button>
-              <button type="button" aria-pressed={mode === "scroll"} onClick={() => changeMode("scroll")} className={`border-0 px-1 py-3 ${mode === "scroll" ? "bg-red text-white" : "bg-transparent text-current"}`}>滚动</button>
+              <button type="button" aria-pressed={mode === "paged"} onClick={() => { changeMode("paged"); setToolPopover(undefined); }} className={`border-0 px-1 py-3 ${mode === "paged" ? "bg-red text-white" : "bg-transparent text-current"}`}>翻页</button>
+              <button type="button" aria-pressed={mode === "scroll"} onClick={() => { changeMode("scroll"); setToolPopover(undefined); }} className={`border-0 px-1 py-3 ${mode === "scroll" ? "bg-red text-white" : "bg-transparent text-current"}`}>滚动</button>
             </div>
           </div>
-          {onDownload && <button type="button" onClick={onDownload} className="book-download-action">下载整本 EPUB</button>}
-        </div> : toolPopover === "font" ? <>
-          <label className="mb-3 flex items-center justify-between font-sans text-xs text-muted"><span>字号</span><span>{fontSize}px</span></label>
-          <input type="range" min="14" max="24" value={fontSize} onChange={(event) => setFontSize(+event.target.value)} className="book-reader-range w-full" aria-label="字号" />
-        </> : <>
-          <p className="mb-3 mt-0 font-sans text-xs text-muted">纸张颜色</p>
-          <div className="grid grid-cols-3 gap-2">{(["ivory", "white", "dark"] as BookReaderPaperColor[]).map((value) => <button type="button" key={value} onClick={() => { setPaperColor(value); setToolPopover(undefined); }} className={`h-12 border cursor-pointer ${value === "ivory" ? "bg-[#fbfaf6] text-ink" : value === "white" ? "bg-white text-ink" : "bg-[#202321] text-white"} ${paperColor === value ? "border-red outline outline-1 outline-red" : "border-rule"}`}>{value === "ivory" ? "米白" : value === "white" ? "白色" : "夜间"}</button>)}</div>
-        </>}
-      </section>
-    </>}
+        </div>}
+      </div>
+    </BookNavigationSheet>}
 
     {textSelection && <ReaderSelectionPopover rect={textSelection.rect} width={annotationAccess ? 288 : 144}>
       <div className="book-selection-actions" role="toolbar" aria-label="选中文字工具">
@@ -1115,7 +1252,6 @@ export function BookReader({
         </button>}
         <span className="min-w-0 flex-1" aria-hidden="true" />
         <span className="hidden max-w-[42%] truncate text-muted md:block">{chapters[activeChapterIndex]?.title}</span>
-        <span className="hidden tabular-nums text-muted md:inline">全书 {bookProgress}%</span>
       </div>
     </header>
 
@@ -1126,24 +1262,24 @@ export function BookReader({
       </button>
     </div>}
 
-    {mode === "scroll" ? <div ref={scrollRef} data-book-reading-surface onScroll={updateScrollProgress} onClick={handleReaderClick} onPointerDown={startReaderTap} onPointerMove={moveReaderTap} onPointerCancel={cancelReaderTap} onPointerUp={capturePointerTextSelection} onKeyUp={captureTextSelection} className="h-[calc(100%-48px)] overflow-y-auto">
+    {mode === "scroll" ? <div ref={scrollRef} data-book-reading-surface onScroll={updateScrollProgress} onClick={handleReaderClick} onPointerDown={startReaderTap} onPointerMove={moveReaderTap} onPointerCancel={cancelReaderTap} onPointerUp={finishReaderPointer} onKeyUp={captureTextSelection} className="book-scroll-surface h-[calc(100%-48px)] overflow-y-auto">
       <main className="mx-auto max-w-[920px] px-0 py-0 md:px-5 md:py-8">
         <article className={`relative min-h-full border-0 px-6 pb-32 pt-10 shadow-none sm:px-12 md:min-h-[calc(100vh-96px)] md:border-x md:px-20 md:py-20 md:shadow-[0_16px_50px_rgba(32,32,28,.10)] ${pageClass} ${paperTexture ? "book-page-texture" : ""} ${isDark ? "md:border-[#2d312e]" : "md:border-[#ddddd6]"}`} style={{ fontSize: `${fontSize}px`, lineHeight: 2.05 }}>
-          <div className="mx-auto max-w-[730px]">{error && <p className="border-l-4 border-red bg-red/5 px-4 py-3 text-sm text-red">{error}</p>}<div data-speech-content>{children}</div>{chapterNavigation}</div>
+          <div className="mx-auto max-w-[730px]">{error && <p className="border-l-4 border-red bg-red/5 px-4 py-3 text-sm text-red">{error}</p>}<>{loadChapter ? <ContinuousBookContent key={`${datasetId}:${itemId}:${currentUserId ?? "guest"}`} ref={continuousRef} chapters={chapters} initialChapterId={activeChapterId} loadChapter={loadChapter} scrollRef={scrollRef} onPosition={continuousPosition} onReady={continuousContentReady} /> : <div data-speech-content>{children}</div>}</></div>
         </article>
       </main>
     </div> : <main className="relative h-[calc(100%-48px)] px-0 py-0 md:px-20 md:py-6">
       <div className="relative mx-auto h-full max-w-[1180px]">
-        <article onClick={handleReaderClick} onPointerDown={startReaderTap} onPointerMove={moveReaderTap} onPointerCancel={cancelReaderTap} onPointerUp={capturePointerTextSelection} onKeyUp={captureTextSelection} className={`relative h-full overflow-hidden border-0 px-6 pb-32 pt-10 shadow-none sm:px-10 md:border md:px-16 md:py-14 md:shadow-[0_16px_55px_rgba(32,32,28,.14)] ${pageClass} ${paperTexture ? "book-page-texture" : ""} ${isDark ? "md:border-[#2d312e]" : "md:border-[#d8d8d1]"}`}>
+        <article onClick={handleReaderClick} onPointerDown={startReaderTap} onPointerMove={moveReaderTap} onPointerCancel={cancelReaderTap} onPointerUp={finishReaderPointer} onKeyUp={captureTextSelection} className={`relative h-full overflow-hidden border-0 px-6 pb-32 pt-10 shadow-none sm:px-10 md:border md:px-16 md:py-14 md:shadow-[0_16px_55px_rgba(32,32,28,.14)] ${pageClass} ${paperTexture ? "book-page-texture" : ""} ${isDark ? "md:border-[#2d312e]" : "md:border-[#d8d8d1]"}`}>
           {columnsPerSpread === 2 && <div className={`pointer-events-none absolute inset-y-0 left-1/2 z-10 w-10 -translate-x-1/2 ${isDark ? "bg-[linear-gradient(90deg,transparent,rgba(0,0,0,.22),transparent)]" : "bg-[linear-gradient(90deg,transparent,rgba(77,75,66,.09),transparent)]"}`} aria-hidden="true" />}
-          <div ref={flowRef} data-book-page-flow data-book-reading-surface className={`relative h-full overflow-hidden [column-fill:auto] [&_img]:cursor-zoom-in [&_figure]:break-inside-avoid [&_h1]:[break-after:avoid-column] [&_h2]:[break-after:avoid-column] [&_li]:break-inside-avoid ${pageTransitioning ? "book-page-content-arrive" : ""}`} style={{ columnCount: columnsPerSpread, columnGap: columnsPerSpread === 2 ? "80px" : "48px", fontSize: `${fontSize}px`, lineHeight: 1.95 }}>
+          <div ref={flowRef} data-book-page-flow data-book-reading-surface className={`relative h-full overflow-hidden [column-fill:auto] [&_img]:cursor-zoom-in [&_figure]:break-inside-avoid [&_h1]:[break-after:avoid-column] [&_h2]:[break-after:avoid-column] [&_li]:break-inside-avoid `} style={{ touchAction: "pan-y", columnCount: columnsPerSpread, columnGap: columnsPerSpread === 2 ? "80px" : "48px", fontSize: `${fontSize}px`, lineHeight: 1.95 }}>
             {error && <p className="border-l-4 border-red bg-red/5 px-4 py-3 text-sm text-red">{error}</p>}<div data-speech-content style={{ display: "contents" }}>{children}</div>
             {trailingBlankPage && <span data-book-trailing-page className="book-page-trailing-blank" aria-hidden="true" />}
           </div>
         </article>
         {!mobileViewport && <>
-        <button {...chromeProps} type="button" onClick={previousPage} disabled={pageTransitioning || (!previousChapter && pageMetrics.page === 0)} className={`book-page-turn-control absolute left-5 z-30 flex h-10 items-center justify-center gap-1 border px-3 font-sans text-xs shadow-[2px_4px_14px_rgba(0,0,0,.08)] cursor-pointer transition-colors disabled:cursor-default disabled:opacity-20 sm:left-8 ${panelClass}`} aria-label="上一页" title="上一页（←）"><span aria-hidden="true">‹</span> 上一页</button>
-        <button {...chromeProps} type="button" onClick={nextPage} disabled={pageTransitioning || (!nextChapter && pageMetrics.page >= pageMetrics.spreads - 1)} className={`book-page-turn-control absolute right-5 z-30 flex h-10 items-center justify-center gap-1 border px-3 font-sans text-xs shadow-[2px_4px_14px_rgba(0,0,0,.08)] cursor-pointer transition-colors disabled:cursor-default disabled:opacity-20 sm:right-8 ${panelClass}`} aria-label="下一页" title="下一页（→ 或空格）">下一页 <span aria-hidden="true">›</span></button>
+        <button {...chromeProps} type="button" onClick={previousPage} disabled={contentLoading || (!previousChapter && pageMetrics.page === 0)} className={`book-page-turn-control absolute left-5 z-30 flex h-10 items-center justify-center gap-1 border px-3 font-sans text-xs shadow-[2px_4px_14px_rgba(0,0,0,.08)] cursor-pointer transition-colors disabled:cursor-default disabled:opacity-20 sm:left-8 ${panelClass}`} aria-label="上一页" title="上一页（←）"><span aria-hidden="true">‹</span> 上一页</button>
+        <button {...chromeProps} type="button" onClick={nextPage} disabled={contentLoading || (!nextChapter && pageMetrics.page >= pageMetrics.spreads - 1)} className={`book-page-turn-control absolute right-5 z-30 flex h-10 items-center justify-center gap-1 border px-3 font-sans text-xs shadow-[2px_4px_14px_rgba(0,0,0,.08)] cursor-pointer transition-colors disabled:cursor-default disabled:opacity-20 sm:right-8 ${panelClass}`} aria-label="下一页" title="下一页（→ 或空格）">下一页 <span aria-hidden="true">›</span></button>
         </>}
       </div>
       <div {...chromeProps} className="book-page-number pointer-events-none absolute inset-x-0 flex items-center justify-center gap-4 font-sans text-[10px] text-muted">
