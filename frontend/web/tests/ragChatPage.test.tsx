@@ -57,8 +57,8 @@ describe("RAG chat page", () => {
   it("keeps the range picker open while selecting multiple books", async () => {
     render(<ChatPage />);
     await screen.findByRole("textbox", { name: "输入问题" });
+    fireEvent.click(screen.getByRole("button", { name: "全部报刊 + 书籍 默认范围" }));
     fireEvent.click(screen.getByRole("button", { name: "书籍" }));
-    fireEvent.click(screen.getByRole("button", { name: "全部书籍 默认范围" }));
 
     const first = screen.getByRole("button", { name: "甲书" });
     const second = screen.getByRole("button", { name: "乙书" });
@@ -95,7 +95,7 @@ describe("RAG chat page", () => {
     expect(screen.queryByRole("button", { name: "甲书" })).toBeNull();
     expect(screen.getByRole("button", { name: "人民日报" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "参考消息" })).toBeNull();
-    expect(screen.getByLabelText("选择资料，当前报刊 · 人民日报")).toBeTruthy();
+    expect(screen.getByLabelText("选择资料，当前全部报刊 + 书籍")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "书籍" }));
     expect(screen.getByRole("button", { name: "甲书" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "人民日报" })).toBeNull();
@@ -134,6 +134,23 @@ describe("RAG chat page", () => {
     fireEvent.click(all);
     expect(all.getAttribute("aria-pressed")).toBe("true");
     expect(useChatStore.getState().selectedNotebookIds).toEqual(["rmrb", "book-a", "book-b"]);
+  });
+
+  it("keeps books unchecked across tabs and only changes the current category with select all", async () => {
+    render(<ChatPage />);
+    await screen.findByRole("textbox", { name: "输入问题" });
+    fireEvent.click(screen.getByRole("button", { name: "书籍" }));
+    fireEvent.click(screen.getByRole("button", { name: "全部书籍 默认范围" }));
+    fireEvent.click(screen.getByRole("button", { name: "全部" }));
+    expect(screen.getByRole("button", { name: "甲书" }).getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByRole("button", { name: "乙书" }).getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByRole("button", { name: "人民日报" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: "全部报刊 + 书籍 默认范围" }).getAttribute("aria-pressed")).toBe("mixed");
+    fireEvent.click(screen.getByRole("button", { name: "报刊" }));
+    fireEvent.click(screen.getByRole("button", { name: "全部报刊 默认范围" }));
+    fireEvent.click(screen.getByRole("button", { name: "全部" }));
+    expect(screen.getByRole("button", { name: "全部报刊 + 书籍 默认范围" }).getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByLabelText("选择资料，当前未选择资料")).toBeTruthy();
   });
 
   it("locks the composer while a historical conversation is loading", async () => {

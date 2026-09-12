@@ -53,6 +53,7 @@ afterEach(async () => { await act(async () => view.unmount()); vi.unstubAllGloba
 it("selects People's Daily, persists the scope, and opens newspaper citations in the archive reader", async () => {
   await act(async () => button("选择资料，当前全部报刊 + 书籍").props.onPress());
   expect(button("甲书")).toBeDefined();
+  await act(async () => button("甲书").props.onPress());
   await act(async () => button("报刊").props.onPress());
   expect(button("甲书")).toBeUndefined();
   expect(button("人民日报")).toBeDefined();
@@ -118,4 +119,27 @@ it("cascades select all to every checkbox and prevents sending an empty selectio
   await act(async () => button("全部报刊 + 书籍").props.onPress());
   expect(button("人民日报").props.accessibilityState.checked).toBe(true);
   expect(button("甲书").props.accessibilityState.checked).toBe(true);
+});
+
+it("preserves the shared selection across tabs and sends only checked sources", async () => {
+  await act(async () => button("选择资料，当前全部报刊 + 书籍").props.onPress());
+  await act(async () => button("书籍").props.onPress());
+  await act(async () => button("全部书籍").props.onPress());
+  await act(async () => button("全部").props.onPress());
+  expect(button("甲书").props.accessibilityState.checked).toBe(false);
+  expect(button("人民日报").props.accessibilityState.checked).toBe(true);
+  expect(button("全部报刊 + 书籍").props.accessibilityState.checked).toBe("mixed");
+  await act(async () => button("书籍").props.onPress());
+  expect(button("全部书籍").props.accessibilityState.checked).toBe(false);
+  await act(async () => button("关闭").props.onPress());
+  await act(async () => view.root.findByType("input").props.onChangeText("只查询勾选的报刊"));
+  await act(async () => button("发送").props.onPress());
+  expect(mocks.ask.mock.calls[0]?.[0]).toMatchObject({ contentType: "periodical", datasetIds: ["rmrb"] });
+  await act(async () => mocks.ask.mock.calls[0]?.[1].onDone("conv-selected", []));
+  await act(async () => button("选择资料，当前报刊 · 人民日报").props.onPress());
+  await act(async () => button("报刊").props.onPress());
+  await act(async () => button("全部报刊").props.onPress());
+  await act(async () => button("全部").props.onPress());
+  expect(button("全部报刊 + 书籍").props.accessibilityState.checked).toBe(false);
+  expect(button("选择资料，当前未选择资料")).toBeDefined();
 });

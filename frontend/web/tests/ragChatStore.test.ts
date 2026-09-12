@@ -93,21 +93,22 @@ describe("RAG chat scope", () => {
     const saved = localConversationApi.put.mock.calls[0]?.[0];
     localConversationApi.get.mockResolvedValue(saved);
     useChatStore.getState().selectContentType("book");
-    expect(useChatStore.getState()).toMatchObject({ messages: [], selectedNotebookIds: [], conversationId: null });
+    expect(useChatStore.getState()).toMatchObject({ selectedNotebookIds: ["rmrb"], conversationId: "conv_paper" });
+    expect(useChatStore.getState().messages).toHaveLength(2);
     await useChatStore.getState().openConversation("conv_paper");
     expect(useChatStore.getState()).toMatchObject({ contentType: "periodical", selectedNotebookIds: ["rmrb"] });
   });
 
-  it("locks the source type during streaming and clears book selection when switching", () => {
+  it("locks the picker during streaming and preserves selection when switching tabs", async () => {
     useChatStore.setState({ notebooks: [{ id: "book-a" }], selectedNotebookIds: ["book-a"], streaming: true });
     useChatStore.getState().selectContentType("periodical");
     expect(useChatStore.getState().contentType).toBe("book");
     useChatStore.setState({ streaming: false });
     useChatStore.getState().selectContentType("periodical");
     useChatStore.getState().toggleNotebook("book-a");
-    expect(useChatStore.getState().selectedNotebookIds).toEqual(["rmrb"]);
+    expect(useChatStore.getState().selectedNotebookIds).toEqual(["book-a"]);
     useChatStore.getState().sendMessage("黄河");
-    expect(askStream.mock.calls[0]?.[0]).toMatchObject({ contentType: "periodical", datasetIds: ["rmrb"], scopeMode: "all" });
+    await vi.waitFor(() => expect(askStream.mock.calls[0]?.[0]).toMatchObject({ contentType: "book", datasetIds: ["book-a"], scopeMode: "all" }));
   });
 
   it.each([{ selection: ["rmrb", "book-a"] }, { selection: ["rmrb"] }])("saves and restores a combined scope %j", async ({ selection }) => {
@@ -123,11 +124,12 @@ describe("RAG chat scope", () => {
     useChatStore.getState().sendMessage("调查研究");
     await vi.waitFor(() => expect(localConversationApi.put).toHaveBeenCalledTimes(1));
     const saved = localConversationApi.put.mock.calls[0]?.[0];
-    expect(saved.conversation.scope).toEqual({ contentType: "all", mode: selection.length === 2 ? "all" : "selected", datasetIds: selection });
+    const contentType = selection.length === 2 ? "all" : "periodical";
+    expect(saved.conversation.scope).toEqual({ contentType, mode: "all", datasetIds: selection });
     useChatStore.getState().selectContentType("book");
     localConversationApi.get.mockResolvedValue(saved);
     await useChatStore.getState().openConversation("conv-mixed");
-    expect(useChatStore.getState()).toMatchObject({ contentType: "all", selectedNotebookIds: selection });
+    expect(useChatStore.getState()).toMatchObject({ contentType, selectedNotebookIds: selection });
   });
 
   it("sends every explicitly selected book as one scoped question", async () => {
@@ -146,7 +148,8 @@ describe("RAG chat scope", () => {
       expect(askStream).toHaveBeenCalledWith(
         expect.objectContaining({
           datasetIds: ["book-a", "book-b"],
-          scopeMode: "selected",
+          contentType: "book",
+          scopeMode: "all",
           question: "比较两本书",
         }),
         expect.any(Function),
@@ -182,6 +185,21 @@ describe("RAG chat scope", () => {
         expect.any(Function),
       );
     });
+    expect(notebookApi.getSources).not.toHaveBeenCalled();
+  });
+
+  it("keeps hidden selections and sends the selected sources regardless of the active tab", async () => {
+    notebookApi.list.mockResolvedValue([{ id: "book-a", title: "甲书" }, { id: "book-b", title: "乙书" }]);
+    await useChatStore.getState().loadNotebooks();
+    useChatStore.getState().selectContentType("book");
+    expect(useChatStore.getState().selectedNotebookIds).toEqual(["rmrb", "book-a", "book-b"]);
+    useChatStore.getState().selectNotebook(null);
+    expect(useChatStore.getState().selectedNotebookIds).toEqual(["rmrb"]);
+    useChatStore.getState().selectContentType("all");
+    expect(useChatStore.getState().selectedNotebookIds).toEqual(["rmrb"]);
+    useChatStore.getState().selectContentType("book");
+    useChatStore.getState().sendMessage("仍然查询报刊");
+    expect(askStream.mock.calls[0]?.[0]).toMatchObject({ contentType: "periodical", datasetIds: ["rmrb"] });
     expect(notebookApi.getSources).not.toHaveBeenCalled();
   });
 
