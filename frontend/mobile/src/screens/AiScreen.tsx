@@ -485,7 +485,7 @@ export function AiScreen() {
 
       <Sheet visible={scopeOpen} title="选择资料" onClose={() => setScopeOpen(false)}>
         <View style={styles.scopeSheetContent}>
-          <Text style={[styles.scopeHelp, { color: theme.muted, fontFamily: theme.sans }]}>{contentType === "book" ? "不选时查询全部书籍，可以多选。" : "报刊目前仅支持《人民日报》。"}</Text>
+          {contentType === "book" && <Text style={[styles.scopeHelp, { color: theme.muted, fontFamily: theme.sans }]}>不选时查询全部书籍，可以多选。</Text>}
           <View style={{ flexDirection: "row", marginTop: 12 }}>
             {(["book", "periodical"] as const).map((type) => (
               <Pressable
