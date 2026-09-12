@@ -679,7 +679,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
         {chapter?.fragment.fragmentId === activeChapterId ? (
           <BookReaderWebView
             ref={webViewRef}
-            key={`${activeChapterId}:${textScale}:${bookLineHeight}:${bookFirstLineIndent}:${bookReadingMode}:${bookPaperColor}`}
+            key={`${activeChapterId}:${chapterRetryToken}:${textScale}:${bookLineHeight}:${bookFirstLineIndent}:${bookReadingMode}:${bookPaperColor}`}
             html={document}
             bootstrapScript={readerBridgeScript}
             originWhitelist={["about:blank", "data:*"]}
