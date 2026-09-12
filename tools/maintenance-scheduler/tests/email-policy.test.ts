@@ -209,4 +209,49 @@ describe("email monitoring policy", () => {
     evaluateEmailState(state, at(4));
     expect(state).toMatchObject({ down: true, pending: { signal: "fail", reason: "email_dispatch_failed" } });
   });
+
+  it.each(["transient", "permanent", "exhausted"])("ignores a %s dispatch fault for an already observed slot", (kind) => {
+    const state = fixture();
+    applyEmailObservation(state, check, observation(2, 9));
+    delete state.pending;
+    const deadline = state.deadlineAt;
+    applyEmailDispatch(state, kind === "exhausted" ? { kind: "exhausted" }
+      : { kind: "failed", permanent: kind === "permanent", reason: "state_read_failed" }, at(12), at(8));
+    evaluateEmailState(state, at(17));
+    expect(state.dispatch.failure).toBeUndefined();
+    expect(state.down).toBe(false);
+    expect(state.pending).toBeUndefined();
+    expect(state.deadlineAt).toBe(deadline);
+    evaluateEmailState(state, deadline);
+    expect(state).toMatchObject({ pending: { reason: "email_observation_overdue" } });
+  });
+
+  it("reconciles a delayed observation for the failed slot even when it predates the dispatch error", () => {
+    const state = fixture();
+    applyEmailDispatch(state, { kind: "failed", permanent: true, reason: "state_read_failed" }, at(12), at(8));
+    evaluateEmailState(state, at(12));
+    expect(state.down).toBe(true);
+    applyEmailObservation(state, check, observation(2, 9));
+    expect(state.dispatch.failure).toBeUndefined();
+    expect(state.dispatch.expectedAt).toBeUndefined();
+    expect(state).toMatchObject({ down: false, pending: { signal: "success" } });
+  });
+
+  it("does not use a previous slot's delayed observation to clear a new slot's dispatch fault", () => {
+    const state = fixture();
+    applyEmailDispatch(state, { kind: "failed", permanent: false, reason: "state_read_failed" }, at(23), at(23));
+    applyEmailObservation(state, check, observation(2, 9));
+    evaluateEmailState(state, at(28));
+    expect(state.dispatch.expectedAt).toBe(at(23));
+    expect(state).toMatchObject({ down: true, pending: { reason: "email_dispatch_failed" } });
+  });
+
+  it("keeps a real collector fault when dispatch reconciliation for its observed slot fails", () => {
+    const state = fixture();
+    applyEmailObservation(state, check, observation(2, 9, { scanComplete: false, scanError: "resend_http_503" }));
+    applyEmailDispatch(state, { kind: "failed", permanent: false, reason: "state_read_failed" }, at(12), at(8));
+    evaluateEmailState(state, at(17));
+    expect(state.dispatch.failure).toBeUndefined();
+    expect(state).toMatchObject({ down: true, pending: { reason: "resend_http_503" } });
+  });
 });
