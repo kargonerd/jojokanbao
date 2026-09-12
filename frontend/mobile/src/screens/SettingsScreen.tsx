@@ -18,6 +18,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ScreenHeader } from "../components/ScreenHeader";
+import { OtaUpdatePanel } from "../components/OtaUpdatePanel";
 import { SectionTitle } from "../components/SectionTitle";
 import { IS_EINK_RELEASE } from "../config/appVariant";
 import { checkNativeAppUpdate, openNativeAppUpdate } from "../lib/appUpdate";
@@ -404,6 +405,7 @@ export function SettingsScreen() {
               <Text style={[styles.aboutTitle, { color: theme.ink, fontFamily: theme.serif }]}>JOJO 看报</Text>
               <Text style={[styles.aboutVersion, { color: theme.muted, fontFamily: theme.sans }]}>{nativeApplicationVersion ?? "0.0.1"}</Text>
             </View>
+            <OtaUpdatePanel />
             {Platform.OS === "android" ? (
               <Pressable
                 accessibilityRole="button"

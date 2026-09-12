@@ -18,6 +18,7 @@ vi.mock("react-native-safe-area-context", () => ({ SafeAreaView: "section" }));
 vi.mock("expo-application", () => ({ nativeApplicationVersion: "0.0.3", applicationId: "com.luoxixi.jojokanbao" }));
 vi.mock("expo-clipboard", () => ({ setStringAsync: mocks.copy }));
 vi.mock("../components/ScreenHeader", () => ({ ScreenHeader: () => null }));
+vi.mock("../components/OtaUpdatePanel", () => ({ OtaUpdatePanel: () => null }));
 vi.mock("../lib/appUpdate", () => ({ checkNativeAppUpdate: vi.fn(), openNativeAppUpdate: vi.fn() }));
 vi.mock("../lib/haptics", () => ({ selectionHaptic: vi.fn(), toggleHaptic: vi.fn() }));
 vi.mock("../lib/times", () => ({ mobileTimesApi: {}, timesSourceName: vi.fn() }));
