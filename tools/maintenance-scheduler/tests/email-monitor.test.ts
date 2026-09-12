@@ -91,6 +91,28 @@ describe("strict email observation protocol", () => {
 });
 
 describe("email inbox and durable delivery", () => {
+  it.each([
+    { slot: 218, failed: 222, alarm: 227, next: 233 },
+    { slot: 293, failed: 297, alarm: 302, next: 309 },
+  ])("does not alarm after a completed slot's state-read failure at minute $failed", async ({ slot, failed, alarm, next }) => {
+    const f = fixture();
+    f.add(JSON.stringify(event(1, slot + 0.5, {
+      transportProbe: { outcome: "success", at: date(slot + 0.5), messageId: uuid(900) },
+    })), slot + 0.5);
+    await f.tick(slot + 1, { expectedAt: base + slot * 60_000 });
+    expect(f.deliveries).toEqual(["success"]);
+    await f.tick(failed, { expectedAt: base + slot * 60_000,
+      dispatch: { kind: "failed", permanent: false, reason: "Scheduler state get: HTTP 504" } });
+    f.restart();
+    await f.tick(alarm);
+    expect(f.state().dispatch.failure).toBeUndefined();
+    expect(f.state().down).toBe(false);
+    expect(f.deliveries).toEqual(["success"]);
+    f.add(JSON.stringify(event(2, next + 0.5)), next + 0.5);
+    await f.tick(next + 1);
+    expect(f.deliveries).toEqual(["success", "success"]);
+  });
+
   it("starts unknown, recovers only from a real SMTP observation, deduplicates replay and does not echo decisions", async () => {
     const f = fixture();
     f.add(JSON.stringify(event(1, 1)), 1);
