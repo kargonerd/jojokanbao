@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { LIBRARY_SOURCES, type LibrarySourceId } from "@jojo/content";
 import { PageTopbar } from "../components/PageTopbar";
 import { contentApi, type ContentJob, type ContentPublication, type PublisherStatus } from "../content/api";
 import "./ContentDataPage.css";
@@ -22,6 +23,7 @@ export function ContentDataPage() {
   const requestedJob = params.get("job");
   const requestedStep = Number(params.get("step"));
   const [selectedFile, setSelectedFile] = useState<File>();
+  const [librarySource, setLibrarySource] = useState<LibrarySourceId | "">("");
   const [fetchAssets, setFetchAssets] = useState(true);
   const [publicationStatus, setPublicationStatus] = useState<ContentJob["publicationStatus"]>("draft");
   const [access, setAccess] = useState<ContentJob["access"]>("public");
@@ -112,7 +114,7 @@ export function ContentDataPage() {
   }
 
   function newBook() {
-    setSelectedFile(undefined); setJob(undefined); setError("");
+    setSelectedFile(undefined); setLibrarySource(""); setJob(undefined); setError("");
     setParams({ step: "1" });
   }
 
@@ -129,10 +131,10 @@ export function ContentDataPage() {
   }
 
   async function importFile() {
-    if (!selectedFile || working) return;
+    if (!selectedFile || !librarySource || working) return;
     setBusy(true); setError("");
     try {
-      const { job: value } = await contentApi.importFile(selectedFile, fetchAssets, "draft", "public");
+      const { job: value } = await contentApi.importFile(selectedFile, fetchAssets, "draft", librarySource === "community" ? "authenticated" : "public", librarySource);
       acceptJob(value);
       setParams({ job: value.jobId, step: "2" });
       setSelectedFile(undefined);
@@ -186,8 +188,14 @@ export function ContentDataPage() {
               <p role="status">{selectedFile?.name ?? "尚未选择文件"}{selectedFile && <small>{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</small>}</p>
               <input ref={fileInput} hidden type="file" aria-label="电子书文件" accept=".epub,.json,.azw,.mobi,.prc" disabled={working} onChange={(event) => selectFile(event.target.files?.[0])} />
             </div>
+            <fieldset className="book-visibility-options"><legend>选择书源（必选）</legend>
+              {LIBRARY_SOURCES.map((source) => <label key={source.id} className={librarySource === source.id ? "selected" : ""}>
+                <input type="radio" name="librarySource" value={source.id} checked={librarySource === source.id} disabled={working} onChange={() => setLibrarySource(source.id)} />
+                <span><b>{source.title}</b><small>{source.id === "community" ? "需登录并开启共享书库后可见。" : "始终开启，阅读门槛在发布时设置。"}</small></span>
+              </label>)}
+            </fieldset>
             <label className="book-assets-choice"><input type="checkbox" checked={fetchAssets} disabled={working} onChange={(event) => setFetchAssets(event.target.checked)} /> 导入封面与正文图片</label>
-            <footer className="book-step-actions"><p>下一步在本机处理文件，不会上传或公开。</p><button className="primary-button" disabled={working || !selectedFile} onClick={importFile}>{busy ? "正在上传文件…" : "开始处理"}</button></footer>
+            <footer className="book-step-actions"><p>下一步在本机处理文件，不会上传或公开。</p><button className="primary-button" disabled={working || !selectedFile || !librarySource} onClick={importFile}>{busy ? "正在上传文件…" : "开始处理"}</button></footer>
           </>}
 
           {step === 2 && job && <>

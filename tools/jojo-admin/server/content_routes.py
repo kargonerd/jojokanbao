@@ -90,7 +90,7 @@ def _load_jobs() -> None:
 _load_jobs()
 
 
-def _new_job(input_paths: list[str], fetch_assets: bool, publication_status: str = "draft", access: str = "public", job_id: str | None = None) -> dict:
+def _new_job(input_paths: list[str], fetch_assets: bool, publication_status: str = "draft", access: str = "public", job_id: str | None = None, *, library_source: str) -> dict:
     job_id = job_id or uuid.uuid4().hex[:16]
     job = {
         "jobId": job_id,
@@ -102,7 +102,8 @@ def _new_job(input_paths: list[str], fetch_assets: bool, publication_status: str
         "inputPaths": input_paths,
         "fetchAssets": fetch_assets,
         "publicationStatus": publication_status,
-        "access": access,
+        "access": "authenticated" if library_source == "community" else access,
+        "librarySource": library_source,
         "outputDirectory": str(RUNTIME / job_id / "output"),
         "progress": {},
         "report": None,
@@ -123,6 +124,7 @@ def _build(job_id: str) -> None:
     for input_path in job["inputPaths"]:
         command.extend(["--input", input_path])
     command.extend(["--output", job["outputDirectory"]])
+    command.extend(["--library-source", job["librarySource"]])
     if not job["fetchAssets"]:
         command.append("--no-assets")
     command.append("--published" if job.get("publicationStatus") == "published" else "--draft")
@@ -165,8 +167,7 @@ def _build(job_id: str) -> None:
                     raise RuntimeError("；".join(errors[:3]))
             raise RuntimeError(f"内容处理退出码 {code}")
         assert report is not None
-        community = any(str(path).lower().endswith(".epub") for path in job["inputPaths"])
-        _set(job_id, status="ready", phase="complete", message="内容已生成并通过结构检查", report=report, librarySource="community" if community else "jojo", access="authenticated" if community else job.get("access", "public"))
+        _set(job_id, status="ready", phase="complete", message="内容已生成并通过结构检查", report=report)
     except Exception as exc:
         _log(job_id, str(exc))
         _set(job_id, status="failed", phase="failed", message=str(exc))
@@ -257,6 +258,9 @@ def preview_delivery(job_id: str, object_key: str):
 @content_blueprint.post("/api/content/import-paths")
 def import_paths():
     data = request.get_json(silent=True) or {}
+    library_source = data.get("librarySource") if isinstance(data, dict) else None
+    if library_source not in ("jojo", "community"):
+        return jsonify({"success": False, "message": "请选择 JOJO书库或共享书库"}), 400
     supplied = data.get("paths") or []
     if isinstance(supplied, str):
         supplied = [supplied]
@@ -275,11 +279,14 @@ def import_paths():
         return jsonify({"success": False, "message": "没有找到支持的 JSON、EPUB 或 Kindle 文件"}), 400
     publication_status = "published" if data.get("publicationStatus") == "published" else "draft"
     access = "authenticated" if data.get("access") == "authenticated" else "public"
-    return jsonify({"success": True, "job": _new_job(paths, bool(data.get("fetchAssets", True)), publication_status, access)})
+    return jsonify({"success": True, "job": _new_job(paths, bool(data.get("fetchAssets", True)), publication_status, access, library_source=library_source)})
 
 
 @content_blueprint.post("/api/content/import-files")
 def import_files():
+    library_source = request.form.get("librarySource")
+    if library_source not in ("jojo", "community"):
+        return jsonify({"success": False, "message": "请选择 JOJO书库或共享书库"}), 400
     files = request.files.getlist("files")
     if not files:
         return jsonify({"success": False, "message": "没有上传文件"}), 400
@@ -309,6 +316,7 @@ def import_files():
         "published" if request.form.get("publicationStatus") == "published" else "draft",
         "authenticated" if request.form.get("access") == "authenticated" else "public",
         job_id=job_id,
+        library_source=library_source,
     )})
 
 
@@ -402,6 +410,7 @@ def _publish(job_id: str, targets: list[str]) -> None:
                     "status": "completed", "completedAt": _now(), "result": result,
                     "publicationStatus": _jobs[job_id].get("publicationStatus", "draft"),
                     "access": _jobs[job_id].get("access", "public"),
+                    "librarySource": _jobs[job_id].get("librarySource", "jojo"),
                 }
                 _save(_jobs[job_id])
         except Exception as exc:

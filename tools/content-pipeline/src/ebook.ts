@@ -192,7 +192,9 @@ async function decodeEpub(sourcePath: string, source: Uint8Array): Promise<Decod
       const current = $document(element);
       const epubTypes = (current.attr("epub:type") ?? current.attr("type") ?? "").split(/\s+/);
       const role = current.attr("role") ?? "";
-      return current.hasClass("footnote") || epubTypes.some((type) => ["footnote", "endnote", "rearnote"].includes(type))
+      // Calibre adds numeric suffixes when otherwise equivalent footnote styles differ.
+      const footnoteClass = (current.attr("class") ?? "").split(/\s+/).some((name) => /^footnote\d*$/.test(name));
+      return footnoteClass || epubTypes.some((type) => ["footnote", "endnote", "rearnote"].includes(type))
         || role.split(/\s+/).some((type) => ["doc-footnote", "doc-endnote"].includes(type));
     };
     $document("[id]").each((_index, element) => {
@@ -545,6 +547,23 @@ async function decodeEpub(sourcePath: string, source: Uint8Array): Promise<Decod
   const toc = tocEntries.length > 0
     ? buildNestedToc(tocEntries)
     : chapters.map((chapter, index) => ({ id: `toc:${index + 1}`, order: index + 1, title: chapter.title, targetId: chapter.id }));
+  // EPUB navigation often omits the opening cover/title pages. Include them
+  // before the authored TOC so readers never append those chapters at the end.
+  const represented = new Set(tocEntries.map((entry) => entry.targetId));
+  const firstListedChapter = chapters.findIndex((chapter) => represented.has(chapter.id));
+  if (tocEntries.length > 0 && firstListedChapter > 0) {
+    toc.unshift(...chapters.slice(0, firstListedChapter).map((chapter) => ({
+      id: `toc:frontmatter:${chapter.id}`, order: 0, title: chapter.title, targetId: chapter.id,
+    })));
+    let order = 0;
+    const renumber = (nodes: JojoTocNode[]): void => {
+      for (const node of nodes) {
+        node.order = ++order;
+        renumber(node.children ?? []);
+      }
+    };
+    renumber(toc);
+  }
   const fileMetadata = filenameMetadata(sourcePath);
   const packageTitle = xmlValue($opf, "title");
   const packageAuthor = xmlValue($opf, "creator");

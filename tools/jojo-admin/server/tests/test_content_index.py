@@ -36,8 +36,9 @@ class ContentIndexTest(unittest.TestCase):
         self.source.json_gz.assert_called_once_with("books/collections/a/items/full.json.gz")
         rows = sync.run.call_args.args[0]
         self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0].document["metadata"]["librarySource"], "community")
-        self.assertEqual(rows[0].document["metadata"]["access"], "authenticated")
+        self.assertNotIn("librarySource", rows[0].document["metadata"])
+        self.assertNotIn("access", rows[0].document["metadata"])
+        self.assertEqual(rows[0].document["metadata"]["chapterId"], "c1")
         self.assertEqual(result["created"], 1)
 
     def test_drafts_never_contact_es_even_when_a_child_says_published(self):

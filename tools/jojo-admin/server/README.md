@@ -28,7 +28,7 @@ debugging.
 ## Book imports
 
 The `/content` page accepts one EPUB, WeRead WRX JSON, or DRM-free MOBI 6/7 file at
-a time through `POST /api/content/import-files`, after the user selects a file and
+a time through `POST /api/content/import-files`, after the user selects a file and a library source and
 clicks “开始处理”. It has no directory picker or path input. The
 `POST /api/content/import-paths` endpoint remains available for scripted imports. Both routes
 invoke `@jojo/content-pipeline` with strict import defaults and expose job progress
@@ -67,7 +67,8 @@ the selected job and step through `/content?job=<job_id>&step=<1..4>`.
 Book publishing automatically appends an `elasticsearch` stage after HF/B2. It reads only this job's items from the immutable HF commit and reuses `es_sync.py` mapping validation and append-only deduplication.
 Use `ES_SYNC_INDEX` or the existing `ES_CONTENT_INDEX`; the current Kibana connection is reused.
 Local configuration uses the shared tools loader (process environment, worktree `.env.local`/`.env`, then the primary checkout, without overwriting existing values or copying credentials). Restart after changing configuration. Both HF and B2 must have completed before ES runs. Index failure preserves their successful results and can be retried with `targets: ["elasticsearch"]`. Drafts do not add documents. Existing indexed drafts are excluded through the active catalog search scope; content conflicts require the ES repair workflow.
-EPUB imports set `librarySource: community` and enforce authenticated access. Other imports use `jojo`; legacy missing fields also mean JOJO. Classification survives publication and title changes.
+Book search documents and new book repairs omit `metadata.access` and `metadata.librarySource`: HF/Delivery catalog settings determine visibility. Existing ES documents may retain these legacy fields; duplicate detection ignores only those two fields for books, including active repair revisions. Changing either setting reuses the indexed content without writing a duplicate. Titles, body text and other metadata still participate in conflict detection; no ES mapping change or reindex is needed.
+Both import routes require an explicit `librarySource` (`jojo` or `community`), sent as a multipart form field or JSON field respectively. Missing or invalid choices return HTTP 400 before saving uploads or starting a job. The selected value is persisted in the job and passed to the pipeline's required `--library-source` option. File format never determines the library source. Choosing `community` enforces authenticated access; `jojo` retains the requested access. Publication and title changes preserve the stored canonical source, without inferring it from EPUB provenance. Legacy missing fields still mean JOJO.
 See the [management workflow](../README.md) and
 [Content Pipeline reference](../../content-pipeline/README.md) for supported formats,
 validation rules, and the separate publication step. PDF book conversion uses external

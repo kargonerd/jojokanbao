@@ -13,6 +13,8 @@ import requests
 
 
 ROOT = Path(__file__).resolve().parents[3]
+# Book visibility comes from the catalog, never from an ES metadata snapshot.
+BOOK_POLICY_METADATA_FIELDS = frozenset({"access", "librarySource"})
 
 
 def _load_root_env() -> None:
@@ -80,6 +82,11 @@ def clean_repair_document(document: dict[str, Any]) -> dict[str, Any]:
             raise ValueError("统一 ES 修订缺少字段：" + ", ".join(missing))
         if not isinstance(clean["metadata"], dict):
             raise ValueError("统一 ES 修订的 metadata 必须是对象")
+        if clean["type"] == "book":
+            clean["metadata"] = {
+                key: value for key, value in clean["metadata"].items()
+                if key not in BOOK_POLICY_METADATA_FIELDS
+            }
         # Reject values that cannot be serialized before a migration is saved.
         return json.loads(json.dumps(clean, ensure_ascii=False))
     return {

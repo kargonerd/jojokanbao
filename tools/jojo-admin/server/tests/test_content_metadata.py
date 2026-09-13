@@ -98,6 +98,10 @@ class ContentPublicationTest(unittest.TestCase):
 
     def test_title_correction_updates_all_labels_and_epub_without_changing_identity_or_content(self):
         self.prepare_title_correction()
+        key = self.items[0]["canonicalObject"]
+        original = json.loads(gzip.decompress((self.root / key).read_bytes()))
+        original.update(librarySource="jojo", provenance={"source": "epub", "sourceFormat": "epub"})
+        self.write(key, gzip.compress(_json_bytes(original)))
         before = self.snapshot()
         title = "毛泽东思想万岁（六八年汉版）"
         with patch.object(content_routes.threading, "Thread"):
@@ -105,6 +109,7 @@ class ContentPublicationTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         canonical = json.loads(gzip.decompress((self.root / self.items[0]["canonicalObject"]).read_bytes()))
         self.assertEqual(canonical["title"], title)
+        self.assertEqual(canonical["librarySource"], "jojo")
         self.assertEqual(canonical["itemId"], "book-a:full-book")
         self.assertEqual(canonical["content"], {"chapters": [{"body": "原来的正文"}]})
         self.assertEqual(canonical["access"], "authenticated")
@@ -182,6 +187,30 @@ class ContentPublicationTest(unittest.TestCase):
         self.assert_settings("draft", "public")
         for key in ("delivery/chapters/immutable.jox", "search/documents.jsonl.gz", "report.json"):
             self.assertEqual((self.root / key).read_bytes(), before[Path(key)])
+
+    def test_publication_preserves_explicit_source_without_using_epub_provenance(self):
+        for source in ("jojo", "community", None):
+            with self.subTest(source=source):
+                for item in self.items:
+                    key = item["canonicalObject"]
+                    canonical = json.loads(gzip.decompress((self.root / key).read_bytes()))
+                    canonical["provenance"] = {"source": "epub", "sourceFormat": "epub"}
+                    if source is None:
+                        canonical.pop("librarySource", None)
+                    else:
+                        canonical["librarySource"] = source
+                    self.write(key, gzip.compress(_json_bytes(canonical)))
+                for publication in ("published", "draft"):
+                    content_metadata.update_publication(self.root, publication, "public")
+                    self.assert_settings(publication, "authenticated" if source == "community" else "public")
+                    for item in self.items:
+                        canonical = json.loads(gzip.decompress((self.root / item["canonicalObject"]).read_bytes()))
+                        index_key = f"content/books/{item['datasetId']}/index.jox"
+                        index = _decode_jox(self.root / "delivery" / index_key, index_key)
+                        manifest = _decode_jox(self.root / "delivery" / item["manifestObject"], item["manifestObject"])
+                        dataset = json.loads((self.root / f"huggingface/{item['datasetId']}/dataset.json").read_bytes())
+                        for value in (canonical, index, index["items"][0], manifest, dataset, dataset["items"][0]):
+                            self.assertEqual(value["librarySource"], source or "jojo")
 
     def test_failed_write_rolls_back_every_file(self):
         before = self.snapshot()

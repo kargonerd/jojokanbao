@@ -144,6 +144,16 @@ class RepairLogicTest(unittest.TestCase):
         self.assertNotIn("replacedDocumentId", preview["esPayload"])
         self.assertNotIn("repairReason", preview["esPayload"])
 
+    def test_book_repair_drops_legacy_policy_without_mutating_the_original(self):
+        document = {"type": "book", "datasetId": "book-a", "itemId": "book-a:full",
+                    "title": "一", "content": "修订正文", "source": "书名",
+                    "metadata": {"chapterId": "c1", "access": "authenticated", "librarySource": "community"}}
+        clean = clean_repair_document(document)
+        self.assertEqual(clean["metadata"], {"chapterId": "c1"})
+        self.assertEqual(document["metadata"]["access"], "authenticated")
+        preview = preview_migration("old-id", document, deleted=False, reason="正文修订", index="test-index")
+        self.assertEqual(preview["esPayload"]["metadata"], {"chapterId": "c1"})
+
     def test_unified_repair_rejects_missing_metadata(self):
         with self.assertRaisesRegex(ValueError, "metadata"):
             clean_repair_document({

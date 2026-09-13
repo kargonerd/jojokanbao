@@ -12,6 +12,7 @@ interface Arguments {
   allowPartial: boolean;
   publicationStatus: "draft" | "published";
   access: "public" | "authenticated";
+  librarySource?: "jojo" | "community";
 }
 
 function argumentsFrom(argv: string[]): Arguments {
@@ -28,14 +29,19 @@ function argumentsFrom(argv: string[]): Arguments {
     else if (value === "--draft") result.publicationStatus = "draft";
     else if (value === "--authenticated") result.access = "authenticated";
     else if (value === "--public") result.access = "public";
+    else if (value === "--library-source") {
+      const source = argv[++index];
+      if (source !== "jojo" && source !== "community") throw new Error("--library-source 必须为 jojo 或 community");
+      result.librarySource = source;
+    }
     else throw new Error(`未知参数：${value}`);
   }
   return result;
 }
 
 const args = argumentsFrom(process.argv.slice(2));
-if (!args.output || args.input.length === 0) {
-  console.error("Usage: content-pipeline --input <json|epub|azw|mobi|prc|directory>... --output <empty-directory> [--published|--draft] [--public|--authenticated] [--asset-cache <canonical-directory>] [--no-assets] [--allow-partial]");
+if (!args.output || args.input.length === 0 || !args.librarySource) {
+  console.error("Usage: content-pipeline --input <json|epub|azw|mobi|prc|directory>... --output <empty-directory> --library-source <jojo|community> [--published|--draft] [--public|--authenticated] [--asset-cache <canonical-directory>] [--no-assets] [--allow-partial]");
   process.exit(2);
 }
 const inputPaths: string[] = [];
@@ -107,6 +113,7 @@ try {
     allowPartial: args.allowPartial,
     publicationStatus: args.publicationStatus,
     access: args.access,
+    librarySource: args.librarySource,
     onProgress: (event) => process.stdout.write(`${JSON.stringify(event)}\n`),
   });
   if (!args.allowPartial && report.diagnostics.some((entry) => entry.level === "error")) process.exitCode = 1;

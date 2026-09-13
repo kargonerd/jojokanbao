@@ -31,7 +31,9 @@ markers remain in the text with warnings; rich notes remain linked content.
 修改时需同时选择此前尝试上传的目标，避免副本状态不一致。设置不变时可只重试失败目标。
 “最近导入”可恢复最近 20 个本机任务；刷新页面保留当前书籍与步骤。上传中禁止重复提交，
 管理台重启中断的上传可重试。HF/B2 成功后自动同步本次书籍到 ES，结果页显示新增/已有章节数、失败原因并支持单独重试。草稿不新增索引，检索范围根据馆藏下架状态排除；存量 ES 内容冲突通过 ES repair 处理。
-EPUB 自动归入“共享书库”书源，需登录并在资料库设置中开启该书源；其他格式默认 JOJO书库。
+导入第一步须手动选择“JOJO书库”或“共享书库”，未选择时不能开始处理；所有文件格式使用同一规则。
+共享书库需登录并在资料库设置中开启该书源；JOJO书库的阅读门槛可在发布时选择。
+修改书名、发布状态和重新同步会保留已设置的书源，不根据 EPUB 格式或来源重新分类。
 同一本书再次导入后，旧任务会标为“旧版本”并链接到新任务，不能再覆盖发布。
 B2 上传后从公开 CDN 读取当前书籍的 manifest、书目索引和 `catalog.jox`，
 核对本次书籍的内容、发布状态和阅读门槛；最多等待 180 秒，缓存未更新时显示失败并允许重试。
@@ -174,7 +176,11 @@ python server/content_search_app.py
 
 Tencent ES Serverless indexes must be created in the Tencent console first;
 they cannot be created with `PUT /index`. The book workbench no longer writes
-ES directly; publish Canonical to Hugging Face, then run the unified ES sync.
+ES directly; it publishes Canonical to Hugging Face, then automatically runs the unified ES sync after B2 succeeds.
+
+书源与阅读权限保存在 HF/B2 馆藏配置中，不再复制到 ES 书籍文档或新的书籍修订中。
+重新发布时会忽略旧 ES 文档中遗留的 `metadata.access` 和 `metadata.librarySource`，
+仅修改这些设置不会重复写入全文索引。正文、标题及其他元数据变化仍需使用 ES 修订流程。
 
 For the production-style local launcher, run `server/start.bat`. It builds the
 web client and serves it together with the API at `http://127.0.0.1:5000/`.

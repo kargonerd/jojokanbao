@@ -10,7 +10,7 @@ const response = (body: unknown, status = 200) => new Response(JSON.stringify(bo
 const baseJob: ContentJob = {
   jobId: "single-book", status: "ready", phase: "complete", message: "电子书已生成", progress: {},
   createdAt: "2026-09-12T10:00:00Z", updatedAt: "2026-09-12T10:00:00Z", inputPaths: ["朝花夕拾.epub"],
-  publicationStatus: "draft", access: "public", outputDirectory: "output", report: null, publish: {}, logs: [],
+  publicationStatus: "draft", access: "public", librarySource: "jojo", outputDirectory: "output", report: null, publish: {}, logs: [],
 };
 const completed = { status: "completed", publicationStatus: "draft", access: "public", completedAt: "2026-09-12T10:05:00Z" } as const;
 let live: ContentJob;
@@ -34,7 +34,11 @@ beforeEach(() => {
   fetchMock.mockReset().mockImplementation(async (url: string, options?: RequestInit) => {
     if (url === "/api/content/status") return response({ success: true, publishers });
     if (url === "/api/content/jobs") return response({ success: true, jobs });
-    if (url === "/api/content/import-files") return upload();
+    if (url === "/api/content/import-files") {
+      const form = options?.body as FormData;
+      live = { ...live, librarySource: form.get("librarySource") as ContentJob["librarySource"], access: form.get("access") as ContentJob["access"] };
+      return upload();
+    }
     if (url === `/api/content/jobs/${live.jobId}`) return response({ success: true, job: live });
     if (url === `/api/content/jobs/${live.jobId}/publish`) return publish(JSON.parse(String(options?.body)));
     throw new Error(`Unexpected request: ${url}`);
@@ -67,7 +71,8 @@ describe("book import and publication steps", () => {
     const input = screen.getByLabelText("电子书文件") as HTMLInputElement;
     expect(input.multiple).toBe(false);
     expect(input).not.toHaveAttribute("webkitdirectory");
-    expect(screen.queryByRole("radio")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("radio")).toHaveLength(2);
+    for (const radio of screen.getAllByRole("radio")) expect(radio).not.toBeChecked();
     expect(screen.getByRole("button", { name: "开始处理" })).toBeDisabled();
     expect(screen.getByRole("button", { name: /03\s*设置发布/ })).toBeDisabled();
     const chosen = new File(["book"], "朝花夕拾.epub");
@@ -75,6 +80,8 @@ describe("book import and publication steps", () => {
     fireEvent.change(input, { target: { files: [chosen] } });
     fireEvent.change(input, { target: { files: [] } });
     expect(screen.getByRole("status")).toHaveTextContent(chosen.name);
+    expect(screen.getByRole("button", { name: "开始处理" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("radio", { name: /^JOJO书库/ }));
     fireEvent.click(screen.getByRole("checkbox", { name: "导入封面与正文图片" }));
     fireEvent.click(screen.getByRole("button", { name: "开始处理" }));
     await screen.findByRole("heading", { name: "检查导入结果" });
@@ -85,9 +92,12 @@ describe("book import and publication steps", () => {
     expect(form.get("fetchAssets")).toBe("false");
     expect(form.get("publicationStatus")).toBe("draft");
     expect(form.get("access")).toBe("public");
+    expect(form.get("librarySource")).toBe("jojo");
     fireEvent.click(screen.getByRole("button", { name: "确认预览，设置发布" }));
     expect(await screen.findByRole("heading", { name: "设置发布" })).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /^草稿/ })).toBeChecked();
+    expect(screen.getByText("书源：JOJO书库")).toBeInTheDocument();
+    expect(screen.getByLabelText("阅读门槛")).toBeEnabled();
     expect(screen.queryByRole("link", { name: "打开阅读预览" })).not.toBeInTheDocument();
     expect(fetchMock.mock.calls.some(([url]) => url.endsWith("/publish"))).toBe(false);
   });
@@ -100,13 +110,34 @@ describe("book import and publication steps", () => {
     expect(screen.getByRole("button", { name: "开始处理" })).toBeDisabled();
     upload = async () => response({ success: false, message: "EPUB 文件损坏" }, 400);
     fireEvent.change(input, { target: { files: [new File(["book"], "测试.epub")] } });
+    fireEvent.click(screen.getByRole("radio", { name: /^共享书库/ }));
     fireEvent.click(screen.getByRole("button", { name: "开始处理" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("EPUB 文件损坏");
     expect(screen.getByRole("status")).toHaveTextContent("测试.epub");
     expect(screen.getByRole("button", { name: "开始处理" })).toBeEnabled();
+    expect(screen.getByRole("radio", { name: /^共享书库/ })).toBeChecked();
     upload = async () => response({ success: true, job: live });
     fireEvent.click(screen.getByRole("button", { name: "开始处理" }));
     await screen.findByRole("heading", { name: "检查导入结果" });
+  });
+
+  it.each(["epub", "json"])("uses the explicit community choice for a %s and resets it for the next book", async (extension) => {
+    await openPage();
+    fireEvent.change(screen.getByLabelText("电子书文件"), { target: { files: [new File(["book"], `测试.${extension}`)] } });
+    fireEvent.click(screen.getByRole("radio", { name: /^共享书库/ }));
+    fireEvent.click(screen.getByRole("button", { name: "开始处理" }));
+    await screen.findByRole("heading", { name: "检查导入结果" });
+    const form = fetchMock.mock.calls.find(([url]) => url === "/api/content/import-files")![1].body as FormData;
+    expect(form.get("librarySource")).toBe("community");
+    expect(form.get("access")).toBe("authenticated");
+    fireEvent.click(screen.getByRole("button", { name: "确认预览，设置发布" }));
+    await screen.findByRole("heading", { name: "设置发布" });
+    expect(screen.getByLabelText("阅读门槛")).toBeDisabled();
+    expect(screen.getByLabelText("阅读门槛")).toHaveValue("authenticated");
+    fireEvent.click(screen.getByRole("button", { name: "导入另一本" }));
+    await screen.findByRole("heading", { name: "选择一本电子书" });
+    for (const radio of screen.getAllByRole("radio")) expect(radio).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "开始处理" })).toBeDisabled();
   });
 
   it("blocks later steps and changing books during processing", async () => {

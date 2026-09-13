@@ -28,7 +28,7 @@ from pathlib import Path
 import re
 from typing import Any, Callable, Iterable, Iterator, Sequence
 
-from es_repair import KibanaConsoleClient, _load_root_env, repair_config
+from es_repair import BOOK_POLICY_METADATA_FIELDS, KibanaConsoleClient, _load_root_env, repair_config
 
 
 DEFAULT_HF_REPO = "luoxiaozhuang/marxism-dataset"
@@ -183,8 +183,6 @@ def book_documents(
             "publisher": item_metadata.get("publisher"),
             "language": item.get("language") or collection.get("language"),
             "canonicalObject": canonical_object,
-            "librarySource": item.get("librarySource") or collection.get("librarySource") or "jojo",
-            "access": "authenticated" if any(level.get("librarySource") == "community" or level.get("access") == "authenticated" for level in (collection, item)) else "public",
         }
         yield IndexedDocument(
             stable_document_id("book", dataset_id, item_id, chapter_id),
@@ -522,7 +520,17 @@ def ensure_unified_mapping(client: KibanaConsoleClient, index: str) -> dict[str,
 
 
 def _same_business_document(left: dict[str, Any], right: dict[str, Any]) -> bool:
-    return all(left.get(field) == right.get(field) for field in BUSINESS_FIELDS)
+    if any(left.get(field) != right.get(field) for field in BUSINESS_FIELDS if field != "metadata"):
+        return False
+    left_metadata, right_metadata = left.get("metadata"), right.get("metadata")
+    if left.get("type") == "book" and isinstance(left_metadata, dict) and isinstance(right_metadata, dict):
+        # Older book documents included mutable catalog settings. Ignore only
+        # those fields; content and all other metadata still require a repair.
+        left_metadata, right_metadata = (
+            {key: value for key, value in metadata.items() if key not in BOOK_POLICY_METADATA_FIELDS}
+            for metadata in (left_metadata, right_metadata)
+        )
+    return left_metadata == right_metadata
 
 
 @dataclass

@@ -4,19 +4,21 @@
 Hugging Face 镜像和 Elasticsearch JSONL。
 
 ```powershell
-pnpm --filter @jojo/content-pipeline cli -- `
+pnpm --filter @jojo/content-pipeline cli `
   --input-dir "C:\Users\YOUR_NAME\Downloads" `
-  --output "C:\path\to\build"
+  --output "C:\path\to\build" `
+  --library-source jojo
 pnpm --filter @jojo/content-pipeline validate -- "C:\path\to\build"
 ```
 
 单本 EPUB 也可使用 `--input "C:\path\to\book.epub"`，输出目录必须为空。
 PDF 先由外部制作工具转成 EPUB，再通过同一入口导入；JOJO 不再提供 Press 制作工作台。
 图形界面使用 [JOJO 管理台](../jojo-admin/README.md) 的 `/content` 页面，点击“选择电子书文件”
-每次选择一本，确认文件名与选项后点击“开始处理”，查看任务诊断后点击“打开阅读预览”。
+每次选择一本，明确选择“JOJO书库”或“共享书库”后点击“开始处理”，查看任务诊断后点击“打开阅读预览”。
 管理台按“选择文件 → 处理与预览 → 设置发布 → 查看结果”操作；导入先生成本地草稿，
 第三步再选择公开状态、阅读门槛与上传目标。结果页区分上传成功与馆藏展示状态，
 支持返回修改发布设置并同步现有生成内容，无需重新导入。上传失败可重试；HF/B2 上传后自动从本次 HF 提交同步 ES，结果页可单独重试索引。
+书源和阅读权限以 HF/B2 馆藏配置为准；ES 书籍文档不写入这两个设置，重新同步时兼容忽略旧索引中的对应字段。
 在本机检查目录、正文、图片和脚注后再发布；预览不依赖发布目标配置，也不会上传内容。
 
 导入会读取微信读书单独编码的 `e_2` 样式表，以及 EPUB 包内引用的样式表、局部 `@import`、
@@ -27,11 +29,13 @@ Reader 和 EPUB 导出。支持常见标签 / 类 / ID 组合选择器、继承�
 目录扫描、批量导入、输出目录和部分导入等高级选项使用命令行。
 
 EPUB 导入支持 EPUB 2 NCX / EPUB 3 nav 多级目录、无链接的目录分组、中文和 URL 编码路径、
-包文档命名空间前缀、封面与内嵌图片。目录和正文内链保留精确锚点，合并碎片正文时会给
+包文档命名空间前缀、封面与内嵌图片。原目录遗漏的开篇封面等内容按阅读顺序补在目录前方。
+目录和正文内链保留精确锚点，合并碎片正文时会给
 各源文件的锚点加前缀，避免同名 ID 跳错位置。表格保留单元格与合并关系，基础 MathML
 公式进入阅读器、搜索和导出的 EPUB；不复刻出版社的完整 CSS 或固定版式。
 
-同页脚注、跨文件脚注以及 manifest 中的独立尾注文件都可转成 `annotations`。
+同页脚注、跨文件脚注以及 manifest 中的独立尾注文件都可转成 `annotations`，
+包括 Calibre 使用 `footnote1` 等数字后缀样式标记的脚注。
 注号保留原标记（包括圈号、星号）；未引用的注释保留正文。含图片、表格或公式的复杂注释
 保持为可跳转的正文内容，因为 v1 注释弹窗使用纯文本，不能丢弃其中的结构或资源。
 
@@ -102,11 +106,12 @@ Reader 不依赖 EPUB 文件名即可精确跨章节跳转。`Image` 等
 
 ### 资料库书源
 
-书籍元数据 `librarySource` 支持 `jojo`（JOJO书库）和 `community`（共享书库）。EPUB 导入自动使用
-`community` 并要求 `access: authenticated`；微信读书 JSON 和其他格式默认 `jojo`。字段贯穿
+书籍元数据 `librarySource` 支持 `jojo`（JOJO书库）和 `community`（共享书库）。每次导入都须明确选择书源，
+不按 EPUB、JSON 或 Kindle 格式自动分类。CLI 必须传入 `--library-source jojo|community`，
+程序调用必须提供 `librarySource`；选择 `community` 时要求 `access: authenticated`。字段贯穿
 Catalog、Dataset、Item summary、Canonical Item 和 Delivery Manifest，修改书名或发布设置时保留。
-旧数据缺少字段时视为 JOJO书库；未知书源不展示。已有 EPUB 根据 Canonical provenance 分类，
-不根据导出格式判断（每本书都可能提供 EPUB 下载）。分类不会更改草稿/发布状态。
+旧数据缺少字段时视为 JOJO书库；未知书源不展示。已有分类不再根据 provenance 或导出格式重算，
+分类不会更改草稿/发布状态。
 
 网页账号设置、桌面设置和移动端设置均有“资料库设置”。JOJO书库始终开启且不可关闭，共享书库默认关闭，
 偏好保存在当前设备。可见条件同时满足：书籍未下架、书源开启、符合登录门槛。
