@@ -6,6 +6,14 @@ let api: typeof import("../src/annotations/api");
 
 vi.mock("../src/account/auth", () => ({
   authClient: {
+    rpc: (name: string, params: Record<string, unknown>) => {
+      const request = {
+        setHeader: (header: string, value: string) => { setHeader(header, value); return request; },
+        abortSignal: (signal: AbortSignal) => { abortSignal(signal); return request; },
+        then: (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) => Promise.resolve(rpc(name, params)).then(resolve, reject),
+      };
+      return request;
+    },
     auth: { getSession },
   },
 }));
@@ -252,4 +260,23 @@ describe("annotation API compatibility", () => {
     expect(setHeader).toHaveBeenLastCalledWith("Authorization", "Bearer token-me");
     expect(rpc).toHaveBeenCalledTimes(1);
   });
+
+  it("routes book annotation queries directly to Supabase PostgREST without backend fetch", async () => {
+    rpc.mockResolvedValue({ data: [thread("one", { underlinedByMe: true })], error: null });
+    await api.loadMyBookAnnotations("book:one", "reader:me");
+    expect(rpc).toHaveBeenCalledWith("get_my_book_annotations", { p_content_id: "book:one", p_after_id: null, p_limit: 100 });
+    expect(fetch).not.toHaveBeenCalled();
+
+    await api.loadPublicBookAnnotations("book:one", "reader:me");
+    expect(rpc).toHaveBeenCalledWith("get_public_book_annotations", { p_content_id: "book:one", p_after_id: null, p_limit: 100 });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("routes writes and mutations to the backend annotations API via fetch", async () => {
+    rpc.mockResolvedValue({ data: thread("one"), error: null });
+    await api.createAnnotation(subject, anchor);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect((fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]).toMatch(/\/api\/v1\/annotations$/);
+  });
 });
+

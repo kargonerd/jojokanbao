@@ -5,6 +5,14 @@ const { rpc, getSession, authLoaded, setHeader, abortSignal } = vi.hoisted(() =>
 vi.mock("../account/auth", () => {
   authLoaded();
   return { mobileAuthClient: {
+    rpc: (name: string, params: Record<string, unknown>) => {
+      const request = {
+        setHeader: (header: string, value: string) => { setHeader(header, value); return request; },
+        abortSignal: (signal: AbortSignal) => { abortSignal(signal); return request; },
+        then: (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) => Promise.resolve(rpc(name, params)).then(resolve, reject),
+      };
+      return request;
+    },
     auth: { getSession },
   } };
 });

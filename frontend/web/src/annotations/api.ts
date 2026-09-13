@@ -16,6 +16,11 @@ const api = createAnnotationApi({
     const session = data.session;
     if (error || session?.user.id !== expectedUserId || !session.access_token) throw new Error("登录状态已变化，请重新打开笔记");
     const authorization = `Bearer ${session.access_token}`;
+    if (name === "get_my_book_annotations" || name === "get_public_book_annotations") {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const request = (authClient as any).rpc(name, params).setHeader("Authorization", authorization);
+      return signal ? request.abortSignal(signal) : request;
+    }
     const response = await fetch(agentGatewayUrl("/api/v1/annotations"), {
       method: "POST", headers: { "Authorization": authorization, "Content-Type": "application/json" },
       body: JSON.stringify({ operation: name, params }), signal,
