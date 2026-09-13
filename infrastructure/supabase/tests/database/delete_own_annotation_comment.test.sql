@@ -6,7 +6,6 @@ insert into auth.users(id, email) values
  ('00000000-0000-4000-9000-000000009201', 'comment-owner@example.invalid'),
  ('00000000-0000-4000-9000-000000009202', 'comment-reader@example.invalid');
 set local session_replication_role = origin;
-update private.feature_flags set config = config || '{"publicMarkThreshold": 2}'::jsonb where key = 'reader.annotations';
 insert into public.content_annotations(id, content_type, content_id, section_id, content_title, user_id, quote, anchor_key)
 values ('00000000-0000-4000-9000-000000009210', 'book', 'delete-comment-book', 'chapter', '书', '00000000-0000-4000-9000-000000009201', '原文', repeat('b', 64));
 insert into public.content_annotation_marks(annotation_id, user_id) values

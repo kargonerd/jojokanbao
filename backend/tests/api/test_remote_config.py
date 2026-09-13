@@ -128,3 +128,10 @@ def test_annotation_gateway_verifies_identity_before_sending_its_own_threshold(m
         assert seen[0][1]["json"]["p_user_id"] == "verified-reader"
         assert seen[0][1]["json"]["p_public_mark_threshold"] == 7
         assert TOKEN not in response.text
+
+        delete_body = {"operation": "delete_my_annotation_comment", "params": {"p_comment_id": "00000000-0000-0000-0000-000000000001"}}
+        delete_response = client.post("/v1/annotations", json=delete_body, headers={"Authorization": "Bearer captured-reader-token"})
+        assert delete_response.status_code == 200
+        assert seen[1][1]["json"]["p_operation"] == "delete_my_annotation_comment"
+        assert seen[1][1]["json"]["p_params"]["p_comment_id"] == "00000000-0000-0000-0000-000000000001"
+
