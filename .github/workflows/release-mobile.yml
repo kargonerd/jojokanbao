@@ -222,7 +222,7 @@ jobs:
           rclone config create jojo-b2 b2 account "$B2_KEY_ID" key "$B2_APPLICATION_KEY" --non-interactive
           apk="$(find release -maxdepth 1 -type f -name '*.apk' -print -quit)"
           target="jojo-b2:$B2_BUCKET/releases/mobile/android/stable/$(basename "$apk")"
-          rclone copyto "$apk" "$target" --immutable
+          rclone copyto "$apk" "$target" --immutable --checksum
 
       - name: Verify APK through CDN
         shell: bash
@@ -230,7 +230,7 @@ jobs:
           set -euo pipefail
           url="$(jq -er '.artifacts[0].url' mobile-catalog.json)"
           expected="$(jq -er '.artifacts[0].sha256' mobile-catalog.json)"
-          curl --fail --location --retry 5 --output "$RUNNER_TEMP/mobile.apk" "$url?release=$GITHUB_SHA"
+          curl --http1.1 --fail --location --retry 5 --retry-all-errors --connect-timeout 30 --max-time 900 --output "$RUNNER_TEMP/mobile.apk" "$url?release=$GITHUB_SHA"
           actual="$(sha256sum "$RUNNER_TEMP/mobile.apk" | cut -d' ' -f1)"
           test "$actual" = "$expected"
 
