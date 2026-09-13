@@ -667,10 +667,10 @@ index 0000000000000000000000000000000000000000..dc0a9f92e713ea0b8fa420f820dbbeeb
 +}
 diff --git a/android/src/test/java/expo/modules/audio/service/LockScreenAudioPlayerTest.kt b/android/src/test/java/expo/modules/audio/service/LockScreenAudioPlayerTest.kt
 new file mode 100644
-index 0000000000000000000000000000000000000000..1205ad66b5ef7d07c8b4223826454d23bd8e226f
+index 0000000000000000000000000000000000000000..b46cb2e56aa1bc55949d7c1edd3534aeee29b442
 --- /dev/null
 +++ b/android/src/test/java/expo/modules/audio/service/LockScreenAudioPlayerTest.kt
-@@ -0,0 +1,170 @@
+@@ -0,0 +1,173 @@
 +package expo.modules.audio.service
 +
 +import android.os.Looper
@@ -689,6 +689,7 @@ index 0000000000000000000000000000000000000000..1205ad66b5ef7d07c8b4223826454d23
 +import org.junit.Test
 +import org.junit.runner.RunWith
 +import org.robolectric.RobolectricTestRunner
++import org.robolectric.Shadows.shadowOf
 +import org.robolectric.annotation.Config
 +import org.robolectric.shadows.ShadowSystemClock
 +
@@ -742,6 +743,7 @@ index 0000000000000000000000000000000000000000..1205ad66b5ef7d07c8b4223826454d23
 +    assertEquals(360_000L, system.currentPosition)
 +    assertEquals(89_000L, part.duration)
 +    part.replacePart()
++    shadowOf(Looper.getMainLooper()).idle()
 +    assertEquals(61_000L, part.duration)
 +    assertEquals(1_260_000L, system.duration)
 +    assertEquals(360_000L, system.currentPosition)
@@ -835,6 +837,7 @@ index 0000000000000000000000000000000000000000..1205ad66b5ef7d07c8b4223826454d23
 +    val system = LockScreenAudioPlayer(part) { _, _, _ -> }
 +    system.updatePlayback(chapter(playing = true))
 +    part.failPart()
++    shadowOf(Looper.getMainLooper()).idle()
 +    assertEquals(1_260_000L, system.duration)
 +    assertNull(system.playerError)
 +    assertEquals(Player.STATE_BUFFERING, system.playbackState)
@@ -902,7 +905,7 @@ index d2046b5185ff05f1f5b0d131b26b83e0052bb785..1bfe47e40b6f726cbe8f5fee43e799cb
            player.metadata = nil
            player.isActiveForLockScreen = false
 diff --git a/ios/AudioPlayer.swift b/ios/AudioPlayer.swift
-index 6d7cc7b3c76785955edac043fbd77b8aaaffb16e..e9d822b2c9e5e5d20edc9af66971fc2feede69bf 100644
+index 6d7cc7b3c76785955edac043fbd77b8aaaffb16e..b14bca9f6a73d4c15414d8121a882574aba59dd5 100644
 --- a/ios/AudioPlayer.swift
 +++ b/ios/AudioPlayer.swift
 @@ -4,6 +4,7 @@ import Combine
@@ -922,7 +925,7 @@ index 6d7cc7b3c76785955edac043fbd77b8aaaffb16e..e9d822b2c9e5e5d20edc9af66971fc2f
    var currentRate: Float = 0.0
    let interval: Double
    var wasPlaying = false
-@@ -117,11 +120,42 @@ public class AudioPlayer: SharedRef<AVPlayer> {
+@@ -117,11 +120,43 @@ public class AudioPlayer: SharedRef<AVPlayer> {
      self.metadata = metadata
      if active {
        MediaController.shared.setActivePlayer(self, options: options)
@@ -954,6 +957,7 @@ index 6d7cc7b3c76785955edac043fbd77b8aaaffb16e..e9d822b2c9e5e5d20edc9af66971fc2f
 +  @discardableResult
 +  func requestLockScreenPlayback(_ action: String, position: Double? = nil) -> Bool {
 +    guard let playback = lockScreenPlayback else { return false }
++    if action == "pause" { ref.pause() }
 +    var arguments: [String: Any] = ["action": action, "chapterId": playback.chapterId]
 +    if let position {
 +      guard position.isFinite else { return false }

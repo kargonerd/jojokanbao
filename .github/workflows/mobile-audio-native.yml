@@ -1,0 +1,102 @@
+name: Mobile audio native tests
+
+on:
+  pull_request:
+    branches: [master]
+    paths:
+      - .github/workflows/mobile-audio-native.yml
+      - frontend/patches/expo-audio@*.patch
+      - frontend/mobile/package.json
+      - frontend/mobile/app.json
+      - frontend/mobile/app.config.js
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-audio-native-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android-audio:
+    name: Android audio controls
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CI: "true"
+      APP_VARIANT: standard
+      EXPO_PUBLIC_APP_VARIANT: standard
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 22.19.0
+          cache: pnpm
+
+      - name: Select the runner's JDK 17
+        run: |
+          test -x "$JAVA_HOME_17_X64/bin/java"
+          echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+          echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
+
+      - name: Install Android SDK components
+        # Expo SDK 55 uses NDK 27.1; expo-updates still requests 27.0.
+        # Install both explicitly instead of overriding either package's build.
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" \
+            "platforms;android-36" "build-tools;36.0.0" \
+            "ndk;27.1.12297006" "ndk;27.0.12077973"
+
+      - name: Restore Gradle and Robolectric dependencies
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            ~/.m2/repository/org/robolectric
+          key: ${{ runner.os }}-${{ runner.arch }}-audio-native-jdk17-v1-${{ hashFiles('pnpm-lock.yaml', 'frontend/mobile/package.json', 'frontend/patches/expo-audio@*.patch') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-audio-native-jdk17-v1-
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Generate Android native project
+        working-directory: frontend/mobile
+        run: pnpm exec expo prebuild --platform android --no-install --clean
+
+      - name: Test chapter timeline and system controls
+        working-directory: frontend/mobile/android
+        run: |
+          ./gradlew :expo-audio:testDebugUnitTest \
+            --tests expo.modules.audio.service.LockScreenAudioPlayerTest \
+            --no-daemon --console=plain --max-workers=2 --stacktrace
+
+      - name: Collect failed test reports
+        if: failure()
+        working-directory: frontend/mobile
+        run: |
+          report_dir="$RUNNER_TEMP/mobile-audio-native"
+          mkdir -p "$report_dir"
+          audio_root="$(node -p 'require("node:path").dirname(require.resolve("expo-audio/package.json"))')"
+          for report in test-results/testDebugUnitTest reports/tests/testDebugUnitTest; do
+            if [[ -d "$audio_root/android/build/$report" ]]; then
+              mkdir -p "$report_dir/$(dirname "$report")"
+              cp -R "$audio_root/android/build/$report" "$report_dir/$report"
+            fi
+          done
+
+      - name: Upload failed test reports
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: mobile-audio-native-test-reports
+          path: ${{ runner.temp }}/mobile-audio-native
+          if-no-files-found: warn
+          retention-days: 14

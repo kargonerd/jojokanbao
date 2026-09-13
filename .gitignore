@@ -49,6 +49,8 @@ tools/data-workbench/server/.runtime/
 
 # Local scratch directories used during migration/cleanup
 .tmp-empty-delete/
+# Local dependency patch staging; shipped patches live in frontend/patches/.
+/.expo-audio-patch/
 # Local deployment builds and cloud-code backups.
 /.runtime/
 /.times-runtime/

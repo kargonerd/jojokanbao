@@ -14,7 +14,7 @@ patchedDependencies:
     hash: nvqj2ep55o6kymeg6vnxt4dm5e
     path: frontend/patches/@react-native__gradle-plugin@0.83.10.patch
   expo-audio@55.0.18:
-    hash: rri3x6nmurv7r7bll7o2qxz2vu
+    hash: bln37gkz4fwy3gligctpkc4qqu
     path: frontend/patches/expo-audio@55.0.18.patch
   pdfjs-dist@5.7.284:
     hash: zahbskxuqcrzag4gobt5x7k26i
@@ -248,7 +248,7 @@ importers:
         version: 55.0.19(expo@55.0.31)
       expo-audio:
         specifier: ~55.0.18
-        version: 55.0.18(patch_hash=rri3x6nmurv7r7bll7o2qxz2vu)(expo-asset@55.0.20(expo@55.0.31)(react-native@0.83.10(patch_hash=5dtbie6hwdh3ov3haesci2i5ha)(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0)(typescript@5.9.3))(expo@55.0.31)(react-native@0.83.10(patch_hash=5dtbie6hwdh3ov3haesci2i5ha)(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0)
+        version: 55.0.18(patch_hash=bln37gkz4fwy3gligctpkc4qqu)(expo-asset@55.0.20(expo@55.0.31)(react-native@0.83.10(patch_hash=5dtbie6hwdh3ov3haesci2i5ha)(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0)(typescript@5.9.3))(expo@55.0.31)(react-native@0.83.10(patch_hash=5dtbie6hwdh3ov3haesci2i5ha)(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0)
       expo-brightness:
         specifier: ~55.0.17
         version: 55.0.17(expo@55.0.31)(react-native@0.83.10(patch_hash=5dtbie6hwdh3ov3haesci2i5ha)(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))
@@ -13392,7 +13392,7 @@ snapshots:
       - supports-color
       - typescript
 
-  expo-audio@55.0.18(patch_hash=rri3x6nmurv7r7bll7o2qxz2vu)(expo-asset@55.0.20(expo@55.0.31)(react-native@0.83.10(patch_hash=5dtbie6hwdh3ov3haesci2i5ha)(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0)(typescript@5.9.3))(expo@55.0.31)(react-native@0.83.10(patch_hash=5dtbie6hwdh3ov3haesci2i5ha)(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0):
+  expo-audio@55.0.18(patch_hash=bln37gkz4fwy3gligctpkc4qqu)(expo-asset@55.0.20(expo@55.0.31)(react-native@0.83.10(patch_hash=5dtbie6hwdh3ov3haesci2i5ha)(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0)(typescript@5.9.3))(expo@55.0.31)(react-native@0.83.10(patch_hash=5dtbie6hwdh3ov3haesci2i5ha)(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0):
     dependencies:
       expo: 55.0.31(@babel/core@7.29.0)(@expo/dom-webview@55.0.6)(@expo/metro-runtime@55.0.12)(react-dom@19.2.0(react@19.2.0))(react-native-webview@13.16.0(patch_hash=ypvsfyjpeb46epqo2rovpsrtby)(react-native@0.83.10(patch_hash=5dtbie6hwdh3ov3haesci2i5ha)(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0))(react-native@0.83.10(patch_hash=5dtbie6hwdh3ov3haesci2i5ha)(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0)(typescript@5.9.3)
       expo-asset: 55.0.20(expo@55.0.31)(react-native@0.83.10(patch_hash=5dtbie6hwdh3ov3haesci2i5ha)(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0)(typescript@5.9.3)
