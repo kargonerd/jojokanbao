@@ -9,7 +9,6 @@ PostHog Remote config 是小型运行参数的编辑与回滚入口。前后端�
 | 配置 | 使用方 | 生效路径 |
 | --- | --- | --- |
 | `auth_signup_config` | Web/Desktop/Mobile 注册界面、Python API | 客户端持久缓存与服务端进程缓存，提交时由后端签发注册授权 |
-| `reader_annotations_config` | Python 批注 API | 服务端读取阈值，携带可信参数执行数据库操作 |
 | `ai_usage_limits_config` | Agent | 服务端读取频率、日额度与执行时限，数据库原子维护用量 |
 | `ops_email_quota_config` | 邮件额度检查 | 每次任务通过 SDK 读取 |
 | `support_config` | Web/Desktop 支持页、Mobile 设置页 | 客户端异步读取并持久缓存 |

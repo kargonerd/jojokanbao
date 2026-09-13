@@ -124,21 +124,21 @@ server; the database enforces identity, ownership, privacy and atomic updates.
 
 | 内容 | 存放位置 | 例子 |
 | --- | --- | --- |
-| 限额、阈值、执行时限 | PostHog Remote config、服务端进程缓存 | AI 使用限额、批注公开阈值 |
+| 限额、执行时限 | PostHog Remote config、服务端进程缓存 | AI 使用限额 |
 | 客户端公开配置 | PostHog Remote config、客户端持久缓存 | 注册界面策略、QQ群号 |
 | 用户计数、租约、任务状态和业务记录 | 各自的业务表或状态存储 | `private.agent_usage_state` |
-| 部署地址和密钥 | 环境变量及服务端凭据存储 | Operator Token、Agent 凭据 |
+| 部署地址和密钥 | 环境变量及服务端凭据存储 | `SUPABASE_SECRET_KEY`、Agent 凭据 |
 
 需要关联查询、独立行级权限或大量独立记录的数据使用业务存储。
 PostHog payload 只存可公开的运行参数。数据库原子操作接受受信任后端传入的参数，
-并校验服务身份、用户权限和数值范围。用户用量与执行中的租约独立于参数变更。
+并校验服务身份、用户权限和数值范围；批注的公开划线阈值固定在数据库函数内，不由调用方提供。
+用户用量与执行中的租约独立于参数变更。
 
 ### 配置字段
 
 | PostHog Remote config | 字段 | 示例值与范围 |
 | --- | --- | --- |
 | `auth_signup_config` | `invitationRequired` | 布尔值；客户端无缓存时先显示邀请码 |
-| `reader_annotations_config` | `publicMarkThreshold` | 示例 2；整数 1–100 |
 | `ai_usage_limits_config` | `requestsPerMinute` | 示例 3；整数 1–60 |
 | `ai_usage_limits_config` | `requestsPerDay` | 示例 100；整数 1–10,000 |
 | `ai_usage_limits_config` | `maxRunSeconds` | 示例 300 秒；整数 30–600 |

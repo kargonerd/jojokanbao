@@ -35,13 +35,8 @@ describe("native annotation RPC binding", () => {
     getSession.mockReset().mockResolvedValue({ data: { session: { user: { id: "reader:a" }, access_token: "token-a" } }, error: null });
     setHeader.mockReset();
     abortSignal.mockReset();
-    vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => {
-      setHeader("Authorization", (init.headers as Record<string,string>).Authorization);
-      if (init.signal) abortSignal(init.signal);
-      const { operation, params } = JSON.parse(init.body as string);
-      const result = await rpc(operation, params);
-      return Response.json(result.error ? {error:result.error} : result.data, {status:result.error ? 400 : 200});
-    }));
+    // Native reader annotations go straight to Supabase; any fetch here is a regression.
+    vi.stubGlobal("fetch", vi.fn());
     authLoaded.mockClear();
     api = await import("./api");
   });
@@ -167,6 +162,20 @@ describe("native annotation RPC binding", () => {
     await expect(api.createAnnotation(subject, anchor, "私密草稿", "private", "reader:a")).rejects.toThrow("登录状态已变化");
     expect(rpc).not.toHaveBeenCalled();
     expect(setHeader).not.toHaveBeenCalled();
+  });
+
+  it("binds every operation to the native Supabase session without a backend fetch", async () => {
+    await api.createAnnotation(subject, anchor, "公开想法");
+    expect(rpc).toHaveBeenLastCalledWith("create_content_annotation", expect.objectContaining({ p_initial_comment: "公开想法" }));
+    await api.setAnnotationCommentLike("comment", true);
+    expect(rpc).toHaveBeenLastCalledWith("set_annotation_comment_like", { p_comment_id: "comment", p_liked: true });
+    await api.deleteMyAnnotationComment("comment");
+    expect(rpc).toHaveBeenLastCalledWith("delete_my_annotation_comment", { p_comment_id: "comment" });
+    await api.deleteMyAnnotationMark("saved");
+    expect(rpc).toHaveBeenLastCalledWith("delete_my_annotation_mark", { p_annotation_id: "saved" });
+    expect(setHeader).toHaveBeenCalledTimes(4);
+    expect(setHeader).toHaveBeenLastCalledWith("Authorization", "Bearer token-a");
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
 

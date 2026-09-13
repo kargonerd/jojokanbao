@@ -101,37 +101,3 @@ def test_signup_denies_unavailable_policy_and_missing_server_key():
         config.get.return_value = {"invitationRequired":False}
         assert client.post("/v1/account/signup-authorization", json={"email":"x@example.com"}).status_code == 503
 
-
-def test_annotation_gateway_verifies_identity_before_sending_its_own_threshold(monkeypatch):
-    app = create_app()
-    config = AsyncMock()
-    config.get.return_value = {"publicMarkThreshold":7}
-    app.dependency_overrides[get_remote_config] = lambda: config
-    app.dependency_overrides[get_settings] = settings
-    seen = []
-    async def get(_self, path, **kwargs):
-        assert path == "/auth/v1/user"
-        assert kwargs["headers"]["Authorization"] == "Bearer captured-reader-token"
-        return httpx.Response(200, json={"id":"verified-reader"})
-    async def post(_self, url, **kwargs):
-        seen.append((url, kwargs))
-        return httpx.Response(200, json=[])
-    monkeypatch.setattr(httpx.AsyncClient, "get", get)
-    monkeypatch.setattr(httpx.AsyncClient, "post", post)
-    with TestClient(app) as client:
-        body = {"operation":"get_annotation_threads","params":{"p_public_mark_threshold":1,"p_user_id":"victim"}}
-        assert client.post("/v1/annotations", json=body).status_code == 401
-        assert not seen
-        response = client.post("/v1/annotations",json=body,headers={"Authorization":"Bearer captured-reader-token"})
-        assert response.status_code == 200
-        assert seen[0][1]["headers"] == {"apikey":TOKEN}
-        assert seen[0][1]["json"]["p_user_id"] == "verified-reader"
-        assert seen[0][1]["json"]["p_public_mark_threshold"] == 7
-        assert TOKEN not in response.text
-
-        delete_body = {"operation": "delete_my_annotation_comment", "params": {"p_comment_id": "00000000-0000-0000-0000-000000000001"}}
-        delete_response = client.post("/v1/annotations", json=delete_body, headers={"Authorization": "Bearer captured-reader-token"})
-        assert delete_response.status_code == 200
-        assert seen[1][1]["json"]["p_operation"] == "delete_my_annotation_comment"
-        assert seen[1][1]["json"]["p_params"]["p_comment_id"] == "00000000-0000-0000-0000-000000000001"
-

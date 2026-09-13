@@ -80,13 +80,12 @@ PostHog Remote config 是参数编辑与回滚入口，配置文档保持全局�
 | Remote config | 字段 | 使用方 |
 | --- | --- | --- |
 | [`auth_signup_config`](https://us.posthog.com/project/604535/feature_flags/881155) | `invitationRequired` | 注册界面与 Auth 校验 |
-| [`reader_annotations_config`](https://us.posthog.com/project/604535/feature_flags/881157) | `publicMarkThreshold` | 共享批注公开展示 |
 | [`ai_usage_limits_config`](https://us.posthog.com/project/604535/feature_flags/881154) | `requestsPerMinute`、`requestsPerDay`、`maxRunSeconds` | AI 请求准入 |
 | [`ops_email_quota_config`](https://us.posthog.com/project/604535/feature_flags/881156) | `warningPercent`、`criticalPercent`、`usageSource`、`dailyLimit`、`monthlyLimit` | 邮件额度检查 |
 | [`support_config`](https://us.posthog.com/project/604535/feature_flags/881158) | `qqGroup` | Web/Desktop 支持页、Mobile 设置页 |
 
 前后端使用相同 key、相同 payload 和固定配置身份 `jojo-public-config`，`signed_in=false`。
-这五份文档保持全局启用，不添加按用户、平台或百分比分流规则；布尔策略放在 payload 字段中。
+这四份文档保持全局启用，不添加按用户、平台或百分比分流规则；布尔策略放在 payload 字段中。
 例如允许无邀请码注册时，将 `auth_signup_config` 的 payload 改为 `{"invitationRequired":false}`。
 参数范围见 [运行配置复用](../infrastructure/supabase/README.md#runtime-configuration-reuse)。
 
@@ -105,9 +104,9 @@ Python API 和 Agent 用官方 SDK 读取配置，在进程内保存已验证快
 并在要求邀请码时原子核销。客户端不能自行声明免邀请码。邀请码与邮箱验证码是两项独立校验：
 `invitationRequired` 控制邀请码，邮箱验证码用于确认邮箱所有权。
 
-批注请求经 `/api/v1/annotations` 进入后端，后端从 SDK 取得公开划线阈值，并携带用户 JWT 和
-服务端 Operator 凭据调用数据库原子操作。SQL 执行所有权、隐私、审核和参数边界检查。
-Agent 同样将可信限额传入配额操作，数据库按账号行锁维护计数和并发租约。
+批注不经后端：客户端携带用户 JWT 直接调用 Supabase 批注 RPC，公开划线阈值固定为 2
+并在数据库内生效。SQL 执行身份、所有权、隐私、审核和参数边界检查。
+Agent 将可信限额传入配额操作，数据库按账号行锁维护计数和并发租约。
 PostHog 管理参数和变更历史；数据库仅保存业务状态及服务端鉴权凭据。
 
 QQ群号由各端独立 SDK 读取 `support_config`，无需登录。
@@ -128,15 +127,17 @@ Web/Desktop 恢复联网时也刷新。无效响应保留有效缓存，公开�
 Web 发布前查询数据库的 `get_reader_runtime_contract`。所需迁移未安装时，master 合并仍执行构建验证，
 Beta 上传暂缓；正式发布报错退出。完成运行环境配置与数据库迁移后，重新运行 Deploy Web 发布。
 
-1. 在 PostHog 核对五份全局配置，保留部署目标的实际值；确保公开项目 Token 能读取完整 payload。
+1. 在 PostHog 核对四份全局配置，保留部署目标的实际值；确保公开项目 Token 能读取完整 payload。
 2. 配置客户端构建变量。Python API、Agent 和邮件额度 SCF 的运行环境均设置
    `POSTHOG_PROJECT_TOKEN`、`POSTHOG_API_HOST`。GitHub 构建变量不会自动成为云函数运行环境变量。
 3. Python API 与 Agent 设置同一个 `SUPABASE_SECRET_KEY`（Supabase secret key，service_role
    等级），并配置 Supabase URL 和 Publishable Key。服务端凭据只保存在服务端 Secret 中。
 4. 在受控发布窗口协调部署 API、Agent、客户端和 `202609130004_posthog_runtime.sql`、
-   `202609130005_admin_api_auth.sql`、`202609130006_delete_own_annotation_comment.sql`。
+   `202609130005_admin_api_auth.sql`、`202609130006_delete_own_annotation_comment.sql`、
+   `202609140001_annotations_direct_rpc.sql`。
    迁移更新 Auth 校验、批注/配额 RPC 合约和管理员鉴权方式，发布前备份并核对业务数据与配置；
-   新客户端依赖新的注册授权和批注 API，应与服务端一起验收。迁移保持已有账号、邀请码、批注、用量和租约。
+   新客户端依赖新的注册授权，并直接调用数据库批注 RPC，应与服务端和迁移一起验收。
+   迁移保持已有账号、邀请码、批注、用量和租约。
 5. 邮件额度服务重新打包发布，使每次检查从 PostHog 读取参数。验证注册两种模式、批注隐私和 AI 限额后开放流量。
 6. 移动端使用包含所需原生依赖的正式安装包；OTA 必须满足项目 runtimeVersion 与原生模块兼容要求。
    已安装客户端只有在获得包含新代码的更新后才会使用这些配置。

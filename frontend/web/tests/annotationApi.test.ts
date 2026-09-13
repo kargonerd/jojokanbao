@@ -83,13 +83,8 @@ describe("annotation API compatibility", () => {
     getSession.mockResolvedValue({ data: { session: { user: { id: "reader:me" }, access_token: "token-me" } }, error: null });
     setHeader.mockReset();
     abortSignal.mockReset();
-    vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => {
-      setHeader("Authorization", (init.headers as Record<string,string>).Authorization);
-      if (init.signal) abortSignal(init.signal);
-      const { operation, params } = JSON.parse(init.body as string);
-      const result = await rpc(operation, params);
-      return Response.json(result.error ? {error:result.error} : result.data, {status:result.error ? 400 : 200});
-    }));
+    // Reader annotations go straight to Supabase PostgREST; any fetch here is a regression.
+    vi.stubGlobal("fetch", vi.fn());
   });
 
   afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
@@ -261,22 +256,37 @@ describe("annotation API compatibility", () => {
     expect(rpc).toHaveBeenCalledTimes(1);
   });
 
-  it("routes book annotation queries directly to Supabase PostgREST without backend fetch", async () => {
+  it("serves every annotation operation from the reader's own Supabase session", async () => {
     rpc.mockResolvedValue({ data: [thread("one", { underlinedByMe: true })], error: null });
     await api.loadMyBookAnnotations("book:one", "reader:me");
     expect(rpc).toHaveBeenCalledWith("get_my_book_annotations", { p_content_id: "book:one", p_after_id: null, p_limit: 100 });
-    expect(fetch).not.toHaveBeenCalled();
 
     await api.loadPublicBookAnnotations("book:one", "reader:me");
     expect(rpc).toHaveBeenCalledWith("get_public_book_annotations", { p_content_id: "book:one", p_after_id: null, p_limit: 100 });
-    expect(fetch).not.toHaveBeenCalled();
-  });
 
-  it("routes writes and mutations to the backend annotations API via fetch", async () => {
-    rpc.mockResolvedValue({ data: thread("one"), error: null });
+    await api.loadAnnotationThreads(subject);
+    expect(rpc).toHaveBeenCalledWith("get_annotation_threads", { p_content_type: "book", p_content_id: "book:one", p_section_id: "chapter:one" });
+
     await api.createAnnotation(subject, anchor);
-    expect(fetch).toHaveBeenCalledTimes(1);
-    expect((fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]).toMatch(/\/api\/v1\/annotations$/);
+    expect(rpc).toHaveBeenLastCalledWith("create_content_annotation", expect.objectContaining({ p_content_id: "book:one" }));
+
+    await api.addAnnotationComment("annotation:one", "公开回复");
+    expect(rpc).toHaveBeenLastCalledWith("add_annotation_comment", expect.objectContaining({ p_body: "公开回复" }));
+
+    await api.reportAnnotationComment("comment:one", "spam");
+    expect(rpc).toHaveBeenLastCalledWith("report_annotation_comment", expect.objectContaining({ p_comment_id: "comment:one" }));
+
+    await api.setAnnotationCommentLike("comment:one", true);
+    expect(rpc).toHaveBeenLastCalledWith("set_annotation_comment_like", { p_comment_id: "comment:one", p_liked: true });
+
+    await api.deleteMyAnnotationMark("annotation:one");
+    expect(rpc).toHaveBeenLastCalledWith("delete_my_annotation_mark", { p_annotation_id: "annotation:one" });
+
+    await api.deleteMyAnnotationComment("comment:one");
+    expect(rpc).toHaveBeenLastCalledWith("delete_my_annotation_comment", { p_comment_id: "comment:one" });
+
+    expect(setHeader).toHaveBeenLastCalledWith("Authorization", "Bearer token-me");
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
 

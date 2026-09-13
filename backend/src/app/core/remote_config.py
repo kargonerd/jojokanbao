@@ -18,9 +18,6 @@ def validate_config(key: str, value: Any) -> dict[str, Any] | None:
         return None
     if key == "auth_signup_config" and type(value.get("invitationRequired")) is bool:
         return {"invitationRequired": value["invitationRequired"]}
-    threshold = value.get("publicMarkThreshold")
-    if key == "reader_annotations_config" and type(threshold) is int and 1 <= threshold <= 100:
-        return {"publicMarkThreshold": threshold}
     return None
 
 
@@ -46,7 +43,7 @@ class RemoteConfig:
                 )
             flags = await self.client.evaluate_flags("jojo-public-config", person_properties={"signed_in": False})
             valid = True
-            for key in ("auth_signup_config", "reader_annotations_config"):
+            for key in ("auth_signup_config",):
                 value = validate_config(key, flags.get_flag_payload(key))
                 if flags.is_enabled(key) and value is not None:
                     self.values[key] = value
