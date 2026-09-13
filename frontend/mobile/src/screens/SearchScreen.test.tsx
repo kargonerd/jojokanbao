@@ -47,6 +47,10 @@ afterEach(async () => { await act(async () => view.unmount()); vi.unstubAllGloba
 describe.each([false, true])("search article reading (eInk=%s)", (eInk) => {
   beforeEach(() => { mocks.eInk = eInk; });
 
+  it("opens search without requesting keyboard focus", () => {
+    expect(view.root.findByType("input").props.autoFocus).not.toBe(true);
+  });
+
   it("expands and collapses each article without opening the PDF", async () => {
     await search();
     expect(content().props.numberOfLines).toBe(3);

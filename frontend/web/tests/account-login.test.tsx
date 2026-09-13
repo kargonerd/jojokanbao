@@ -68,6 +68,9 @@ describe("account access", () => {
     const view = render(<MemoryRouter><AccountLogin /></MemoryRouter>);
 
     expect(auth.startAuthSync).toHaveBeenCalledOnce();
+    const support = screen.getByRole("link", { name: /支持 JOJO 看报/ });
+    expect(support.getAttribute("href")).toBe("/donate");
+    expect(support.nextElementSibling).toBe(screen.getByRole("link", { name: /关于 JOJO 看报/ }));
     expect(screen.getByRole("link", { name: /关于 JOJO 看报/ }).getAttribute("href")).toBe("/support");
     view.unmount();
     expect(auth.stopAuthSync).toHaveBeenCalledOnce();

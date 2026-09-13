@@ -3,7 +3,7 @@ import { useLibraryPreferencesStore } from "../../library/preferencesStore";
 import DOMPurify from "dompurify";
 import { renderedChapter, shouldRenderChapterTitle } from "@jojo/content/book-renderer";
 export { renderedBody, shouldRenderChapterTitle } from "@jojo/content/book-renderer";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { LoadingSpinner } from "@jojo/ui";
 import {
@@ -30,11 +30,11 @@ import { useAccountSessionStore } from "../../account/session";
 import { browserOfflineBookIdentity } from "../../offline/identity";
 import { useOfflineBooksStore } from "../../offline/books";
 
-function flattenToc(nodes: JojoTocNode[] = [], depth = 0): Array<JojoTocNode & { depth: number }> {
-  return nodes.flatMap((node) => [
-    ...(node.targetId ? [{ ...node, depth }] : []),
-    ...flattenToc(node.children, depth + 1),
-  ]);
+export function flattenToc(nodes: JojoTocNode[] = [], depth = 0, inheritedTargetId?: string): Array<JojoTocNode & { depth: number }> {
+  return nodes.flatMap((node) => {
+    const targetId = node.targetId || inheritedTargetId;
+    return [{ ...node, targetId, depth }, ...flattenToc(node.children, depth + 1, targetId)];
+  });
 }
 
 const CHINESE_DIGITS: Record<string, number> = {
@@ -117,6 +117,66 @@ export function findReferencedAnnotation(
     ?? fragment.annotations.find((annotation) => annotation.label === label);
 }
 
+function BookChapterContent({ fragment, loaded, assetUrls, onAnnotationReference }: {
+  fragment: JojoFragment;
+  loaded: LoadedItem;
+  assetUrls: Record<string, string>;
+  onAnnotationReference: (reference: AnnotationReference) => void;
+}) {
+  const { bodyHtml: html, titleHtml } = useMemo(() => renderedChapter(fragment, assetUrls), [fragment, assetUrls]);
+  return <>
+    {shouldRenderChapterTitle(fragment, html) && <h1 className="book-chapter-title" dangerouslySetInnerHTML={{ __html: titleHtml }} />}
+    <div className="prose-editorial [&_p]:my-[1.15em] [&_p]:text-justify [&_p]:indent-[2em] [&_h1]:text-red [&_h2]:text-red [&_h3]:text-red [&_h4]:text-red [&_figure]:my-10 [&_figure_img]:mx-auto [&_figure_img]:block [&_figure_img]:max-h-[78vh] [&_figure_img]:max-w-full [&_figcaption]:mt-3 [&_figcaption]:text-center [&_figcaption]:font-sans [&_figcaption]:text-xs [&_figcaption]:text-muted" dangerouslySetInnerHTML={{ __html: html }} />
+    {fragment.annotations.length > 0 && <section className="mt-16 border-t border-rule pt-8 text-[.82em] leading-[1.85]"><h2 className="mb-6 font-sans text-sm tracking-[.18em]">本章注释</h2><ol className="m-0 list-none p-0">{fragment.annotations.map((note) => {
+      const reference = parseAnnotationReference(note.body.value);
+      return <li id={note.id} key={note.id} className="mb-4 scroll-mt-20 border-l border-rule pl-4 target:border-red target:bg-[rgba(139,26,26,.06)]">
+        <span className="mr-2 font-bold text-red">{annotationDisplayLabel(note.label)}</span>
+        <span>{note.body.value}</span>{" "}
+        {reference && <button type="button" onClick={() => onAnnotationReference(reference)} className="border-0 bg-transparent p-0 text-red font-bold cursor-pointer">跳转到原注</button>}{" "}
+        <a href={`#${annotationMarkerId(note.id)}`} className="text-red no-underline" aria-label="返回正文脚注标记">↩</a>
+      </li>;
+    })}</ol></section>}
+    {fragment.assetRefs.flatMap((id) => {
+      const asset = loaded.manifest.assets.find((candidate) => candidate.id === id);
+      const url = assetUrls[id];
+      if (!asset || !url || asset.type === "image") return [];
+      if (asset.type === "audio") return [<audio key={id} controls className="w-full mt-5" src={url} />];
+      if (asset.type === "video") return [<video key={id} controls className="w-full mt-5" src={url} />];
+      return [];
+    })}
+  </>;
+}
+
+interface LoadedBookChapter {
+  fragment: JojoFragment;
+  content: ReactNode;
+}
+
+interface BookChapterSession {
+  controller: AbortController;
+  disposed: boolean;
+  requests: Map<string, Promise<LoadedBookChapter>>;
+  resolved: Map<string, LoadedBookChapter>;
+  assets: Map<string, Promise<string>>;
+  urls: Set<string>;
+}
+
+function waitForChapter<T>(request: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return request;
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise((resolve, reject) => {
+    const abort = () => reject(signal.reason);
+    signal.addEventListener("abort", abort, { once: true });
+    request.then((value) => {
+      signal.removeEventListener("abort", abort);
+      if (!signal.aborted) resolve(value);
+    }, (error) => {
+      signal.removeEventListener("abort", abort);
+      reject(error);
+    });
+  });
+}
+
 export function ReaderPage() {
   const { notebookId: datasetId, sourceId: itemKey } = useParams<{ notebookId: string; sourceId: string }>();
   const navigate = useNavigate();
@@ -131,9 +191,10 @@ export function ReaderPage() {
   );
   const enabledSources = useLibraryPreferencesStore((state) => state.enabledSources);
   const [loaded, setLoaded] = useState<LoadedItem>();
+  const [loadedBookKey, setLoadedBookKey] = useState("");
   const [fragment, setFragment] = useState<JojoFragment>();
   const [activeChapter, setActiveChapter] = useState("");
-  const [assetUrls, setAssetUrls] = useState<Record<string, string>>({});
+  const [chapterContent, setChapterContent] = useState<ReactNode>();
   const [coverUrl, setCoverUrl] = useState("");
   const [focusText, setFocusText] = useState<{ text: string; token: number }>();
   const [focusAnchorId, setFocusAnchorId] = useState(requestedAnnotation);
@@ -141,18 +202,122 @@ export function ReaderPage() {
   const [error, setError] = useState("");
   const { initialized: authInitialized, userId } = useAccountSessionStore();
   const offlineIdentityVersion = useOfflineBooksStore((state) => state.identityVersion);
+  const bookLoadKey = JSON.stringify([datasetId, itemKey, requestedAnnotation, requestedChapter, requestedQuote, authInitialized, userId, offlineIdentityVersion, enabledSources]);
   const offlineIdentity = browserOfflineBookIdentity();
   const readerUserId = loaded?.offline ? offlineIdentity.userId : userId;
   const readerIdentityReady = loaded?.offline ? offlineIdentity.initialized : authInitialized;
+  const followReferenceRef = useRef<(reference: AnnotationReference) => Promise<void>>(undefined);
+  const onAnnotationReference = useCallback((reference: AnnotationReference) => {
+    void followReferenceRef.current?.(reference);
+  }, []);
+  const chapterSession = useMemo<BookChapterSession>(() => ({
+    controller: new AbortController(), disposed: false,
+    requests: new Map(), resolved: new Map(), assets: new Map(), urls: new Set(),
+  }), [bookLoadKey, loaded, readerIdentityReady, readerUserId]);
+  const latestChapterSession = useRef(chapterSession);
+  latestChapterSession.current = chapterSession;
+
+  useLayoutEffect(() => {
+    chapterSession.disposed = false;
+    if (chapterSession.controller.signal.aborted) chapterSession.controller = new AbortController();
+    return () => {
+      chapterSession.disposed = true;
+      chapterSession.controller.abort();
+      chapterSession.urls.forEach((url) => URL.revokeObjectURL(url));
+      chapterSession.urls.clear();
+      chapterSession.requests.clear();
+      chapterSession.resolved.clear();
+      chapterSession.assets.clear();
+    };
+  }, [chapterSession]);
+
+  const loadChapterContent = useCallback(async (chapterId: string, signal?: AbortSignal): Promise<LoadedBookChapter> => {
+    signal?.throwIfAborted();
+    if (!loaded) throw new Error("书籍尚未载入");
+    if (loadedBookKey !== bookLoadKey) throw new DOMException("阅读会话已变化", "AbortError");
+    const access = loaded.manifest.access ?? loaded.item.access ?? loaded.index.access ?? loaded.entry.access ?? "public";
+    if (access === "authenticated" && (!readerIdentityReady || !readerUserId || loaded.ownerId !== readerUserId)) {
+      throw new Error("请登录后阅读这本书");
+    }
+    const controller = chapterSession.controller;
+    const ensureCurrent = () => {
+      controller.signal.throwIfAborted();
+      if (chapterSession.disposed || latestChapterSession.current !== chapterSession) {
+        throw new DOMException("阅读会话已变化", "AbortError");
+      }
+    };
+    ensureCurrent();
+    let request = chapterSession.requests.get(chapterId);
+    if (!request) {
+      request = (async () => {
+        const value = await loadFragment(loaded, chapterId, controller.signal);
+        ensureCurrent();
+        let missingAsset = false;
+        const pairs = await Promise.all(value.assetRefs.map(async (assetId) => {
+          let asset = chapterSession.assets.get(assetId);
+          if (!asset) {
+            asset = loadAssetUrl(loaded, assetId, controller.signal).then((url) => {
+              try { ensureCurrent(); }
+              catch (reason) { URL.revokeObjectURL(url); throw reason; }
+              chapterSession.urls.add(url);
+              return url;
+            });
+            chapterSession.assets.set(assetId, asset);
+            const pendingAsset = asset;
+            void asset.catch(() => {
+              if (chapterSession.assets.get(assetId) === pendingAsset) chapterSession.assets.delete(assetId);
+            });
+          }
+          try { return [assetId, await asset] as const; }
+          catch { ensureCurrent(); missingAsset = true; return undefined; }
+        }));
+        ensureCurrent();
+        const assetUrls = Object.fromEntries(pairs.filter((pair): pair is readonly [string, string] => Boolean(pair)));
+        const result = { fragment: value, content: <BookChapterContent fragment={value} loaded={loaded} assetUrls={assetUrls} onAnnotationReference={onAnnotationReference} /> };
+        chapterSession.resolved.set(chapterId, result);
+        // Keep text readable if an image fails, and allow the next request to retry it.
+        if (missingAsset) chapterSession.requests.delete(chapterId);
+        return result;
+      })();
+      chapterSession.requests.set(chapterId, request);
+      const pendingRequest = request;
+      void request.catch(() => {
+        if (chapterSession.requests.get(chapterId) === pendingRequest) chapterSession.requests.delete(chapterId);
+      });
+    }
+    return waitForChapter(request, signal);
+  }, [bookLoadKey, chapterSession, loaded, loadedBookKey, onAnnotationReference, readerIdentityReady, readerUserId]);
+
+  const loadChapter = useCallback(async (chapterId: string, signal: AbortSignal) => (
+    await loadChapterContent(chapterId, signal)
+  ).content, [loadChapterContent]);
+
+  const activateChapter = useCallback((chapterId: string) => {
+    const cached = chapterSession.resolved.get(chapterId);
+    setFragment(cached?.fragment);
+    setChapterContent(cached?.content);
+    setActiveChapter(chapterId);
+  }, [chapterSession]);
+
+  const onVisibleChapterChange = useCallback((chapterId: string) => {
+    const cached = chapterSession.resolved.get(chapterId);
+    if (!cached || chapterSession.disposed) return;
+    setFocusText(undefined);
+    setFocusAnchorId("");
+    setFragment(cached.fragment);
+    setChapterContent(cached.content);
+    setActiveChapter(chapterId);
+  }, [chapterSession]);
 
   useEffect(() => {
     if (!datasetId || !itemKey) return;
     let active = true;
-    setLoaded(undefined); setFragment(undefined);
+    setLoaded(undefined); setFragment(undefined); setChapterContent(undefined);
     setLoading(true); setError("");
     loadItem(datasetId, itemKey).then((value) => {
       if (!active) return;
       setLoaded(value);
+      setLoadedBookKey(bookLoadKey);
       const requested = value.manifest.content.chapters?.find((chapter) => chapter.id === requestedChapter);
       setFocusAnchorId(requestedAnnotation);
       const normalizedQuote = requestedQuote
@@ -165,7 +330,7 @@ export function ReaderPage() {
       setActiveChapter(requested?.id || value.manifest.content.chapters?.[0]?.id || "");
     }).catch((reason: Error) => { if (active) setError(reason.message); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [datasetId, itemKey, requestedAnnotation, requestedChapter, requestedQuote, authInitialized, userId, offlineIdentityVersion, enabledSources]);
+  }, [bookLoadKey, datasetId, itemKey, requestedAnnotation, requestedChapter, requestedQuote]);
 
   useEffect(() => {
     if (!datasetId || !itemKey) return;
@@ -178,31 +343,24 @@ export function ReaderPage() {
   }, [datasetId, itemKey, userId]);
 
   useEffect(() => {
-    if (!loaded || !activeChapter) return;
+    if (!loaded || !activeChapter || loadedBookKey !== bookLoadKey) return;
     const { access } = libraryBookPolicy(loaded.entry, loaded.index, loaded.item, loaded.manifest);
     if (access === "authenticated" && (!readerIdentityReady || !readerUserId || loaded.ownerId !== readerUserId)) return;
     let cancelled = false;
     const controller = new AbortController();
-    setFragment(undefined); setError("");
-    loadFragment(loaded, activeChapter, controller.signal).then(async (value) => {
-      const pairs = await Promise.all(value.assetRefs.map(async (assetId) => {
-        try { return [assetId, await loadAssetUrl(loaded, assetId, controller.signal)] as const; }
-        catch { return undefined; }
-      }));
-      if (cancelled) {
-        pairs.forEach((pair) => pair && URL.revokeObjectURL(pair[1]));
-        return;
-      }
-      setAssetUrls((previous) => {
-        Object.values(previous).forEach((url) => URL.revokeObjectURL(url));
-        return Object.fromEntries(pairs.filter((pair): pair is readonly [string, string] => Boolean(pair)));
-      });
-      setFragment(value);
+    setError("");
+    const cached = chapterSession.resolved.get(activeChapter);
+    if (cached) {
+      setFragment(cached.fragment); setChapterContent(cached.content);
+      return;
+    }
+    setFragment(undefined); setChapterContent(undefined);
+    loadChapterContent(activeChapter, controller.signal).then((value) => {
+      if (cancelled) return;
+      setFragment(value.fragment); setChapterContent(value.content);
     }).catch((reason: Error) => { if (!cancelled) setError(reason.message); });
     return () => { cancelled = true; controller.abort(); };
-  }, [activeChapter, loaded, readerIdentityReady, readerUserId]);
-
-  useEffect(() => () => Object.values(assetUrls).forEach((url) => URL.revokeObjectURL(url)), [assetUrls]);
+  }, [activeChapter, bookLoadKey, chapterSession, loaded, loadedBookKey, loadChapterContent, readerIdentityReady, readerUserId]);
 
   useEffect(() => {
     if (!loaded || !fragment) return;
@@ -248,13 +406,13 @@ export function ReaderPage() {
     }
   }
 
+  followReferenceRef.current = followAnnotationReference;
+
   const toc = useMemo(() => flattenToc(loaded?.manifest.content.toc), [loaded]);
-  const chapterMarkup = useMemo(() => fragment ? renderedChapter(fragment, assetUrls) : undefined, [assetUrls, fragment]);
-  const html = chapterMarkup?.bodyHtml ?? "";
   const spokenChapter = useMemo(() => fragment
     ? speechSegments(fragment.title, fragment.body.value, fragment.body.format)
     : [], [fragment]);
-  if (loading) return <ReadingLoadingState kind="book" status="正在打开书籍" fullscreen />;
+  if (loading || (loaded && loadedBookKey !== bookLoadKey)) return <ReadingLoadingState kind="book" status="正在打开书籍" fullscreen />;
   if (!loaded) return <div className="p-8 text-center text-muted">{error || "内容不存在"}</div>;
   const { access, librarySource, publicationStatus } = libraryBookPolicy(loaded.entry, loaded.index, loaded.item, loaded.manifest);
   if (publicationStatus === "draft") return <main className="p-8 text-center">这本书已下架</main>;
@@ -266,9 +424,9 @@ export function ReaderPage() {
   }
   const chapters = loaded.manifest.content.chapters ?? [];
   const activeChapterIndex = Math.max(0, chapters.findIndex((chapter) => chapter.id === activeChapter));
-  const tocItems = toc.length
-    ? toc
-    : chapters.map((chapter) => ({ ...chapter, targetId: chapter.id, depth: 0 }));
+  const representedChapters = new Set(toc.map((item) => item.targetId));
+  const tocItems = [...toc, ...chapters.filter((chapter) => !representedChapters.has(chapter.id))
+    .map((chapter) => ({ ...chapter, targetId: chapter.id, depth: 0 }))];
   const logicalChapterCount = (loaded.manifest.content.toc ?? []).filter((item) => (
     /^第[〇零一二两三四五六七八九十百\d]+章(?:[：:]|$)/.test(item.title.trim())
   )).length || undefined;
@@ -280,8 +438,8 @@ export function ReaderPage() {
     manifestObject={loaded.manifestObject}
     characterCount={loaded.manifest.contentStats.characterCount}
     logicalChapterCount={logicalChapterCount}
-    chapters={chapters.map((chapter) => ({ id: chapter.id, title: chapter.title }))}
-    toc={tocItems.map((item) => ({ id: item.id, title: item.title, targetId: item.targetId, depth: item.depth }))}
+    chapters={chapters.map((chapter) => ({ id: chapter.id, title: chapter.title, characterCount: chapter.characterCount }))}
+    toc={tocItems.map((item) => ({ id: item.id, title: item.title, targetId: item.targetId, anchorId: "anchorId" in item ? item.anchorId : undefined, depth: item.depth }))}
     activeChapterId={activeChapter}
     chapterKey={fragment?.fragmentId ?? activeChapter}
     focusAnchorId={focusAnchorId || undefined}
@@ -289,23 +447,22 @@ export function ReaderPage() {
     contentLoading={!fragment}
     error={error}
     backHref={readerReturnTo}
+    loadChapter={loadChapter}
+    onVisibleChapterChange={onVisibleChapterChange}
     onChapterChange={(chapterId) => {
-      setFragment(undefined);
       setFocusText(undefined);
       setFocusAnchorId("");
-      setActiveChapter(chapterId);
+      activateChapter(chapterId);
     }}
     onLocate={(chapterId, text) => {
       const normalizedText = text?.replace(/\s+/g, " ").trim();
       setFocusText(normalizedText ? { text: normalizedText.length > 80 ? normalizedText.slice(0, 36) : normalizedText, token: Date.now() } : undefined);
-      if (chapterId !== activeChapter) setFragment(undefined);
-      setActiveChapter(chapterId);
+      activateChapter(chapterId);
     }}
     onInternalLink={(chapterId, anchorId) => {
       setFocusText(undefined);
       setFocusAnchorId(anchorId || "");
-      if (chapterId !== activeChapter) setFragment(undefined);
-      setActiveChapter(chapterId);
+      activateChapter(chapterId);
     }}
     onSearch={(query) => searchLoadedBook(loaded, query)}
     speechControl={<SpeechPlayer
@@ -318,40 +475,19 @@ export function ReaderPage() {
       queueItems={chapters.map((chapter) => ({ id: chapter.id, title: chapter.title }))}
       activeQueueId={activeChapter}
       loadQueueItem={async (chapterId) => {
-        const chapter = await loadFragment(loaded, chapterId);
+        const { fragment: chapter } = await loadChapterContent(chapterId);
         return { title: chapter.title, segments: speechSegments(chapter.title, chapter.body.value, chapter.body.format) };
       }}
       onQueueItemChange={(chapterId) => {
-        setFragment(undefined);
         setFocusText(undefined);
         setFocusAnchorId("");
-        setActiveChapter(chapterId);
+        activateChapter(chapterId);
       }}
     />}
     onDownload={loaded.manifest.exports.some((item) => item.id === "export:epub")
       ? () => void downloadExport(loaded, "export:epub").catch((reason: Error) => setError(reason.message))
       : undefined}
   >
-    {fragment ? <>
-          {shouldRenderChapterTitle(fragment, html) && <h1 className="mb-12 mt-0 text-[2em] font-medium leading-[1.4] tracking-[-.02em] text-red" dangerouslySetInnerHTML={{ __html: chapterMarkup?.titleHtml ?? "" }} />}
-          <div className="prose-editorial [&_p]:my-[1.15em] [&_p]:text-justify [&_p]:indent-[2em] [&_h1]:text-red [&_h2]:text-red [&_h3]:text-red [&_h4]:text-red [&_figure]:my-10 [&_figure_img]:mx-auto [&_figure_img]:block [&_figure_img]:max-h-[78vh] [&_figure_img]:max-w-full [&_figcaption]:mt-3 [&_figcaption]:text-center [&_figcaption]:font-sans [&_figcaption]:text-xs [&_figcaption]:text-muted" dangerouslySetInnerHTML={{ __html: html }} />
-          {fragment.annotations.length > 0 && <section className="mt-16 border-t border-rule pt-8 text-[.82em] leading-[1.85]"><h2 className="mb-6 font-sans text-sm tracking-[.18em]">本章注释</h2><ol className="m-0 list-none p-0">{fragment.annotations.map((note: JojoAnnotation) => {
-            const reference = parseAnnotationReference(note.body.value);
-            return <li id={note.id} key={note.id} className="mb-4 scroll-mt-20 border-l border-rule pl-4 target:border-red target:bg-[rgba(139,26,26,.06)]">
-              <span className="mr-2 font-bold text-red">{annotationDisplayLabel(note.label)}</span>
-              <span>{note.body.value}</span>{" "}
-              {reference && <button type="button" onClick={() => void followAnnotationReference(reference)} className="border-0 bg-transparent p-0 text-red font-bold cursor-pointer">跳转到原注</button>}{" "}
-              <a href={`#${annotationMarkerId(note.id)}`} className="text-red no-underline" aria-label="返回正文脚注标记">↩</a>
-            </li>;
-          })}</ol></section>}
-          {fragment.assetRefs.flatMap((id) => {
-            const asset = loaded.manifest.assets.find((candidate) => candidate.id === id);
-            const url = assetUrls[id];
-            if (!asset || !url || asset.type === "image") return [];
-            if (asset.type === "audio") return [<audio key={id} controls className="w-full mt-5" src={url} />];
-            if (asset.type === "video") return [<video key={id} controls className="w-full mt-5" src={url} />];
-            return [];
-          })}
-    </> : <ReadingLoadingState kind="book" status="正在读取章节" spacingClassName="py-12" className="mx-auto max-w-sm" />}
+    {chapterContent ?? <ReadingLoadingState kind="book" status="正在读取章节" spacingClassName="py-12" className="mx-auto max-w-sm" />}
   </BookReader>;
 }

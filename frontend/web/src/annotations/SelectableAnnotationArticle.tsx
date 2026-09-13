@@ -5,6 +5,7 @@ import { ReaderSelectionPopover } from "../reading/ReaderSelectionPopover";
 import { useAccountSessionStore } from "../account/session";
 import { useFeatureFlag } from "../featureFlags";
 import { AnnotationDiscussionPanel } from "./AnnotationDiscussionPanel";
+import { AnnotationMarkPopover } from "./AnnotationMarkPopover";
 import { CommentVisibilityControl } from "./CommentVisibilityControl";
 import { renderAnnotationMarks, textAnchorFromRange } from "./domAnchors";
 import type { AnnotationSubject, AnnotationVisibility, TextAnchor } from "./types";
@@ -36,9 +37,17 @@ export function SelectableAnnotationArticle({
   const [comment, setComment] = useState("");
   const [commentVisibility, setCommentVisibility] = useState<AnnotationVisibility>("public");
   const [activeId, setActiveId] = useState<string>();
+  const [selectedMark, setSelectedMark] = useState<{ id: string; rect: ReaderSelectionRect }>();
   const [notice, setNotice] = useState("");
   const [saving, setSaving] = useState(false);
   const active = annotations.threads.find((thread) => thread.id === activeId);
+  const ownMark = annotations.threads.find((thread) => thread.id === selectedMark?.id && thread.underlinedByMe);
+
+  useEffect(() => {
+    setSelectedMark(undefined);
+    setActiveId(undefined);
+    setSelection(undefined);
+  }, [subject.contentType, subject.contentId, subject.sectionId, currentUserId]);
 
   useEffect(() => {
     const requested = new URLSearchParams(window.location.search).get("discussion");
@@ -47,7 +56,18 @@ export function SelectableAnnotationArticle({
 
   useEffect(() => {
     if (!rootRef.current) return;
-    renderAnnotationMarks(rootRef.current, annotations.threads, setActiveId);
+    renderAnnotationMarks(rootRef.current, annotations.threads, (id, rect) => {
+      if (!window.getSelection()?.isCollapsed) return;
+      setSelection(undefined);
+      setCommentOpen(false);
+      if (annotations.threads.find((thread) => thread.id === id)?.underlinedByMe) {
+        setActiveId(undefined);
+        setSelectedMark({ id, rect });
+      } else {
+        setSelectedMark(undefined);
+        setActiveId(id);
+      }
+    });
   }, [annotations.threads, children]);
 
   const captureSelection = useCallback(() => {
@@ -63,6 +83,7 @@ export function SelectableAnnotationArticle({
     const anchor = textAnchorFromRange(root, range);
     if (!anchor) { setSelection(undefined); return; }
     const rect = range.getBoundingClientRect();
+    setSelectedMark(undefined);
     setSelection({
       anchor,
       rect: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom },
@@ -138,6 +159,11 @@ export function SelectableAnnotationArticle({
   return (
     <>
       <div ref={rootRef} onPointerUp={capturePointerSelection} onKeyUp={captureSelection}>{children}</div>
+      {ownMark && selectedMark && access ? <AnnotationMarkPopover key={ownMark.id}
+        thread={ownMark} rect={selectedMark.rect} onClose={() => setSelectedMark((current) => current?.id === ownMark.id ? undefined : current)}
+        onDelete={async () => { await annotations.removeMark(ownMark.id); setNotice("已删除划线"); }}
+        onDiscuss={() => { setActiveId(ownMark.id); setSelectedMark(undefined); }}
+      /> : null}
       {selection ? (
         <ReaderSelectionPopover rect={selection.rect} width={(1 + Number(access) * 2 + Number(explanationAccess)) * 72}>
           <div className="book-selection-actions" role="toolbar" aria-label="选中文字工具">
@@ -155,6 +181,8 @@ export function SelectableAnnotationArticle({
         onClose={() => setActiveId(undefined)}
         onComment={(body, parentCommentId, visibility) => annotations.comment(active.id, body, parentCommentId, visibility)}
         onReport={(commentId, reason, details) => annotations.report(active.id, commentId, reason, details)}
+        onLike={(commentId, liked) => annotations.like(active.id, commentId, liked)}
+        onDeleteMark={() => annotations.removeMark(active.id)}
       /> : null}
     </>
   );

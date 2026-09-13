@@ -5,13 +5,13 @@ import { APP_NAVIGATION_ITEMS, AppHeader, type AppNavigationItem } from "./AppHe
 import "./styles.css";
 
 export function buildAppNavigationItems(authenticated: boolean): readonly AppNavigationItem[] {
-  const primaryItems = APP_NAVIGATION_ITEMS.filter((item) => item.href !== "/support");
-  const aboutItem = APP_NAVIGATION_ITEMS.find((item) => item.href === "/support");
+  const secondaryItems = APP_NAVIGATION_ITEMS.filter((item) => item.href === "/donate" || item.href === "/support");
+  const primaryItems = APP_NAVIGATION_ITEMS.filter((item) => item.href !== "/donate" && item.href !== "/support");
   return [
     ...primaryItems,
     ...(authenticated ? [{ label: "AI", href: "/rag", badge: "Beta" }] : []),
     ...(authenticated ? [{ label: "时事", href: "/times", badge: "Beta" }] : []),
-    ...(aboutItem ? [aboutItem] : []),
+    ...secondaryItems,
   ];
 }
 

@@ -8,6 +8,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./book-renderer": "./src/book-renderer.ts",
+    "./annotations": "./src/annotations.ts",
+    "./book-title-search": "./src/book-title-search.ts",
     "./speech": "./src/speech-client.ts",
     "./speech-dom": "./src/speech-dom.ts",
     "./speech-dom-script": "./src/speech-dom.generated.ts"
@@ -24,6 +26,7 @@
   },
   "dependencies": {
     "dompurify": "^3.4.12",
-    "fflate": "^0.8.2"
+    "fflate": "^0.8.2",
+    "pinyin-pro": "3.28.1"
   }
 }

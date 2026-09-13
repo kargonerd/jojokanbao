@@ -15,6 +15,20 @@ function annotationDisplayLabel(label: string | undefined): string {
   return /^\*+$/.test(label) ? label : `[${label}]`;
 }
 
+function matchesChapterTitle(heading: Element | undefined, title: string): boolean {
+  if (!heading || !/^H[1-6]$/.test(heading.tagName)) return false;
+  const normalize = (value: string) => value.normalize("NFKC").replace(/\s+/g, "");
+  if (normalize(heading.textContent || "") === normalize(title)) return true;
+  // Work on a detached copy: the displayed title keeps every note and anchor.
+  const comparison = heading.cloneNode(true) as Element;
+  for (const marker of comparison.querySelectorAll('a[href^="#"],a[data-target-id],a[data-anchor-id],[data-annotation-id],[role="doc-noteref"]')) {
+    const text = normalize(marker.textContent || "");
+    if (/^(?:\[\d+\]|〔\d+〕|【\d+】|\(\d+\)|[①-⑳*]+)$/.test(text)
+      || (marker.tagName === "A" && /^\d+$/.test(text) && marker.querySelector("sup"))) marker.remove();
+  }
+  return normalize(comparison.textContent || "") === normalize(title);
+}
+
 export function renderedChapter(fragment: JojoFragment, assetUrls: Record<string, string>): { titleHtml: string; bodyHtml: string } {
   const source = fragment.body.format === "html"
     ? fragment.body.value
@@ -91,6 +105,9 @@ export function renderedChapter(fragment: JojoFragment, assetUrls: Record<string
     marker.append(link);
     if (trailingText) marker.after(document.createTextNode(trailingText));
   }
+  if (firstContentElement && firstContentElement !== titleHeading && matchesChapterTitle(firstContentElement, fragment.title)) {
+    firstContentElement.classList.add("book-chapter-title");
+  }
   const titleHtml = titleHeading?.innerHTML ?? escapeHtml(fragment.title);
   titleHeading?.remove();
   // Only internally generated Blob URLs are inserted after sanitization.
@@ -102,9 +119,12 @@ export function renderedBody(fragment: JojoFragment, assetUrls: Record<string, s
 }
 
 export function shouldRenderChapterTitle(fragment: JojoFragment, html: string): boolean {
-  if (fragment.title !== "封面" && fragment.title !== "插图") return true;
   const document = new DOMParser().parseFromString(`<main>${html}</main>`, "text/html");
   const main = document.querySelector("main");
+  if (fragment.title !== "封面" && fragment.title !== "插图") {
+    const heading = [...(main?.children ?? [])].find((element) => element.tagName !== "HR"
+      && (element.textContent?.replace(/\s+/g, "") || element.querySelector("img,figure,svg")));
+    return !matchesChapterTitle(heading, fragment.title);
+  }
   return Boolean(main?.textContent?.replace(/\s+/g, "").length) || !main?.querySelector("img,figure,svg");
 }
-

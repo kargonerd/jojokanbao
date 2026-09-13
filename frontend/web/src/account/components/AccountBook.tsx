@@ -113,6 +113,7 @@ export function AccountBook({
           <button type="button" disabled={busy} onClick={() => openAccount("login")}>登录</button>
           <button type="button" disabled={busy} onClick={() => openAccount("register")}>注册</button>
         </div>
+        <Link className="login-book-entry__about" to="/donate">支持 JOJO 看报 →</Link>
         <Link className="login-book-entry__about" to="/support">关于 JOJO 看报 →</Link>
       </section>
 

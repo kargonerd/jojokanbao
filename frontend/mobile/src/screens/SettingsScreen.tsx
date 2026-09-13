@@ -2,7 +2,6 @@ import { LIBRARY_SOURCES, DEFAULT_LIBRARY_SOURCES } from "@jojo/content";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { ARCHIVE_WEB_ORIGIN, FEEDBACK_BILIBILI_URL, FEEDBACK_QQ_GROUP, PROJECT_COPYRIGHT_NOTICES, type TimesSourceRef } from "@jojo/content";
 import { useNavigation, useRoute, type NavigationProp, type RouteProp } from "@react-navigation/native";
-import { nativeApplicationVersion } from "expo-application";
 import * as Clipboard from "expo-clipboard";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -19,6 +18,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ScreenHeader } from "../components/ScreenHeader";
+import { AppVersionInfo } from "../components/AppVersionInfo";
 import { SectionTitle } from "../components/SectionTitle";
 import { IS_EINK_RELEASE } from "../config/appVariant";
 import { checkNativeAppUpdate, openNativeAppUpdate } from "../lib/appUpdate";
@@ -391,7 +391,7 @@ export function SettingsScreen() {
           <SectionTitle title="阅读数据" aside={`${recentIssues.length + recentBooks.length} 条`} />
           <View style={[styles.panel, { backgroundColor: theme.paper, borderColor: theme.rule }]}>
             <Pressable
-              onPress={() => Alert.alert("清除阅读记录？", undefined, [
+              onPress={() => Alert.alert("清除阅读记录？", "登录后，此操作会同步清除账号在其他设备上的阅读记录。", [
                 { text: "取消", style: "cancel" },
                 { text: "清除", style: "destructive", onPress: clearRecentReading },
               ])}
@@ -411,8 +411,8 @@ export function SettingsScreen() {
           <View style={[styles.panel, { backgroundColor: theme.paper, borderColor: theme.rule }]}>
             <View style={[styles.about, { borderBottomColor: theme.rule }]}>
               <Text style={[styles.aboutTitle, { color: theme.ink, fontFamily: theme.serif }]}>JOJO 看报</Text>
-              <Text style={[styles.aboutVersion, { color: theme.muted, fontFamily: theme.sans }]}>{nativeApplicationVersion ?? "0.0.1"}</Text>
             </View>
+            <AppVersionInfo />
             {Platform.OS === "android" ? (
               <Pressable
                 accessibilityRole="button"
@@ -452,10 +452,6 @@ export function SettingsScreen() {
                 <Ionicons name="open-outline" size={17} color={theme.muted} />
               </Pressable>
               {feedbackNotice ? <Text accessibilityLiveRegion="polite" style={[styles.feedbackNotice, { color: theme.muted, fontFamily: theme.sans }]}>{feedbackNotice}</Text> : null}
-              <Pressable accessibilityRole="button" onPress={() => navigation.navigate("Support")} style={[styles.actionRow, styles.actionRowTopDivider, { borderTopColor: theme.rule }]}>
-                <Text style={[styles.actionText, { color: theme.ink, fontFamily: theme.serif }]}>支持 JOJO 看报</Text>
-                <Ionicons name="heart-outline" size={17} color={theme.muted} />
-              </Pressable>
             </View>
           </View>
 
@@ -512,7 +508,6 @@ const styles = StyleSheet.create({
   updateMessage: { minHeight: 42, borderBottomWidth: StyleSheet.hairlineWidth, paddingVertical: 12, fontSize: 11, lineHeight: 17 },
   about: { minHeight: 58, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: "row", alignItems: "center" },
   aboutTitle: { flex: 1, fontSize: 13, fontWeight: "800" },
-  aboutVersion: { fontSize: 10, fontWeight: "700" },
   aboutParagraph: { paddingVertical: 12, fontSize: 14, lineHeight: 24 },
   feedbackGroup: { minHeight: 58, borderTopWidth: StyleSheet.hairlineWidth, flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 12 },
   copyGroupButton: { minHeight: 44, paddingHorizontal: 4, justifyContent: "center" },

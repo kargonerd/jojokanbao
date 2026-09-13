@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { JojoFragment } from "@jojo/content";
 import {
   findReferencedAnnotation,
+  flattenToc,
   parseAnnotationReference,
   renderedBody,
   shouldRenderChapterTitle,
@@ -47,6 +48,52 @@ describe("RAG content Reader annotations", () => {
     const document = new DOMParser().parseFromString(`<h1>${metadata.titleHtml}</h1>`, "text/html");
     expect(document.querySelector("h1 img")).toBeNull();
     expect(document.querySelector("h1")?.textContent).toBe('<img src=x onerror="alert(1)">');
+  });
+
+  it("retains structural TOC groups and inherits a chapter for nested anchor-only sections", () => {
+    expect(flattenToc([{ id: "part", order: 1, title: "第一部", children: [
+      { id: "chapter", order: 1, title: "第一章", targetId: "chapter-1", children: [
+        { id: "section", order: 1, title: "一、背景", anchorId: "background" },
+      ] },
+    ] }])).toMatchObject([
+      { id: "part", depth: 0, targetId: undefined },
+      { id: "chapter", depth: 1, targetId: "chapter-1" },
+      { id: "section", depth: 2, targetId: "chapter-1", anchorId: "background" },
+    ]);
+  });
+  it("shows a heading with a footnote once and preserves its original round-trip link", () => {
+    const title = "非洲当前的任务是反对帝国主义，不是反对资本主义";
+    const fragment: JojoFragment = {
+      formatVersion: "jojo-fragment/1", itemId: "book:test", fragmentId: "chapter:726",
+      type: "chapter", order: 1, title, assetRefs: [], annotations: [],
+      body: { format: "html", value: `<h1>${title}<a href="#wz_1_21" id="wzyy_1_21"><sup>[1]</sup></a></h1><p id="wz_1_21">注释<a href="#wzyy_1_21">返回</a></p>` },
+    };
+    const html = renderedBody(fragment, {});
+    expect(shouldRenderChapterTitle(fragment, html)).toBe(false);
+    const document = new DOMParser().parseFromString(html, "text/html");
+    expect(document.querySelectorAll("h1")).toHaveLength(1);
+    expect(document.querySelector("h1")?.classList.contains("book-chapter-title")).toBe(true);
+    expect(document.getElementById("wzyy_1_21")?.getAttribute("href")).toBe("#wz_1_21");
+    expect(document.getElementById("wz_1_21")?.textContent).toBe("注释返回");
+    expect(shouldRenderChapterTitle({ ...fragment, title: "不同的目录标题" }, html)).toBe(true);
+    const different = renderedBody({ ...fragment, title: "不同的目录标题" }, {});
+    expect(new DOMParser().parseFromString(different, "text/html").querySelector(".book-chapter-title")).toBeNull();
+    expect(shouldRenderChapterTitle({ ...fragment, title: "x" }, "<h1>x<sup>2</sup></h1>")).toBe(true);
+  });
+
+  it("keeps a generated empty annotation marker in the original heading", () => {
+    const fragment: JojoFragment = {
+      formatVersion: "jojo-fragment/1", itemId: "book:test", fragmentId: "chapter:1",
+      type: "chapter", order: 1, title: "第一章", assetRefs: [],
+      annotations: [{ id: "note-1", targetId: "chapter:1", kind: "footnote", label: "1", body: { format: "text", value: "注释" } }],
+      body: { format: "html", value: '<h1>第一章<sup data-annotation-id="note-1"></sup></h1><p>正文</p>' },
+    };
+    const { titleHtml, bodyHtml } = renderedChapter(fragment, {});
+    const html = `<h1 class="book-chapter-title">${titleHtml}</h1>${bodyHtml}`;
+    expect(shouldRenderChapterTitle(fragment, html)).toBe(false);
+    expect(html).toContain('href="#note-1"');
+    expect(html).toContain('id="annotation-ref-note-1"');
+    expect(html).toContain('class="book-chapter-title"');
   });
 
   it("renders imported tables and MathML with searchable anchors", () => {

@@ -1,4 +1,5 @@
 import type { JojoFragment } from "@jojo/content";
+import { DomUtils, parseDocument } from "htmlparser2";
 import type { BookReadingMode } from "./bookReaderBridge";
 import type { BookPaperColor } from "../store/mobileStore";
 
@@ -49,9 +50,28 @@ function insertAssets(html: string, assetUrls: Record<string, string>): string {
 function hasDuplicateLeadingTitle(html: string, title: string): boolean {
   const heading = /^\s*<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1\s*>/i.exec(html);
   if (!heading) return false;
-  const headingText = heading[2]!.replace(/<[^>]+>/g, "").replace(/\s+/g, "").trim();
-  const titleText = title.replace(/\s+/g, "").trim();
-  return headingText === titleText;
+  const normalize = (value: string) => value.normalize("NFKC").replace(/\s+/g, "");
+  const nodes = parseDocument(heading[2]!).children;
+  const text = nodes.map((node) => DomUtils.textContent(node)).join("");
+  if (normalize(text) === normalize(title)) return true;
+  function withoutNoteMarkers(node: (typeof nodes)[number]): string {
+    if (node.type === "text") return node.data;
+    if (!("children" in node)) return "";
+    if ("name" in node) {
+      const attributes = node.attribs;
+      const internalLink = node.name === "a" && (attributes.href?.startsWith("#")
+        || attributes["data-target-id"] || attributes["data-anchor-id"]);
+      const noteText = normalize(DomUtils.textContent(node));
+      const bracketedMarker = /^(?:\[\d+\]|〔\d+〕|【\d+】|\(\d+\)|[①-⑳*]+)$/.test(noteText);
+      const linkedSuperscript = internalLink && /^\d+$/.test(noteText)
+        && DomUtils.findOne((element) => element.name === "sup", node.children);
+      if ((internalLink || attributes["data-annotation-id"] || attributes.role === "doc-noteref")
+        && (bracketedMarker || linkedSuperscript)) return "";
+    }
+    return node.children.map(withoutNoteMarkers).join("");
+  }
+  // Compare without note labels, but preserve the source heading and its links.
+  return normalize(nodes.map(withoutNoteMarkers).join("")) === normalize(title);
 }
 
 function annotationDisplayLabel(label: string | undefined): string {
@@ -101,7 +121,36 @@ function enhanceAnnotationMarkers(fragment: JojoFragment, html: string): string 
   );
 }
 
-export function createBookDocument({ fragment, assetUrls, textScale, lineHeight, firstLineIndent, eInk, readingMode, paperColor }: BookDocumentOptions): string {
+/** Stable DOM id for an anchor, including when multiple chapters share one document. */
+export function bookChapterAnchorId(chapterId: string, anchorId: string): string {
+  return `reader-chapter:${encodeURIComponent(chapterId)}:${encodeURIComponent(anchorId)}`;
+}
+
+function scopeChapterAnchors(html: string, chapterId: string): string {
+  const document = parseDocument(html);
+  for (const element of DomUtils.findAll(() => true, document.children)) {
+    const attributes = element.attribs;
+    if (attributes.id) {
+      attributes["data-reader-anchor-id"] = attributes.id;
+      attributes.id = bookChapterAnchorId(chapterId, attributes.id);
+    }
+    if (attributes.href?.startsWith("#") && attributes.href.length > 1) {
+      let anchorId = attributes.href.slice(1);
+      try {
+        anchorId = decodeURIComponent(anchorId);
+      } catch {
+        // Preserve literal percent characters in legacy book anchors.
+      }
+      attributes["data-reader-href-anchor-id"] = anchorId;
+      const targetChapter = attributes["data-target-id"] || chapterId;
+      // href fragments are URL encoded; one decode returns the exact DOM id.
+      attributes.href = `#${encodeURIComponent(bookChapterAnchorId(targetChapter, anchorId))}`;
+    }
+  }
+  return DomUtils.getOuterHTML(document, { encodeEntities: "utf8" });
+}
+
+export function createBookChapterMarkup(fragment: JojoFragment, assetUrls: Record<string, string>): string {
   const sourceBody = insertAssets(safeBody(fragment), assetUrls);
   const bodyHasTitle = hasDuplicateLeadingTitle(sourceBody, fragment.title);
   const body = enhanceAnnotationMarkers(
@@ -118,6 +167,12 @@ export function createBookDocument({ fragment, assetUrls, textScale, lineHeight,
       return `<p id="${escapeHtml(note.id)}" data-footnote-note="${escapeHtml(note.id)}"><strong>${escapeHtml(annotationDisplayLabel(note.label))}</strong>${escapeHtml(note.body.value)}${referenceLink} <a href="#annotation-ref-${escapeHtml(note.id)}" aria-label="返回正文">↩</a></p>`;
     }).join("")}</section>`
     : "";
+  const content = `${showTitle ? `<h1>${escapeHtml(fragment.title)}</h1>` : ""}<div data-book-content data-target-id="${escapeHtml(fragment.fragmentId)}">${body}</div>${annotations}`;
+  return `<article data-reader-chapter-id="${escapeHtml(fragment.fragmentId)}">${scopeChapterAnchors(content, fragment.fragmentId)}</article>`;
+}
+
+export function createBookDocument({ fragment, assetUrls, textScale, lineHeight, firstLineIndent, eInk, readingMode, paperColor }: BookDocumentOptions): string {
+  const chapterMarkup = createBookChapterMarkup(fragment, assetUrls);
   const effectivePaperColor = eInk ? "white" : paperColor;
   const paper = effectivePaperColor === "ivory" ? "#fbfaf6" : effectivePaperColor === "dark" ? "#202321" : "#ffffff";
   const ink = effectivePaperColor === "dark" ? "#deded8" : "#202020";
@@ -127,7 +182,7 @@ export function createBookDocument({ fragment, assetUrls, textScale, lineHeight,
   const gutter = eInk ? "#8a8a8a" : "rgba(139, 26, 26, .22)";
   const readingLayout = readingMode === "paged" ? `
   html, body { width: 100%; height: 100%; overflow: hidden; overscroll-behavior: none; }
-  body { touch-action: pan-x; }
+  body { touch-action: pan-y pinch-zoom; }
   article {
     width: 100vw;
     height: 100vh;
@@ -165,7 +220,11 @@ export function createBookDocument({ fragment, assetUrls, textScale, lineHeight,
   }
   ` : `
   html { overflow-x: hidden; }
+  html, body, article { overflow-anchor: none; }
   article { width: 100%; max-width: 52rem; margin: 0 auto; padding: 5rem 1.35rem; }
+  [data-reader-chapter-slot] article { padding-top: 2rem; padding-bottom: 2rem; }
+  [data-reader-chapter-slot]:first-of-type article { padding-top: 5rem; }
+  [data-reader-chapter-slot]:last-of-type article { padding-bottom: 5rem; }
   `;
 
   return `<!doctype html>
@@ -199,5 +258,5 @@ export function createBookDocument({ fragment, assetUrls, textScale, lineHeight,
   h1, h2, h3, h4 { break-after: avoid-column; }
   figure, blockquote, .notes { break-inside: avoid-column; }
   ${readingLayout}
-</style></head><body data-reading-mode="${readingMode}"><article>${showTitle ? `<h1>${escapeHtml(fragment.title)}</h1>` : ""}<div data-book-content data-target-id="${escapeHtml(fragment.fragmentId)}">${body}</div>${annotations}</article></body></html>`;
+</style></head><body data-reading-mode="${readingMode}">${chapterMarkup}</body></html>`;
 }

@@ -22,11 +22,11 @@ function supportsModal() {
 }
 
 function shouldAutoPlay() {
+  // Keep local development focused on reading, including after a refresh.
+  if (import.meta.env.DEV) return false;
   if (isBetaChannel() || !supportsModal() || Date.now() < START_AT || Date.now() >= CLOSE_AT) return false;
   // Respect reduced motion without adding a permanent homepage entrance.
   if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return false;
-  // Let local development replay on refresh without changing production records.
-  if (import.meta.env.DEV) return true;
   if (seenInMemory) return false;
   try {
     return !window.localStorage.getItem(SEEN_KEY);
@@ -36,7 +36,6 @@ function shouldAutoPlay() {
 }
 
 function rememberVisit() {
-  if (import.meta.env.DEV) return true;
   try {
     window.localStorage.setItem(SEEN_KEY, "1");
     seenInMemory = true;

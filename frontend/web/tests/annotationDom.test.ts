@@ -42,7 +42,7 @@ describe("shared annotation DOM anchors", () => {
     expect(marks[0]?.classList.contains("content-annotation-mark")).toBe(true);
     expect(marks[0]?.getAttribute("aria-label")).toBe("查看这处划线，1 人划线");
     (marks[0] as HTMLElement).click();
-    expect(opened).toHaveBeenCalledWith("annotation-1");
+    expect(opened).toHaveBeenCalledWith("annotation-1", expect.objectContaining({ left: 0, top: 0 }));
     clearAnnotationMarks(root);
     expect(root.querySelector("mark")).toBeNull();
     expect(root.textContent).toBe("第一段文字第二段文字");
@@ -81,7 +81,7 @@ describe("shared annotation DOM anchors", () => {
 
     root.querySelector<HTMLElement>("mark[data-content-annotation='inner']")!.click();
     expect(opened).toHaveBeenCalledTimes(1);
-    expect(opened).toHaveBeenCalledWith("inner");
+    expect(opened).toHaveBeenCalledWith("inner", expect.objectContaining({ left: 0, top: 0 }));
   });
 
   it("exposes aggregate count and ownership on a rendered underline", () => {

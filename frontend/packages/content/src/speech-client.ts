@@ -5,6 +5,8 @@ export const SPEECH_VOICES = [
 
 export type SpeechVoice = string;
 
+export const SPEECH_PROVIDERS_ERROR = "声音加载失败，请重试";
+
 export function speechVoiceLabel(voice: string, provider: string, providers: readonly SpeechProvider[] = []): string {
   return providers.find((item) => item.id === provider)?.voices.find((item) => item.id === voice)?.label
     ?? SPEECH_VOICES.find((item) => item.id === voice)?.label ?? "选择声音";
@@ -49,15 +51,28 @@ export interface SpeechClientConfig {
 export function createSpeechClient(config: SpeechClientConfig) {
   async function loadSpeechProviders(signal?: AbortSignal): Promise<SpeechCapabilities> {
     if (!config.allowed()) throw new Error("请先登录并开通听读功能");
-    const response = await fetch(`${config.apiUrl("/api/v1/speech/providers")}?v=2`, { signal: signal ?? null });
-    if (!response.ok) throw new Error("无法加载声音列表，请重试");
-    const data: SpeechCapabilities = await response.json();
-    if (!Array.isArray(data.providers) || !data.providers.every((provider) =>
-      typeof provider.id === "string" && typeof provider.available === "boolean" &&
-      Array.isArray(provider.voices) && provider.voices.every((voice) => typeof voice.id === "string" && typeof voice.label === "string"))) {
-      throw new Error("声音列表格式不正确，请重试");
+    const controller = new AbortController();
+    const cancel = () => controller.abort(signal?.reason);
+    if (signal?.aborted) cancel();
+    else signal?.addEventListener("abort", cancel, { once: true });
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+    try {
+      const response = await fetch(`${config.apiUrl("/api/v1/speech/providers")}?v=2`, { signal: controller.signal });
+      if (!response.ok) throw new Error(SPEECH_PROVIDERS_ERROR);
+      const data: SpeechCapabilities = await response.json();
+      if (!data || !Array.isArray(data.providers) || !data.providers.length || !data.providers.every((provider) =>
+        provider && typeof provider.id === "string" && typeof provider.available === "boolean" &&
+        Array.isArray(provider.voices) && provider.voices.every((voice) => voice && typeof voice.id === "string" && typeof voice.label === "string"))) {
+        throw new Error(SPEECH_PROVIDERS_ERROR);
+      }
+      return data;
+    } catch (reason) {
+      if (signal?.aborted) throw reason;
+      throw new Error(SPEECH_PROVIDERS_ERROR);
+    } finally {
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", cancel);
     }
-    return data;
   }
 
 

@@ -1,4 +1,5 @@
 export * from "./archive";
+export * from "./annotation-types";
 export * from "./support";
 export * from "./archive-delivery";
 export * from "./book-search";
@@ -19,3 +20,5 @@ export * from "./offline-identity";
 export * from "./speech-position";
 
 export * from "./library-sources";
+export * from "./reading-progress";
+export * from "./reading-history";

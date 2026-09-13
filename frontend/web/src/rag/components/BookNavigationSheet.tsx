@@ -7,14 +7,18 @@ function visibleViewport() {
   return { top, height, bottom: Math.max(0, window.innerHeight - top - height) };
 }
 
-export function BookNavigationSheet({ tab, onTabChange, onClose, panelClass, children }: {
-  tab: "toc" | "search";
-  onTabChange: (tab: "toc" | "search") => void;
+export function BookNavigationSheet({ tab, onTabChange, title, label, compact = false, mobile, onClose, panelClass, children }: {
+  tab?: "toc" | "search";
+  onTabChange?: (tab: "toc" | "search") => void;
+  title?: string;
+  label?: string;
+  compact?: boolean;
+  mobile: boolean;
   onClose: () => void;
   panelClass: string;
   children: ReactNode;
 }) {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(!compact);
   const [drag, setDrag] = useState(0);
   const [viewport, setViewport] = useState(visibleViewport);
   const gesture = useRef<{ y: number; moved: boolean } | undefined>(undefined);
@@ -44,13 +48,13 @@ export function BookNavigationSheet({ tab, onTabChange, onClose, panelClass, chi
   const viewportStyle = {
     top: viewport.top,
     height: viewport.height,
-    "--book-navigation-bottom": `max(0px, calc(64px + env(safe-area-inset-bottom) - ${viewport.bottom}px))`,
+    "--book-navigation-bottom": mobile ? `max(0px, calc(64px + env(safe-area-inset-bottom) - ${viewport.bottom}px))` : "0px",
   } as CSSProperties;
 
   return <div className="book-navigation-viewport" style={viewportStyle}>
     <button type="button" aria-hidden="true" tabIndex={-1} onClick={onClose} className="book-navigation-backdrop" />
-    <aside aria-label={tab === "toc" ? "目录面板" : "全书搜索"} className={`book-navigation-sheet ${panelClass}`} style={{ height: `calc(${expanded ? "100% - 48px - var(--book-navigation-bottom)" : "66%"} - ${drag}px)` }}>
-      <button type="button" aria-label="调整书内导航高度" aria-expanded={expanded} className="book-navigation-handle"
+    <aside aria-label={label ?? (tab === "toc" ? "目录面板" : "全书搜索")} className={`book-navigation-sheet ${mobile ? "book-navigation-sheet--mobile" : "book-navigation-sheet--desktop"} ${compact ? "book-navigation-sheet--compact" : ""} ${panelClass}`} style={mobile ? { height: `calc(${expanded ? "100% - 48px - var(--book-navigation-bottom)" : compact ? "min(460px, 66%)" : "66%"} - ${drag}px)` } : undefined}>
+      {mobile && <button type="button" aria-label="调整书内导航高度" aria-expanded={expanded} className="book-navigation-handle"
         onPointerDown={(event) => { suppressPointerClick.current = false; gesture.current = { y: event.clientY, moved: false }; event.currentTarget.setPointerCapture(event.pointerId); }}
         onPointerMove={(event) => {
           if (!gesture.current) return;
@@ -70,12 +74,12 @@ export function BookNavigationSheet({ tab, onTabChange, onClose, panelClass, chi
         onPointerCancel={() => { gesture.current = undefined; suppressPointerClick.current = false; setDrag(0); }}
         onClick={(event) => { if (event.detail === 0 || !suppressPointerClick.current) setExpanded((value) => !value); suppressPointerClick.current = false; }}
         onKeyDown={(event) => { if (event.key === "ArrowUp") { event.preventDefault(); setExpanded(true); } if (event.key === "ArrowDown") { event.preventDefault(); onClose(); } }}
-      ><span aria-hidden="true" /></button>
+      ><span aria-hidden="true" /></button>}
       <div className="book-navigation-toolbar">
-        <div role="tablist" aria-label="书内导航" className="book-navigation-tabs">
-          {(["search", "toc"] as const).map((value) => <button key={value} type="button" role="tab" aria-selected={tab === value} onClick={() => onTabChange(value)}>{value === "search" ? "⌕ 搜本书" : "目录"}</button>)}
-        </div>
-        <button type="button" className="book-navigation-close" aria-label="关闭书内导航" onClick={onClose}>×</button>
+        {tab ? <div role="tablist" aria-label="书内导航" className="book-navigation-tabs">
+          {(["search", "toc"] as const).map((value) => <button key={value} type="button" role="tab" aria-selected={tab === value} onClick={() => onTabChange?.(value)}>{value === "search" ? "⌕ 搜本书" : "目录"}</button>)}
+        </div> : <h2 className="book-tool-sheet-title">{title}</h2>}
+        <button type="button" className="book-navigation-close" aria-label={tab ? "关闭书内导航" : `关闭${title}`} onClick={onClose}>×</button>
       </div>
       {children}
     </aside>

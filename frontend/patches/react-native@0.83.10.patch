@@ -1,0 +1,27 @@
+diff --git a/sdks/hermes-engine/hermes-utils.rb b/sdks/hermes-engine/hermes-utils.rb
+index 4f5f3e8d3ba8eed22dea0f9936c6933df67bcdc6..9e2035460f3798d4aeac0e3f42cb195820158beb 100644
+--- a/sdks/hermes-engine/hermes-utils.rb
++++ b/sdks/hermes-engine/hermes-utils.rb
+@@ -70,7 +70,9 @@ def hermes_source_type(version, react_native_path)
+         return HermesEngineSourceType::DOWNLOAD_PREBUILT_NIGHTLY_TARBALL
+     end
+ 
+-    return HermesEngineSourceType::BUILD_FROM_GITHUB_MAIN
++    # A transient Maven outage must not select an unrelated development VM.
++    return HermesEngineSourceType::BUILD_FROM_GITHUB_TAG if File.exist?(hermestag_file(react_native_path))
++    raise "Hermes artifacts unavailable and no pinned Hermes tag was found"
+ end
+ 
+ def override_hermes_dir_envvar_defined()
+@@ -303,9 +305,10 @@ end
+ # - version: the version of React Native
+ # - build_type: debug or release
+ def hermes_artifact_exists(tarball_url)
++    return false if tarball_url.to_s.empty?
+     # -L is used to follow redirects, useful for the nightlies
+     # I also needed to wrap the url in quotes to avoid escaping & and ?.
+-    return (`curl -o /dev/null --silent -Iw '%{http_code}' -L "#{tarball_url}"` == "200")
++    return (`curl --fail --retry 2 --retry-all-errors --retry-delay 1 --connect-timeout 10 --max-time 30 -o /dev/null --silent -Iw '%{http_code}' -L "#{tarball_url}"` == "200")
+ end
+ 
+ def hermes_log(message, level = :warning)

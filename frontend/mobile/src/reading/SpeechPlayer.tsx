@@ -1,17 +1,18 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
-import Slider from "@react-native-community/slider";
+import { ReaderSlider } from "../components/ReaderSlider";
 import { useIsFocused } from "@react-navigation/native";
 import { useEffect, useRef, useState, type ComponentProps } from "react";
 import type { SpeechLocation } from "@jojo/content";
 import { speechVoiceLabel } from "@jojo/content/speech";
-import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View, type ImageSourcePropType } from "react-native";
+import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, View, type ImageSourcePropType } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useMobileAuthStore } from "../account/auth";
 import { mobileTheme as theme } from "../theme/tokens";
 import { useSpeechFlagStore } from "./featureFlag";
 import { speechTime } from "./speech";
 import { useSpeechPlayback, type SpeechPlaybackProps } from "./useSpeechPlayback";
+import { SpeechLoading } from "./SpeechLoading";
 
 type Props = Omit<SpeechPlaybackProps, "userId"> & {
   hidden?: boolean; bottom?: number; cover?: ImageSourcePropType; news?: boolean;
@@ -49,7 +50,7 @@ function ActiveSpeechPlayer(props: Props & { userId: string }) {
   }, [opened, expanded, playback.chapter, playback.part, playback.playing]);
   useEffect(() => () => locationCallback.current?.(null, false), []);
   const background = theme.eInk ? theme.paper : "#f1ede6";
-  function open() { setOpened(true); setExpanded(true); void playback.open(); }
+  function open() { setOpened(true); setExpanded(true); void playback.open(!opened); }
   function chapterStep(step: number) { const next = props.chapters[currentIndex + step]; if (next) void playback.selectChapter(next.id, playback.playing); }
   function art(backdrop = false) {
     if (!backdrop && publisherCover) return <View style={styles.publisherCover}>
@@ -64,9 +65,9 @@ function ActiveSpeechPlayer(props: Props & { userId: string }) {
         {cover && !theme.eInk ? art(true) : null}
         <Pressable accessibilityRole="button" accessibilityLabel="展开听读播放器" onPress={open} style={styles.miniTitle}>
           {cover ? <Image source={cover} resizeMode="contain" onError={rejectCover} style={[styles.miniCover, publisherCover && styles.miniLogo]} /> : null}
-          <View style={styles.flex}><Text numberOfLines={1} style={styles.miniHeading}>{playback.chapter?.title || props.title}</Text><Text style={styles.subtle}>{playback.busy ? "加载中" : `${voiceLabel} · ${speechTime(playback.elapsed)}`}</Text></View>
+          <View style={styles.flex}><Text numberOfLines={1} style={styles.miniHeading}>{playback.chapter?.title || props.title}</Text><Text style={styles.subtle}>{playback.error || (playback.busy ? "加载中" : `${voiceLabel} · ${speechTime(playback.elapsed)}`)}</Text></View>
         </Pressable>
-        {playback.busy ? <View accessibilityLabel="加载中" style={styles.icon}>{theme.eInk ? <Text>…</Text> : <ActivityIndicator color={theme.ink} />}</View> : <IconButton icon={playback.playing ? "pause" : "play"} label={playback.playing ? "暂停听读" : "继续听读"} onPress={playback.toggle} />}
+        {playback.busy ? <Pressable accessibilityRole="button" accessibilityLabel="取消加载" onPress={playback.halt} style={styles.icon}><SpeechLoading /></Pressable> : <IconButton icon={playback.playing ? "pause" : "play"} label={playback.playing ? "暂停听读" : "继续听读"} onPress={playback.toggle} />}
         <IconButton icon="close" label="关闭听读" onPress={() => { playback.close(); setOpened(false); }} />
       </View>
     ) : <Pressable accessibilityRole="button" accessibilityLabel="打开听读播放器" onPress={open} style={[styles.launcher, { bottom: (props.bottom ?? 0) + 16, backgroundColor: theme.red }]}><Text style={styles.listen}>听</Text></Pressable> : null}
@@ -87,17 +88,17 @@ function ActiveSpeechPlayer(props: Props & { userId: string }) {
           <View style={styles.progress}>
             <SeekButton direction="back" onPress={() => playback.seek(playback.elapsed - 15)} />
             <Text style={styles.time}>{speechTime(playback.elapsed)}</Text>
-            <Slider accessibilityLabel="本章播放进度" style={styles.slider} value={playback.elapsed} minimumValue={0} maximumValue={Math.max(1, playback.duration)} minimumTrackTintColor={theme.red} maximumTrackTintColor={theme.rule} thumbTintColor={theme.red} onSlidingComplete={playback.seek} disabled={!playback.chapter || playback.busy} />
+            <ReaderSlider label="本章播放进度" style={styles.slider} value={playback.elapsed} minimumValue={0} maximumValue={Math.max(1, playback.duration)} color={theme.red} trackColor={theme.rule} onSlidingComplete={playback.seek} disabled={!playback.chapter || playback.busy} />
             <Text style={styles.time}>{speechTime(playback.duration)}</Text>
             <SeekButton direction="forward" onPress={() => playback.seek(playback.elapsed + 15)} />
           </View>
           <Text accessibilityLiveRegion="polite" style={[styles.status, playback.error ? { color: theme.red } : null]}>{playback.error || (playback.busy ? "加载中" : "")}</Text>
-          {playback.error ? <Pressable accessibilityRole="button" onPress={() => playback.chapter ? playback.toggle() : void playback.open()}><Text style={styles.retry}>重试</Text></Pressable> : null}
+          {playback.error ? <Pressable accessibilityRole="button" accessibilityLabel="重试听读" onPress={playback.toggle}><Text style={styles.retry}>重试</Text></Pressable> : null}
           <View style={styles.controls}>
             <Option icon="book-outline" label="原文" onPress={() => { setExpanded(false); props.onRead(playback.chapter?.id || props.chapterId,
               playback.chapter ? { chapterId: playback.chapter.id, segments: playback.chapter.segments, index: playback.part } : undefined); }} />
             <IconButton icon="play-skip-back" label="上一章" disabled={currentIndex <= 0} onPress={() => chapterStep(-1)} />
-            <Pressable accessibilityRole="button" accessibilityLabel={playback.busy ? "加载中" : playback.playing ? "暂停听读" : "开始听读"} disabled={playback.busy} onPress={playback.toggle} style={[styles.play, { backgroundColor: theme.red }]}>{playback.busy ? theme.eInk ? <Text style={{ color: theme.inverse }}>加载中</Text> : <ActivityIndicator color={theme.inverse} /> : <Ionicons name={playback.playing ? "pause" : "play"} size={30} color={theme.inverse} />}</Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel={playback.busy ? "取消加载" : playback.playing ? "暂停听读" : "开始听读"} onPress={playback.busy ? playback.halt : playback.toggle} style={[styles.play, { backgroundColor: theme.red }]}>{playback.busy ? <SpeechLoading color={theme.inverse} /> : <Ionicons name={playback.playing ? "pause" : "play"} size={30} color={theme.inverse} />}</Pressable>
             <IconButton icon="play-skip-forward" label="下一章" disabled={currentIndex < 0 || currentIndex === props.chapters.length - 1} onPress={() => chapterStep(1)} />
             <Option icon="list-outline" label={props.news ? "目录" : `${props.chapters.length} 章`} onPress={() => setSheet("chapters")} />
           </View>
@@ -108,7 +109,11 @@ function ActiveSpeechPlayer(props: Props & { userId: string }) {
             <View style={styles.header}><Text style={styles.sheetTitle}>{{ timer: "定时关闭", voice: "选择声音", rate: "语速设置", chapters: props.news ? "新闻目录" : "章节目录" }[sheet]}</Text><IconButton icon="close" label="关闭设置" onPress={() => setSheet(null)} /></View>
             <ScrollView>
               {sheet === "timer" ? <>{[0, 15, 30, 60, 90].map((minutes) => <Choice key={minutes} label={minutes ? `${minutes} 分钟` : "关闭"} selected={minutes === 0 && !playback.timer} onPress={() => { playback.setTimer(minutes ? Date.now() + minutes * 60000 : null); setSheet(null); }} />)}<Choice label="本章结束后关闭" selected={playback.timer === "chapter"} onPress={() => { playback.setTimer("chapter"); setSheet(null); }} /></> : null}
-              {sheet === "voice" ? playback.capabilities?.providers.flatMap((provider) => provider.voices.map((voice) => <Choice key={`${provider.id}:${voice.id}`} label={voice.label} description={voice.description} selected={provider.id === playback.voice.provider && voice.id === playback.voice.voice} onPress={() => { void playback.changeVoice(provider.id, voice.id); setSheet(null); }} />)) : null}
+              {sheet === "voice" ? playback.capabilities
+                ? playback.capabilities.providers.flatMap((provider) => provider.voices.map((voice) => <Choice key={`${provider.id}:${voice.id}`} label={voice.label} description={voice.description} selected={provider.id === playback.voice.provider && voice.id === playback.voice.voice} onPress={() => { void playback.changeVoice(provider.id, voice.id); setSheet(null); }} />))
+                : playback.error ? <Choice label="重试" description={playback.error} selected={false} onPress={() => { void playback.open(true); }} />
+                  : <View style={styles.progress}><SpeechLoading /><Text style={styles.subtle}>正在加载声音</Text></View>
+                : null}
               {sheet === "rate" ? [0.75, 1, 1.25, 1.5, 1.75, 2].map((value) => <Choice key={value} label={`${value}×`} selected={playback.rate === value} onPress={() => { playback.changeRate(value); setSheet(null); }} />) : null}
               {sheet === "chapters" ? props.chapters.map((chapter) => <Choice key={chapter.id} label={chapter.title} selected={chapter.id === playback.chapter?.id} onPress={() => { void playback.selectChapter(chapter.id, true); setSheet(null); }} />) : null}
             </ScrollView>

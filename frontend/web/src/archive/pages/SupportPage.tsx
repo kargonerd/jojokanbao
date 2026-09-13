@@ -1,9 +1,9 @@
-import { useLayoutEffect } from "react";
+import { useLayoutEffect, type ReactNode } from "react";
 import { DONATION_RECORDS_URL, FEEDBACK_BILIBILI_URL, FEEDBACK_QQ_GROUP, PROJECT_COPYRIGHT_NOTICES } from "@jojo/content";
 import weixinImg from "../../../../packages/content/assets/support/weixin.png";
 import zfbImg from "../../../../packages/content/assets/support/zfb.png";
 import { rollout } from "../../rollout";
-import { Link, useLocation } from "react-router-dom";
+import { Link, Navigate, useLocation } from "react-router-dom";
 import "./support.css";
 
 const downloads = [
@@ -30,20 +30,7 @@ const downloads = [
   ]},
 ];
 
-export function SupportPage({ platformRedesign = rollout.platformRedesign }: { platformRedesign?: boolean }) {
-  const { hash } = useLocation();
-
-  useLayoutEffect(() => {
-    if (!hash) return;
-    let sectionId: string;
-    try {
-      sectionId = decodeURIComponent(hash.slice(1));
-    } catch {
-      return;
-    }
-    document.getElementById(sectionId)?.scrollIntoView({ block: "start" });
-  }, [hash]);
-
+function SupportPageFrame({ children, platformRedesign }: { children: ReactNode; platformRedesign: boolean }) {
   return (
     <div className={`support-page h-full overflow-y-auto ${platformRedesign ? "bg-[var(--app-canvas)]" : "bg-paper"}`}>
       <div className="max-w-[960px] mx-auto px-5 py-7 md:px-10">
@@ -51,6 +38,62 @@ export function SupportPage({ platformRedesign = rollout.platformRedesign }: { p
           ? "border border-rule border-t-[3px] border-t-red bg-paper p-8 shadow-[4px_4px_0_rgba(139,26,26,.08)] md:p-10"
           : "p-8 md:p-10 border-4 border-red shadow-[inset_0_0_0_8px_var(--color-paper),inset_0_0_0_10px_var(--color-red)]"
         }>
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DonationContent() {
+  return (
+    <div>
+      <p className="text-ink/80 leading-8">
+        如果 JOJO 看报对您有帮助，欢迎自愿捐助，支持网站与 APP 的持续维护。
+        所有捐助记录将在
+        <a href={DONATION_RECORDS_URL} target="_blank" rel="noreferrer" className="support-link font-bold"> JOJO看报捐助列表</a>
+        中公示。
+      </p>
+      <div className="flex flex-wrap gap-4 mt-4">
+        <figure className="m-0 w-full max-w-[240px]">
+          <img src={weixinImg} alt="微信捐助收款码" width={296} height={296} className="block w-full border border-rule-dark" />
+        </figure>
+        <figure className="m-0 w-full max-w-[240px]">
+          <img src={zfbImg} alt="支付宝捐助收款码" width={296} height={296} className="block w-full border border-rule-dark" />
+        </figure>
+      </div>
+    </div>
+  );
+}
+
+export function DonationPage() {
+  return (
+    <SupportPageFrame platformRedesign>
+      <h1 className="mb-4 text-2xl font-bold tracking-wider text-ink">支持 JOJO 看报</h1>
+      <DonationContent />
+    </SupportPageFrame>
+  );
+}
+
+export function SupportPage({ platformRedesign = rollout.platformRedesign }: { platformRedesign?: boolean }) {
+  const { hash } = useLocation();
+  let sectionId = "";
+  try {
+    sectionId = decodeURIComponent(hash.slice(1));
+  } catch {
+    // Ignore invalid hashes while keeping the About page available.
+  }
+  const redirectsDonation = platformRedesign && sectionId === "捐助";
+
+  useLayoutEffect(() => {
+    if (!sectionId || redirectsDonation) return;
+    document.getElementById(sectionId)?.scrollIntoView({ block: "start" });
+  }, [sectionId, redirectsDonation]);
+
+  if (redirectsDonation) return <Navigate to="/donate" replace />;
+
+  return (
+    <SupportPageFrame platformRedesign={platformRedesign}>
 
           {/* 关于与反馈 */}
           <h1 id="关于" className="mb-4 scroll-mt-20 text-2xl font-bold tracking-wider text-ink">{platformRedesign ? "关于 JOJO 看报" : "反馈"}</h1>
@@ -61,25 +104,10 @@ export function SupportPage({ platformRedesign = rollout.platformRedesign }: { p
             下留言或私信反馈
           </p>
 
-          <section aria-labelledby="捐助">
+          {!platformRedesign ? <section aria-labelledby="捐助">
             <h2 id="捐助" className="scroll-mt-20 text-2xl font-bold tracking-wider text-ink border-t border-rule mt-8 pt-5 mb-4">捐助</h2>
-            <div>
-              <p className="text-ink/80 leading-8">
-                如果 JOJO 看报对您有帮助，欢迎自愿捐助，支持网站与 APP 的持续维护。
-                所有捐助记录将在
-                <a href={DONATION_RECORDS_URL} target="_blank" rel="noreferrer" className="support-link font-bold"> JOJO看报捐助列表</a>
-                中公示。
-              </p>
-              <div className="flex flex-wrap gap-4 mt-4">
-                <figure className="m-0 w-full max-w-[240px]">
-                  <img src={weixinImg} alt="微信捐助收款码" width={296} height={296} className="block w-full border border-rule-dark" />
-                </figure>
-                <figure className="m-0 w-full max-w-[240px]">
-                  <img src={zfbImg} alt="支付宝捐助收款码" width={296} height={296} className="block w-full border border-rule-dark" />
-                </figure>
-              </div>
-            </div>
-          </section>
+            <DonationContent />
+          </section> : null}
 
           {/* 纪念缅怀 */}
           <h2 id="纪念缅怀" className="scroll-mt-20 text-2xl font-bold tracking-wider text-ink border-t border-rule mt-8 pt-5 mb-4">纪念缅怀</h2>
@@ -125,8 +153,6 @@ export function SupportPage({ platformRedesign = rollout.platformRedesign }: { p
             </span>
             <span aria-hidden="true" className="font-serif text-red">→</span>
           </Link>
-        </div>
-      </div>
-    </div>
+    </SupportPageFrame>
   );
 }

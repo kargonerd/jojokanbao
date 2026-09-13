@@ -78,11 +78,16 @@ test.describe('Desktop renderer', () => {
   test('shared base styles keep the sticky title bar opaque and controls intentional', async ({ page }) => {
     await page.goto('/');
     const header = page.locator('.app-header');
-    const searchButton = page.getByRole('button', { name: '找书' });
+    const searchForm = page.getByRole('search');
+    const searchInput = searchForm.getByRole('searchbox', { name: '搜索书名' });
 
     await expect(header).toHaveCSS('background-color', 'rgb(255, 255, 255)');
-    await expect(searchButton).toHaveCSS('background-color', 'rgb(139, 26, 26)');
-    await expect(searchButton).toHaveCSS('color', 'rgb(245, 239, 230)');
+    await expect(searchForm).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+    await expect(searchInput).toHaveCSS('color', 'rgb(32, 32, 32)');
+    await searchInput.focus();
+    await expect(searchForm).toHaveCSS('border-color', 'rgb(139, 26, 26)');
+    await expect(searchInput).toHaveCSS('border-width', '0px');
+    await expect(searchInput).toHaveCSS('box-shadow', 'none');
 
     await page.evaluate(() => window.scrollTo(0, 240));
     const navigationOwnsItsPixels = await page.getByRole('navigation', { name: '主导航' }).evaluate((navigation) => {

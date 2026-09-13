@@ -6,6 +6,7 @@ import { viteStaticCopy } from "vite-plugin-static-copy";
 import { pdfViewerStaticCopyTargets } from "@jojo/pdf-viewer/vite";
 import { resolveViteEnvironmentDirectory } from "../tooling/vite-worktree-env";
 import { createSearchProxy } from "../tooling/search-proxy";
+import { createSpeechProxy } from "../tooling/speech-proxy";
 
 const repositoryRoot = resolve(__dirname, "../..");
 const defaultDevelopmentAgentUrl = "http://127.0.0.1:8789/rag";
@@ -31,6 +32,7 @@ export default defineConfig(({ mode }) => {
       port: 8080,
       proxy: {
         ...createSearchProxy(),
+        ...createSpeechProxy(environment.JOJO_SPEECH_API_BASE || undefined),
         "/api": {
           target: "http://127.0.0.1:8088",
           changeOrigin: true,

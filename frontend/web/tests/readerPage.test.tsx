@@ -190,7 +190,7 @@ describe("ReaderPage document states", () => {
       enableTextLayer: true,
     });
     expect(useRecentReadingStore.getState().items[0]).toMatchObject({
-      id: "periodical:rmrb",
+      id: "periodical:rmrb:19761009",
       title: "人民日报",
       subtitle: "1976 年 10 月 9 日",
       href: "/archive/rmrb/19761009",
@@ -317,7 +317,7 @@ describe("ReaderPage magazine navigation", () => {
     renderReader("/hq/196419", { type: "magazine", name: "hq" });
 
     expect(useRecentReadingStore.getState().items[0]).toMatchObject({
-      id: "periodical:hq",
+      id: "periodical:hq:196419",
       title: "红旗",
       subtitle: "1964 年第 19 期",
       href: "/archive/hq/196419",

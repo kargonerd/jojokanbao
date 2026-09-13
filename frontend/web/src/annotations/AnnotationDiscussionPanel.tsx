@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { type CSSProperties, useLayoutEffect, useRef, useState } from "react";
 import { CommentVisibilityControl } from "./CommentVisibilityControl";
-import { ANNOTATION_REPORT_LABELS, type AnnotationReportReason, type AnnotationThread, type AnnotationVisibility } from "./types";
+import { DeleteUnderlineIcon } from "./AnnotationMarkPopover";
+import { ANNOTATION_REPORT_LABELS, sortAnnotationComments, type AnnotationReportReason, type AnnotationThread, type AnnotationVisibility } from "./types";
 import "./annotations.css";
 
 interface AnnotationDiscussionPanelProps {
@@ -9,13 +10,20 @@ interface AnnotationDiscussionPanelProps {
   onClose: () => void;
   onComment: (body: string, parentCommentId?: string, visibility?: AnnotationVisibility) => Promise<unknown>;
   onReport: (commentId: string, reason: AnnotationReportReason, details?: string) => Promise<unknown>;
+  onLike: (commentId: string, liked: boolean) => Promise<unknown>;
+  onDeleteMark?: () => Promise<unknown>;
 }
 
 function displayTime(value: string): string {
   return new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
 }
 
-export function AnnotationDiscussionPanel({ thread, currentUserId, onClose, onComment, onReport }: AnnotationDiscussionPanelProps) {
+function visibleViewport() {
+  return { top: window.visualViewport?.offsetTop ?? 0, height: window.visualViewport?.height ?? window.innerHeight };
+}
+
+export function AnnotationDiscussionPanel({ thread, currentUserId, onClose, onComment, onReport, onLike, onDeleteMark }: AnnotationDiscussionPanelProps) {
+  const [viewport, setViewport] = useState(visibleViewport);
   const [draft, setDraft] = useState("");
   const [visibility, setVisibility] = useState<AnnotationVisibility>("public");
   const [replyTo, setReplyTo] = useState<string>();
@@ -24,8 +32,57 @@ export function AnnotationDiscussionPanel({ thread, currentUserId, onClose, onCo
   const [reportDetails, setReportDetails] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
+  const pendingLikes = useRef(new Set<string>());
+  const [liking, setLiking] = useState<Set<string>>(new Set());
   const reply = thread.comments.find((comment) => comment.id === replyTo);
-  const underlineCount = Math.max(1, Math.trunc(thread.underlineCount ?? 1));
+  const underlineCount = Math.max(0, Math.trunc(thread.underlineCount ?? 1));
+  const deleting = useRef(false);
+  const [removing, setRemoving] = useState(false);
+
+  async function removeMark() {
+    if (!onDeleteMark || !thread.underlinedByMe || deleting.current) return;
+    deleting.current = true;
+    setRemoving(true);
+    setNotice("");
+    try {
+      await onDeleteMark();
+      setNotice("已删除划线，想法已保留。");
+    } catch (reason) {
+      setNotice(reason instanceof Error ? reason.message : "删除失败，请重试。");
+    } finally {
+      deleting.current = false;
+      setRemoving(false);
+    }
+  }
+
+  async function changeLike(commentId: string, liked: boolean) {
+    if (pendingLikes.current.has(commentId)) return;
+    pendingLikes.current.add(commentId);
+    setLiking(new Set(pendingLikes.current));
+    setNotice("");
+    try {
+      await onLike(commentId, liked);
+    } catch (reason) {
+      setNotice(reason instanceof Error ? reason.message : "点赞暂时失败，请重试。");
+    } finally {
+      pendingLikes.current.delete(commentId);
+      setLiking(new Set(pendingLikes.current));
+    }
+  }
+
+  useLayoutEffect(() => {
+    const visual = window.visualViewport;
+    const measure = () => setViewport(visibleViewport());
+    measure();
+    visual?.addEventListener("resize", measure);
+    visual?.addEventListener("scroll", measure);
+    window.addEventListener("resize", measure);
+    return () => {
+      visual?.removeEventListener("resize", measure);
+      visual?.removeEventListener("scroll", measure);
+      window.removeEventListener("resize", measure);
+    };
+  }, []);
 
   async function submitComment() {
     if (!draft.trim() || busy) return;
@@ -61,24 +118,29 @@ export function AnnotationDiscussionPanel({ thread, currentUserId, onClose, onCo
 
   return <>
     <button type="button" className="annotation-panel-backdrop" aria-label="关闭划线详情" onClick={onClose} />
-    <aside className="annotation-panel" aria-label="划线详情">
+    <aside className="annotation-panel" aria-label="划线详情" style={{
+      "--annotation-viewport-top": `${viewport.top}px`,
+      "--annotation-viewport-height": `${viewport.height}px`,
+    } as CSSProperties}>
       <header className="annotation-panel__header">
         <div><span>{thread.contentTitle}</span><h2>划线</h2></div>
         <button type="button" onClick={onClose} aria-label="关闭划线详情">×</button>
       </header>
 
+      <div className="annotation-panel__body">
       <section className="annotation-highlight-summary" aria-label="划线原文">
         <span className="annotation-highlight-summary__quote" aria-hidden="true">“</span>
-        <blockquote>{thread.quote}</blockquote>
+        <blockquote aria-label="划线原文内容" tabIndex={0}>{thread.quote}</blockquote>
         <div className="annotation-panel__meta">
           <b><i aria-hidden="true" />{underlineCount} 人划线</b>
+          {thread.underlinedByMe && onDeleteMark ? <button type="button" className="annotation-delete-mark" disabled={removing} onClick={() => void removeMark()}><DeleteUnderlineIcon />{removing ? "删除中…" : "删除划线"}</button> : null}
         </div>
       </section>
 
-      <div className="annotation-comments__heading"><span>想法</span><b>{thread.comments.length}</b></div>
+      <div className="annotation-comments__heading"><span>想法</span><b>{thread.comments.length}</b><small>按点赞排序</small></div>
 
       <ol className="annotation-comments">
-        {thread.comments.map((comment) => {
+        {sortAnnotationComments(thread.comments).map((comment) => {
           const parent = thread.comments.find((candidate) => candidate.id === comment.parentCommentId);
           return (
             <li key={comment.id}>
@@ -86,6 +148,11 @@ export function AnnotationDiscussionPanel({ thread, currentUserId, onClose, onCo
               {parent ? <small>回复 {parent.authorName}</small> : null}
               <p>{comment.body}</p>
               {comment.visibility !== "private" ? <div className="annotation-comment__actions">
+                <button type="button" className="annotation-comment__like" aria-pressed={Boolean(comment.likedByMe)}
+                  aria-label={`${comment.likedByMe ? "取消点赞" : "点赞"}，${comment.likeCount ?? 0} 个赞`}
+                  disabled={liking.has(comment.id)} onClick={() => void changeLike(comment.id, !comment.likedByMe)}>
+                  {comment.likedByMe ? "已赞" : "赞"} {comment.likeCount ?? 0}
+                </button>
                 <button type="button" onClick={() => { setReplyTo(comment.id); setReporting(undefined); }}>回复</button>
                 {comment.authorId !== currentUserId ? (
                   <button type="button" disabled={comment.reportedByMe} onClick={() => { setReporting(comment.id); setReplyTo(undefined); }}>
@@ -120,6 +187,7 @@ export function AnnotationDiscussionPanel({ thread, currentUserId, onClose, onCo
         })}
         {thread.comments.length === 0 ? <li className="annotation-comments__empty">还没有想法。</li> : null}
       </ol>
+      </div>
 
       <footer className="annotation-composer">
         {reply ? <div className="annotation-composer__reply">回复 {reply.authorName}<button type="button" onClick={() => setReplyTo(undefined)}>取消</button></div> : null}

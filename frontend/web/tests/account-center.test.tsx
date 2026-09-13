@@ -131,6 +131,9 @@ describe("account center", () => {
     expect(screen.queryByRole("button", { name: "换一个邀请码" })).toBeNull();
     expect(screen.getByRole("link", { name: /通知/ }).getAttribute("href")).toBe("/notifications");
     expect(screen.getByRole("link", { name: /我的书架/ }).getAttribute("href")).toBe("/bookshelf");
+    const support = screen.getByRole("link", { name: "支持 JOJO 看报" });
+    expect(support.getAttribute("href")).toBe("/donate");
+    expect(support.nextElementSibling).toBe(screen.getByRole("link", { name: "关于 JOJO 看报" }));
     expect(screen.getByRole("link", { name: /关于 JOJO 看报/ }).getAttribute("href")).toBe("/support");
     expect(screen.getByRole("heading", { name: "阅读偏好" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "时事外文内容默认语言：中文译文" })).toBeTruthy();

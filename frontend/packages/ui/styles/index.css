@@ -312,3 +312,71 @@
 .dp__input:hover ~ .dp__input_icon {
   color: var(--color-red);
 }
+
+/* A generous hit area with a quiet, single-color reading slider. */
+.reader-range,
+.reader-range:hover,
+.reader-range:focus,
+.reader-range:focus-visible {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 36px;
+  margin: 0;
+  border: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+  cursor: pointer;
+  touch-action: pan-x;
+  --reader-range-track: color-mix(in srgb, currentColor 16%, transparent);
+}
+
+.reader-range::-webkit-slider-runnable-track {
+  height: 2px;
+  background: linear-gradient(to right, var(--color-red) 0 var(--reader-range-fill, 0%), var(--reader-range-track) var(--reader-range-fill, 0%) 100%);
+}
+
+.reader-range::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  box-sizing: border-box;
+  width: 8px;
+  height: 16px;
+  margin-top: -7px;
+  border: 0;
+  border-radius: 0;
+  background: var(--color-red);
+  box-shadow: none;
+}
+
+.reader-range::-moz-range-track {
+  height: 2px;
+  border: 0;
+  background: var(--reader-range-track);
+}
+
+.reader-range::-moz-range-progress {
+  height: 2px;
+  background: var(--color-red);
+}
+
+.reader-range::-moz-range-thumb {
+  box-sizing: border-box;
+  width: 8px;
+  height: 16px;
+  border: 0;
+  border-radius: 0;
+  background: var(--color-red);
+  box-shadow: none;
+}
+
+.reader-range:focus-visible::-webkit-slider-thumb {
+  outline: 1px solid var(--color-red);
+  outline-offset: 3px;
+}
+
+.reader-range:focus-visible::-moz-range-thumb {
+  outline: 1px solid var(--color-red);
+  outline-offset: 3px;
+}

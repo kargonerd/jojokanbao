@@ -14,6 +14,7 @@ export const APP_NAVIGATION_ITEMS = [
   { label: "首页", href: "/" },
   { label: "资料库", href: "/library" },
   { label: "搜索", href: "/search" },
+  { label: "支持 JOJO 看报", href: "/donate" },
   { label: "关于", href: "/support" },
 ] as const satisfies readonly AppNavigationItem[];
 
