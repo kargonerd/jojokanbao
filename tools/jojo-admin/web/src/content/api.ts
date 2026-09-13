@@ -19,6 +19,7 @@ export interface ContentReport {
   itemsBuilt: Array<{
     itemId: string;
     itemTitle: string;
+    manifestObject: string;
     chapters: number;
     characters: number;
     assets: number;
@@ -26,8 +27,21 @@ export interface ContentReport {
   diagnostics: ContentDiagnostic[];
 }
 
+export interface ContentPublication {
+  status: string;
+  completedAt?: string;
+  failedAt?: string;
+  publicationStatus?: "draft" | "published";
+  access?: "public" | "authenticated";
+  message?: string;
+  result?: Record<string, unknown> & { cache?: { status: string; objects: number; origin: string } };
+  lastSuccessful?: ContentPublication;
+}
+
 export interface ContentJob {
+  librarySource?: "jojo" | "community";
   jobId: string;
+  newerJobId?: string | null;
   status: string;
   phase: string;
   message: string;
@@ -39,11 +53,12 @@ export interface ContentJob {
   outputDirectory: string;
   progress: Record<string, unknown>;
   report: ContentReport | null;
-  publish: Record<string, { status: string; message?: string; result?: Record<string, unknown> }>;
+  publish: Record<string, ContentPublication>;
   logs: string[];
 }
 
 export interface PublisherStatus {
+  elasticsearch?: { configured: boolean; index: string };
   b2: { configured: boolean; deliveryRemote: string };
   huggingface: { configured: boolean; repoId: string; private: boolean };
 }
@@ -58,24 +73,18 @@ export const contentApi = {
   status: () => fetch("/api/content/status").then((response) => json<{ success: true; publishers: PublisherStatus }>(response)),
   jobs: () => fetch("/api/content/jobs").then((response) => json<{ success: true; jobs: ContentJob[] }>(response)),
   job: (jobId: string) => fetch(`/api/content/jobs/${jobId}`).then((response) => json<{ success: true; job: ContentJob }>(response)),
-  browse: () => fetch("/api/browse-folder", { method: "POST" }).then((response) => json<{ success: true; path: string }>(response)),
-  importPaths: (paths: string[], fetchAssets: boolean, publicationStatus: "draft" | "published", access: "public" | "authenticated") => fetch("/api/content/import-paths", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ paths, fetchAssets, publicationStatus, access }),
-  }).then((response) => json<{ success: true; job: ContentJob }>(response)),
-  importFiles: (files: File[], fetchAssets: boolean, publicationStatus: "draft" | "published", access: "public" | "authenticated") => {
+  importFile: (file: File, fetchAssets: boolean, publicationStatus: "draft" | "published", access: "public" | "authenticated") => {
     const body = new FormData();
-    files.forEach((file) => body.append("files", file));
+    body.append("files", file);
     body.append("fetchAssets", String(fetchAssets));
     body.append("publicationStatus", publicationStatus);
     body.append("access", access);
     return fetch("/api/content/import-files", { method: "POST", body })
       .then((response) => json<{ success: true; job: ContentJob }>(response));
   },
-  publish: (jobId: string, targets: string[]) => fetch(`/api/content/jobs/${jobId}/publish`, {
+  publish: (jobId: string, targets: string[], publicationStatus: ContentJob["publicationStatus"], access: ContentJob["access"]) => fetch(`/api/content/jobs/${jobId}/publish`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ targets }),
+    body: JSON.stringify({ targets, publicationStatus, access }),
   }).then((response) => json<{ success: true; job: ContentJob }>(response)),
 };

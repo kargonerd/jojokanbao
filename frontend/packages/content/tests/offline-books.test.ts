@@ -59,6 +59,27 @@ function fixture(authenticated = false) {
 const request = { datasetId: "books", itemKey: "one" };
 
 describe("managed offline books", () => {
+  it("blocks an already-open offline reader when its source is disabled and retains its package for re-enabling", async () => {
+    const setup = fixture(true);
+    setup.json("books/one/manifest.jox", { ...setup.manifest, librarySource: "community" });
+    let enabled = ["jojo", "community"];
+    const library = new OfflineBookLibrary({ ...setup.options, librarySources: () => enabled });
+    await library.download(request);
+    const opened = await library.open("books", "one");
+    expect(opened).toBeDefined();
+    const resourceCount = setup.resources.size;
+
+    enabled = ["jojo"];
+    await expect(library.open("books", "one")).rejects.toThrow();
+    await expect(opened!.client.fetchJson("books/one/chapter-2.jox")).rejects.toThrow();
+    expect(setup.resources.size).toBe(resourceCount);
+    expect((await library.list())[0]?.status).toBe("ready");
+
+    enabled = ["community"];
+    const reopened = await library.open("books", "one");
+    await expect(reopened!.client.fetchJson("books/one/chapter-2.jox")).resolves.toMatchObject({ fragmentId: "chapter:2" });
+  });
+
   it("uses an expired local session only for offline identity and invalidates it when that session is removed", () => {
     const current = { initialized: false, userId: null };
     const session = JSON.stringify({ expires_at: 1, user: { id: "reader-a" } });

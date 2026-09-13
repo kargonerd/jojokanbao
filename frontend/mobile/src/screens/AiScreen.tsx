@@ -1,3 +1,4 @@
+import { useLibraryVisibility } from "../lib/libraryVisibility";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { ARCHIVE_PUBLICATION_BY_ID, JOJO_AI_PERIODICAL_IDS, isArchiveIssueId } from "@jojo/content";
 import { useNavigation, type NavigationProp } from "@react-navigation/native";
@@ -127,7 +128,9 @@ export function AiScreen() {
   const theme = mobileTheme;
   const listRef = useRef<FlatList<MobileBookAgentMessage>>(null);
   const cancelRef = useRef<(() => void) | undefined>(undefined);
-  const [books, setBooks] = useState<MobileBook[]>([]);
+  const bookVisible = useLibraryVisibility();
+  const [allBooks, setBooks] = useState<MobileBook[]>([]);
+  const books = useMemo(() => allBooks.filter(bookVisible), [allBooks, bookVisible]);
   const [contentType, setContentType] = useState<"all" | "book" | "periodical">("all");
   const [loadingBooks, setLoadingBooks] = useState(false);
   const [booksError, setBooksError] = useState("");

@@ -3,9 +3,11 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import * as cheerio from "cheerio";
 import JSZip from "jszip";
+import postcss from "postcss";
 import type { JojoTocNode } from "@jojo/content";
 import type { DecodedWereadBook, DecodedWereadChapter } from "./models";
 import { isExternalEpubReference, loadEpubXml, resolveEpubReference as zipPath } from "./epub-xml";
+import { preserveSourceFontWeight } from "./source-font-weight";
 
 type SourceFormat = "epub" | "azw" | "mobi" | "prc";
 
@@ -103,6 +105,22 @@ interface EpubFootnoteDefinition {
 
 async function decodeEpub(sourcePath: string, source: Uint8Array): Promise<DecodedWereadBook> {
   const zip = await JSZip.loadAsync(source);
+  async function stylesheet(file: string, ancestors = new Set<string>()): Promise<string> {
+    if (ancestors.has(file)) return "";
+    const css = await zip.file(file)?.async("string");
+    if (css === undefined) throw new Error(`EPUB 缺少样式表 ${file}`);
+    const root = postcss.parse(css);
+    const imports: string[] = [];
+    root.walkAtRules("import", (rule) => {
+      const match = rule.params.match(/^(?:url\(\s*)?(?:"([^"]+)"|'([^']+)'|([^\s)'";]+))\s*\)?(?:\s+(?:all|screen))?$/i);
+      const reference = match?.[1] ?? match?.[2] ?? match?.[3];
+      if (reference && !isExternalEpubReference(reference)) imports.push(zipPath(file, reference).file);
+      rule.remove();
+    });
+    const chain = new Set([...ancestors, file]);
+    const imported = await Promise.all(imports.map((target) => stylesheet(target, chain)));
+    return [...imported, root.toString()].join("\n");
+  }
   const containerXml = await zip.file("META-INF/container.xml")?.async("string");
   if (!containerXml) throw new Error("EPUB 缺少 META-INF/container.xml");
   const container = loadEpubXml(containerXml);
@@ -289,6 +307,18 @@ async function decodeEpub(sourcePath: string, source: Uint8Array): Promise<Decod
       continue;
     }
     const $ = loadEpubXml(raw);
+    for (const element of $("link[href]").toArray()) {
+      const link = $(element);
+      if (!(link.attr("rel") ?? "").toLowerCase().split(/\s+/).includes("stylesheet")) continue;
+      const reference = link.attr("href")!;
+      if (isExternalEpubReference(reference)) continue;
+      const css = await stylesheet(zipPath(entry.file, reference).file);
+      link.replaceWith($("<style></style>").text(css));
+    }
+    // Resolve each source document before coalescing, so identically named
+    // classes from different files cannot leak styles into each other.
+    preserveSourceFontWeight($);
+    $("style").remove();
     $("a[href]").each((_linkIndex, element) => {
       const current = $(element);
       const reference = current.attr("href")?.trim();

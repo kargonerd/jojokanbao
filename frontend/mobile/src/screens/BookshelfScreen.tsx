@@ -1,3 +1,6 @@
+import { isLibraryBookVisible, libraryBookPolicy } from "@jojo/content";
+import { mobileBookOwnerId } from "../offline/books";
+import { useLibraryVisibility } from "../lib/libraryVisibility";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
@@ -24,12 +27,15 @@ type ShelfItem = MobileBookshelfEntry & { book?: MobileBook };
 export function BookshelfScreen({ navigation }: Props) {
   const theme = mobileTheme;
   const { width } = useWindowDimensions();
+  const librarySources = useMobileStore((state) => state.librarySources);
   const recentBooks = useMobileStore((state) => state.recentBooks);
   const { entries, loading, error, busyKey, toggle, reload } = useBookshelf();
   const offlineRecords = useMobileOfflineBooksStore((state) => state.books);
   const offlineLoading = useMobileOfflineBooksStore((state) => state.loading);
   const offlineError = useMobileOfflineBooksStore((state) => state.error);
-  const [books, setBooks] = useState<MobileBook[]>([]);
+  const bookVisible = useLibraryVisibility();
+  const [allBooks, setBooks] = useState<MobileBook[]>([]);
+  const books = useMemo(() => allBooks.filter(bookVisible), [allBooks, bookVisible]);
   const [booksFailed, setBooksFailed] = useState(false);
   const [retryToken, setRetryToken] = useState(0);
   useRetryOnFailure(booksFailed, () => setRetryToken((value) => value + 1));
@@ -47,14 +53,15 @@ export function BookshelfScreen({ navigation }: Props) {
   }, [retryToken]);
 
   const items = useMemo<ShelfItem[]>(() => {
-    const visible = [...entries];
+    const visible = entries.filter((entry) => books.some((book) => book.datasetId === entry.datasetId));
     for (const record of offlineRecords) {
+      if (!isLibraryBookVisible(libraryBookPolicy(record.entry, record.index, record.item, record.manifest), Boolean(mobileBookOwnerId(true)), librarySources)) continue;
       if (!visible.some((entry) => entry.datasetId === record.entry.datasetId && (entry.itemId === record.item.itemId || entry.itemId === record.item.itemKey))) {
         visible.push({ datasetId: record.entry.datasetId, itemId: record.item.itemKey, title: record.item.title });
       }
     }
     return visible.map((entry) => ({ ...entry, book: books.find((book) => book.datasetId === entry.datasetId) }));
-  }, [books, entries, offlineRecords]);
+  }, [books, entries, offlineRecords, bookVisible, librarySources]);
 
   const remove = (item: MobileBookshelfEntry) => toggle(`${item.datasetId}:${item.itemId}`, async () => item);
 

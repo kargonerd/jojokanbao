@@ -1,3 +1,5 @@
+import type { LibrarySourceId } from "./library-sources";
+
 export type JojoDatasetType = "book" | "book-series" | "magazine" | "newspaper";
 export type JojoItemType = "book" | "book-volume" | "magazine" | "newspaper";
 export type JojoAssetType = "audio" | "image" | "pdf" | "video";
@@ -42,6 +44,7 @@ export interface JojoCatalogEntry {
   aiEnabled?: boolean;
   publicationStatus?: JojoPublicationStatus;
   access?: JojoContentAccess;
+  librarySource?: LibrarySourceId;
 }
 
 export interface JojoCatalog {
@@ -60,6 +63,7 @@ export interface JojoDatasetItemSummary {
   manifestObject: string;
   publicationStatus?: JojoPublicationStatus;
   access?: JojoContentAccess;
+  librarySource?: LibrarySourceId;
 }
 
 export interface JojoDatasetIndex {
@@ -74,6 +78,7 @@ export interface JojoDatasetIndex {
   aiEnabled?: boolean;
   publicationStatus?: JojoPublicationStatus;
   access?: JojoContentAccess;
+  librarySource?: LibrarySourceId;
   availability?: JojoItemAvailability | JojoPeriodicalAvailability;
   items?: JojoDatasetItemSummary[];
   itemPath?: string;
@@ -89,6 +94,7 @@ export interface JojoCanonicalDataset {
   aiEnabled?: boolean;
   publicationStatus?: JojoPublicationStatus;
   access?: JojoContentAccess;
+  librarySource?: LibrarySourceId;
   description?: string;
   itemPath: string;
   availability?: JojoPeriodicalAvailability;
@@ -204,6 +210,7 @@ export interface JojoItemManifest {
   language: string;
   publicationStatus?: JojoPublicationStatus;
   access?: JojoContentAccess;
+  librarySource?: LibrarySourceId;
   availability?: JojoItemAvailability;
   identifiers?: Record<string, string | null>;
   metadata: Record<string, unknown>;
@@ -291,6 +298,7 @@ export interface JojoCanonicalItem {
   language: string;
   publicationStatus?: JojoPublicationStatus;
   access?: JojoContentAccess;
+  librarySource?: LibrarySourceId;
   availability?: JojoItemAvailability;
   identifiers: Record<string, string | null>;
   metadata: Record<string, unknown>;

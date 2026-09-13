@@ -21,6 +21,10 @@ pnpm sync:rmrb
 - `verify.mjs` checks local files or public URLs, including HTTP Range support.
 - `publish.mjs` linearizes, protects, verifies, and uploads selected issues.
 - `purge-cache.mjs` submits EdgeOne URL or prefix purge tasks.
+  It reuses Tencent Cloud environment credentials (including `TENCENTCLOUD_TOKEN`
+  for temporary credentials), or the existing `tccli` login when those are absent.
+  `EDGEONE_ZONE_ID` selects the serving zone; otherwise matching zones are discovered.
+  Book publication also uses this utility to refresh its mutable metadata URLs.
 - `finalize.mjs` purges public URLs and polls verification until the protected
   objects are visible.
 - `sync_rmrb.py` publishes RMRB PDFs to Hugging Face Canonical, then uploads

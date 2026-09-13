@@ -4,6 +4,7 @@ import { OverviewPage } from "./pages/OverviewPage";
 import { PdfDataPage } from "./pages/PdfDataPage";
 import { EsDataPage } from "./pages/EsDataPage";
 import { ContentDataPage } from "./pages/ContentDataPage";
+import { ContentPreviewPage } from "./pages/ContentPreviewPage";
 import { FeatureFlagsPage } from "./features/FeatureFlagsPage";
 import { AgentAdminPage } from "./agent/AgentAdminPage";
 import { ModerationPage } from "./moderation/ModerationPage";
@@ -13,6 +14,7 @@ export function App() {
   return (
     <BrowserRouter>
       <Routes>
+        <Route path="content/:jobId/preview" element={<ContentPreviewPage />} />
         <Route element={<AdminShell />}>
           <Route index element={<OverviewPage />} />
           <Route path="pdf" element={<PdfDataPage />} />

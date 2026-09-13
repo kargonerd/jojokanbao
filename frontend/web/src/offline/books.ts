@@ -1,3 +1,4 @@
+import { useLibraryPreferencesStore } from "../library/preferencesStore";
 import { OfflineBookLibrary, type OfflineBookRecord } from "@jojo/content";
 import { create } from "zustand";
 import { useAccountSessionStore } from "../account/session";
@@ -9,6 +10,7 @@ export const offlineBooks = new OfflineBookLibrary({
   repository: browserOfflineBookRepository,
   baseUrl: import.meta.env.VITE_CONTENT_CDN_BASE || "https://blacknews.jojokanbao.cn/",
   identity: browserOfflineBookIdentity,
+  librarySources: () => useLibraryPreferencesStore.getState().enabledSources,
   downloadIdentity: () => useAccountSessionStore.getState(),
   canDownload: () => supportsOfflineBooks() && Boolean(navigator.locks),
   lock: async (datasetId, task, ifAvailable = false) => {

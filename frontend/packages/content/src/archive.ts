@@ -148,7 +148,7 @@ function parseCalendarIssueId(issueId: string): { year: number; dayIndex: number
   return { year, dayIndex: Math.floor((timestamp - Date.UTC(year, 0, 1)) / 86_400_000) };
 }
 
-function isCkxxMissing(issueId: string, year: number, dayIndex: number): boolean {
+function isCkxxMissing(_issueId: string, year: number, dayIndex: number): boolean {
   if (year === 1989) return true;
   const bits = CKXX_MISSING_DATE_BITS[String(year)];
   if (!bits) return false;

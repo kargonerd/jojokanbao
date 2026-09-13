@@ -1,3 +1,4 @@
+import { useLibraryPreferencesStore } from "../../library/preferencesStore";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "@jojo/ui";
 import { AiExperimentalNotice } from "../components/AiBetaNotice";
@@ -115,6 +116,7 @@ function ConversationHistory({ compact = false }: { compact?: boolean }) {
 }
 
 function ScopeSelector({ onClose }: { onClose?: () => void }) {
+  useLibraryPreferencesStore((state) => state.enabledSources);
   const {
     notebooks,
     contentType,
@@ -242,6 +244,7 @@ const assistantTextClass = [
 ].join(" ");
 
 export function ChatPage() {
+  useLibraryPreferencesStore((state) => state.enabledSources);
   const {
     notebooks,
     selectedNotebookIds,

@@ -7,6 +7,7 @@ import {
   shouldRenderChapterTitle,
 } from "../src/rag/pages/ReaderPage";
 import type { JojoCatalogEntry } from "@jojo/content";
+import { renderedChapter } from "@jojo/content/book-renderer";
 
 describe("content visibility compatibility", () => {
   it("treats old catalog entries as published and public", () => {
@@ -17,6 +18,37 @@ describe("content visibility compatibility", () => {
 });
 
 describe("RAG content Reader annotations", () => {
+  it("keeps title footnotes inline in the page heading without a detached body marker", () => {
+    const fragment: JojoFragment = {
+      formatVersion: "jojo-fragment/1", itemId: "book:test", fragmentId: "chapter:title",
+      type: "chapter", order: 1, title: "论合作社", assetRefs: [],
+      body: { format: "html", value: '<h1 id="source-title">论合作社<sup data-annotation-id="title-note"></sup></h1><p>正文</p>' },
+      annotations: [{ id: "title-note", targetId: "chapter:title", kind: "footnote", label: "*", body: { format: "text", value: "标题附注" } }],
+    };
+    const { titleHtml, bodyHtml } = renderedChapter(fragment, {});
+    const document = new DOMParser().parseFromString(`<h1>${titleHtml}</h1><main>${bodyHtml}</main>`, "text/html");
+    expect(document.querySelectorAll("h1")).toHaveLength(1);
+    expect(document.getElementById("source-title")).not.toBeNull();
+    expect(document.getElementById("annotation-ref-title-note")?.querySelector("a")?.getAttribute("href")).toBe("#title-note");
+    expect(document.querySelector("h1 sup")?.textContent).toBe("*");
+    expect(document.querySelector("main sup")).toBeNull();
+  });
+
+  it("sanitizes source title markup and escapes plain metadata titles", () => {
+    const fragment: JojoFragment = {
+      formatVersion: "jojo-fragment/1", itemId: "book:test", fragmentId: "chapter:title",
+      type: "chapter", order: 1, title: "书名", assetRefs: [], annotations: [],
+      body: { format: "html", value: '<h1 onclick="alert(1)"><em>书名</em><img onerror="alert(1)"></h1><p>正文</p>' },
+    };
+    const source = renderedChapter(fragment, {});
+    expect(source.titleHtml).toContain("<em>书名</em>");
+    expect(source.titleHtml).not.toMatch(/onerror|onclick/);
+    const metadata = renderedChapter({ ...fragment, title: '<img src=x onerror="alert(1)">' }, {});
+    const document = new DOMParser().parseFromString(`<h1>${metadata.titleHtml}</h1>`, "text/html");
+    expect(document.querySelector("h1 img")).toBeNull();
+    expect(document.querySelector("h1")?.textContent).toBe('<img src=x onerror="alert(1)">');
+  });
+
   it("renders imported tables and MathML with searchable anchors", () => {
     const fragment: JojoFragment = {
       formatVersion: "jojo-fragment/1", itemId: "book:test", fragmentId: "chapter:math",

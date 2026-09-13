@@ -1,3 +1,4 @@
+import { useLibraryVisibility } from "../lib/libraryVisibility";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { dailyQuote, type ArchivePublicationName } from "@jojo/content";
 import { useNavigation, type NavigationProp } from "@react-navigation/native";
@@ -81,7 +82,9 @@ export function HomeScreen() {
   const recentBooks = useMobileStore((state) => state.recentBooks);
   const theme = mobileTheme;
   const [query, setQuery] = useState("");
-  const [books, setBooks] = useState<MobileBook[]>([]);
+  const bookVisible = useLibraryVisibility();
+  const [allBooks, setBooks] = useState<MobileBook[]>([]);
+  const books = useMemo(() => allBooks.filter(bookVisible), [allBooks, bookVisible]);
   const [loadingBooks, setLoadingBooks] = useState(true);
   const [booksFailed, setBooksFailed] = useState(false);
   const [retryToken, setRetryToken] = useState(0);
@@ -121,7 +124,7 @@ export function HomeScreen() {
       issueId: item.issueId,
       page: item.currentPage,
     })),
-    ...recentBooks.map((item) => ({
+    ...recentBooks.filter((item) => books.some((book) => book.datasetId === item.datasetId)).map((item) => ({
       kind: "book" as const,
       id: `book:${item.datasetId}:${item.itemKey}`,
       title: item.title,

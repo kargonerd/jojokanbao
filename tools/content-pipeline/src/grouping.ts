@@ -40,8 +40,8 @@ export function chineseNumber(value: string): number | undefined {
 
 const NUMBER = "[〇零一二两三四五六七八九十百\\d]+";
 const SEPARATE_VOLUME = new RegExp(`^(.*?)[（(]\\s*第(${NUMBER})卷\\s*[）)](?:\\s*(.*))?$`);
-const ALL_VOLUMES = new RegExp(`[（(]?\\s*全(${NUMBER})卷\\s*[）)]?`);
-const VOLUME_RANGE = new RegExp(`[（(]?\\s*(?:1|一)\\s*[-—–至到]\\s*(${NUMBER})卷\\s*[）)]?`);
+const ALL_VOLUMES = new RegExp(`\\s*全(${NUMBER})卷\\s*`);
+const VOLUME_RANGE = new RegExp(`\\s*(?:1|一)\\s*[-—–至到]\\s*(${NUMBER})卷\\s*`);
 const VOLUME_REFERENCE = new RegExp(`(?:^|[（(\\s　])第(${NUMBER})卷(?:$|[）)\\s　:：])`);
 const VOLUME_HEADING = new RegExp(`^(?:.+?)?[（(]?第(${NUMBER})卷[）)]?$`);
 const CHRONOLOGICAL_PART = /^(.*?)[：:]\s*(\d{4})\s*[～~—–-]\s*(\d{4})(.*)$/;
@@ -59,6 +59,11 @@ export interface BookGrouping {
 
 function normalizedTitle(value: string): string {
   return value.normalize("NFKC").replace(/\s+/g, " ").trim();
+}
+
+function withoutVolumeCount(title: string, match: string): string {
+  // Remove only empty parentheses; edition text can share them with the count.
+  return title.replace(match, "").replace(/\(\s*\)/g, "").replace(/\s+/g, " ").trim();
 }
 
 export function datasetIdForTitle(title: string): string {
@@ -87,7 +92,7 @@ export function groupBookTitle(title: string): BookGrouping {
     const all = normalized.match(ALL_VOLUMES);
     const total = all ? chineseNumber(all[1]!) : undefined;
     const legacyTitle = all
-      ? normalized.replace(all[0], "").replace(/\s+/g, " ").trim()
+      ? withoutVolumeCount(normalized, all[0])
       : normalized;
     const datasetId = datasetIdForTitle(datasetTitle);
     const legacyDatasetId = datasetIdForTitle(legacyTitle);
@@ -115,7 +120,7 @@ export function groupBookTitle(title: string): BookGrouping {
   }
   const all = normalized.match(ALL_VOLUMES);
   if (all) {
-    const datasetTitle = normalized.replace(all[0], "").replace(/\s+/g, " ").trim();
+    const datasetTitle = withoutVolumeCount(normalized, all[0]);
     const total = chineseNumber(all[1]!);
     return {
       datasetTitle,
@@ -126,7 +131,7 @@ export function groupBookTitle(title: string): BookGrouping {
   }
   const range = normalized.match(VOLUME_RANGE);
   if (range) {
-    const datasetTitle = normalized.replace(range[0], "").replace(/\s+/g, " ").trim();
+    const datasetTitle = withoutVolumeCount(normalized, range[0]);
     const total = chineseNumber(range[1]!);
     return {
       datasetTitle,

@@ -1,5 +1,7 @@
 import {
   JoxClient,
+  isLibraryBookVisible,
+  libraryBookPolicy,
   JOJO_AI_PERIODICAL_IDS,
   asJojoBookSearchIndex,
   asJojoCatalog,
@@ -27,6 +29,7 @@ import { createPeriodicalTools } from "./periodical-tools";
 export interface RagScope {
   contentType?: "all" | "book" | "periodical";
   mode?: "all" | "selected";
+  librarySources?: string[];
   datasetIds?: string[];
   itemIds?: string[];
   manifestObjects?: string[];
@@ -237,7 +240,7 @@ function createBookTools(options: RagToolOptions): AgentTool[] {
   function allowedCatalogEntry(entry: JojoCatalogEntry): boolean {
     return supportsJojoDatasetAi(entry)
       && (entry.type === "book" || entry.type === "book-series")
-      && entry.publicationStatus !== "draft"
+      && isLibraryBookVisible(entry, true, scope.librarySources)
       && (!scope.datasetIds?.length || scope.datasetIds.includes(entry.datasetId));
   }
 
@@ -263,6 +266,7 @@ function createBookTools(options: RagToolOptions): AgentTool[] {
         if (index.datasetId !== entry.datasetId) {
           throw new Error("Dataset Index 与馆藏目录不匹配");
         }
+        if (!isLibraryBookVisible(libraryBookPolicy(entry, index), true, scope.librarySources)) throw new Error("该书籍已下架或书源已关闭");
         return { entry, index, indexObject };
       })();
       datasetCache.set(datasetId, promise);
@@ -297,6 +301,12 @@ function createBookTools(options: RagToolOptions): AgentTool[] {
       await jox.fetchJson<JojoItemManifest>(object, signal, "no-store"),
     );
     enforceManifestScope(manifest);
+    const dataset = await loadDataset(manifest.datasetId, signal);
+    const item = dataset.index.items.find((candidate) => candidate.itemId === manifest.itemId);
+    if (!item || !allowedItem(dataset, item) || itemManifestObject(dataset, item) !== object
+      || !isLibraryBookVisible(libraryBookPolicy(dataset.entry, dataset.index, item, manifest), true, scope.librarySources)) {
+      throw new Error("该书籍已下架或不在已开启的书源范围内");
+    }
     manifestCache.set(object, manifest);
     return manifest;
   }
@@ -309,7 +319,7 @@ function createBookTools(options: RagToolOptions): AgentTool[] {
   }
 
   function allowedItem(dataset: LoadedDataset, item: JojoDatasetItemSummary): boolean {
-    return item.publicationStatus !== "draft"
+    return isLibraryBookVisible(libraryBookPolicy(dataset.entry, dataset.index, item), true, scope.librarySources)
       && (!scope.itemIds?.length || scope.itemIds.includes(item.itemId))
       && (!scope.manifestObjects?.length
         || scope.manifestObjects.includes(itemManifestObject(dataset, item)));

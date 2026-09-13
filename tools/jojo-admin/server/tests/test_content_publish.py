@@ -1,6 +1,7 @@
 import json
 import gzip
 import os
+import subprocess
 import sys
 from types import SimpleNamespace
 import unittest
@@ -13,7 +14,42 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import content_publish
 
 
+class HubTransportInitializationTest(unittest.TestCase):
+    def test_configuration_lookup_initializes_transport_before_cached_login_import(self):
+        code = """
+import os, sys, types
+import es_repair
+es_repair._load_root_env = lambda: None
+hub = types.ModuleType('huggingface_hub')
+def get_token():
+    assert os.environ.get('HF_HUB_DISABLE_XET') == sys.argv[1]
+    return 'cached-test-login'
+hub.get_token = get_token
+sys.modules['huggingface_hub'] = hub
+import content_publish
+assert content_publish._huggingface_token() == 'cached-test-login'
+"""
+        for configured, expected in [(None, "1"), ("0", "0")]:
+            with self.subTest(configured=configured):
+                env = dict(os.environ)
+                env.pop("HF_TOKEN", None)
+                env.pop("HF_HUB_DISABLE_XET", None)
+                if configured is not None:
+                    env["HF_HUB_DISABLE_XET"] = configured
+                result = subprocess.run(
+                    [sys.executable, "-c", code, expected], env=env,
+                    cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True,
+                    timeout=20,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+
+
 class B2PublishTest(unittest.TestCase):
+    def setUp(self):
+        patcher = patch.object(content_publish, "refresh_book_delivery", return_value={"status": "verified"})
+        self.refresh = patcher.start()
+        self.addCleanup(patcher.stop)
+
     def make_build(self, root: Path) -> None:
         (root / "delivery" / "content").mkdir(parents=True)
         (root / "raw").mkdir()
@@ -59,6 +95,10 @@ class B2PublishTest(unittest.TestCase):
         self.assertFalse(any(str(root / "canonical") in command for command in commands))
         self.assertTrue(delivery_commands)
         self.assertTrue(all("--s3-no-check-bucket" in command for command in delivery_commands))
+        self.assertIn("cache-control=public, max-age=0, must-revalidate", final_command)
+        self.assertIn("--ignore-times", final_command)
+        self.assertIn("--metadata", final_command)
+        self.refresh.assert_called_once()
 
     @patch.object(content_publish.shutil, "which", return_value="rclone.exe")
     @patch.object(content_publish, "_run")
@@ -74,6 +114,17 @@ class B2PublishTest(unittest.TestCase):
         self.assertTrue(remotes[0].endswith("/catalog.jox"))
         self.assertTrue(remotes[1].endswith("/content/books/dataset-a/index.jox"))
         self.assertTrue(remotes[2].endswith("/content/books/dataset-b/index.jox"))
+
+    @patch.object(content_publish.shutil, "which", return_value="rclone.exe")
+    @patch.object(content_publish, "_run")
+    @patch.object(content_publish, "_try_copy_remote", return_value=False)
+    def test_cache_failure_is_not_reported_as_success(self, _copy, _run, _which):
+        self.refresh.side_effect = RuntimeError("线上缓存尚未更新")
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.make_build(root)
+            with self.assertRaisesRegex(RuntimeError, "缓存尚未更新"):
+                content_publish.publish_b2(root, lambda _: None)
 
 
 class HuggingFacePublishTest(unittest.TestCase):

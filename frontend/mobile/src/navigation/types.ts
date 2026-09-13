@@ -38,7 +38,7 @@ export type RootStackParamList = {
   };
 };
 
-export type SettingsSection = "reading" | "interaction" | "times" | "data" | "about";
+export type SettingsSection = "library" | "reading" | "interaction" | "times" | "data" | "about";
 
 export type MainTabParamList = {
   Today: undefined;

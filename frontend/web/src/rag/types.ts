@@ -1,3 +1,4 @@
+import type { LibrarySourceId } from "@jojo/content";
 import type { JojoContentAccess } from "@jojo/content";
 
 export interface RagReference {
@@ -35,6 +36,7 @@ export interface RagNotebook {
   indexObject?: string;
   aiEnabled?: boolean;
   access?: JojoContentAccess;
+  librarySource?: LibrarySourceId;
 }
 
 export interface RagSource {
@@ -46,6 +48,7 @@ export interface RagSource {
   itemKey?: string;
   manifestObject?: string;
   access?: JojoContentAccess;
+  librarySource?: LibrarySourceId;
 }
 
 export interface RagMessage {

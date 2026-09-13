@@ -1,3 +1,4 @@
+import { DEFAULT_LIBRARY_SOURCES, type LibrarySourceId } from "@jojo/content";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
@@ -76,6 +77,8 @@ interface MobileState {
   timesLanguage: "zh-CN" | "original";
   timesReadArticleIds: string[];
   timesDisabledSourceIds: string[];
+  librarySources: LibrarySourceId[];
+  setLibrarySourceEnabled: (source: LibrarySourceId, enabled: boolean) => void;
   setHapticsEnabled: (enabled: boolean) => void;
   setTextScale: (scale: MobileState["textScale"]) => void;
   setBookLineHeight: (lineHeight: MobileState["bookLineHeight"]) => void;
@@ -120,6 +123,8 @@ export const useMobileStore = create<MobileState>()(
       timesLanguage: "zh-CN",
       timesReadArticleIds: [],
       timesDisabledSourceIds: [],
+      librarySources: [...DEFAULT_LIBRARY_SOURCES],
+      setLibrarySourceEnabled: (source, enabled) => set((state) => ({ librarySources: enabled ? [...new Set([...state.librarySources, source])] : state.librarySources.filter((id) => id !== source) })),
       setHapticsEnabled: (hapticsEnabled) => set({ hapticsEnabled }),
       setTextScale: (textScale) => set({ textScale }),
       setBookLineHeight: (bookLineHeight) => set({ bookLineHeight }),
@@ -229,7 +234,7 @@ export const useMobileStore = create<MobileState>()(
     {
       name: "jojo-mobile-preferences-v1",
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: ({ hapticsEnabled, textScale, bookLineHeight, bookReadingMode, bookPaperColor, bookFirstLineIndent, keepScreenAwake, allowLandscape, leftTapNext, recentIssues, recentBooks, bookAnnotations, aiConversations, timesLanguage, timesReadArticleIds, timesDisabledSourceIds }) => ({
+      partialize: ({ hapticsEnabled, textScale, bookLineHeight, bookReadingMode, bookPaperColor, bookFirstLineIndent, keepScreenAwake, allowLandscape, leftTapNext, recentIssues, recentBooks, bookAnnotations, aiConversations, timesLanguage, timesReadArticleIds, timesDisabledSourceIds, librarySources }) => ({
         hapticsEnabled,
         textScale,
         bookLineHeight,
@@ -246,6 +251,7 @@ export const useMobileStore = create<MobileState>()(
         timesLanguage,
         timesReadArticleIds,
         timesDisabledSourceIds,
+        librarySources,
       }),
     },
   ),

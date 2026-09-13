@@ -119,26 +119,19 @@ button {
 .content-workbench .workspace-panel {
   min-height: 0;
 }
-.content-path-row {
+.content-file-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 12px;
-  align-items: end;
+  align-items: center;
 }
-.content-path-row label {
-  display: grid;
-  gap: 7px;
-  color: #625c54;
-  font-size: 12px;
+.content-file-name {
+  min-width: 0;
+  margin: 0;
+  color: #716960;
+  overflow-wrap: anywhere;
 }
-.content-path-row input {
-  width: 100%;
-  min-height: 43px;
-  padding: 9px 11px;
-  border: 1px solid #aaa197;
-  background: #faf8f3;
-  font-family: ui-monospace, monospace;
-}
+.content-file-name.is-selected { color: var(--color-ink); }
 .primary-button,
 .secondary-button,
 .text-button {
@@ -283,7 +276,7 @@ button {
 .publisher-card small { color: #776f64; word-break: break-all; }
 .publisher-card em { margin-top: 14px; color: var(--color-red); font: 10px ui-monospace, monospace; font-style: normal; }
 @media (max-width: 900px) {
-  .content-path-row,
+  .content-file-row,
   .publisher-grid { grid-template-columns: 1fr; }
   .report-grid { grid-template-columns: repeat(3, 1fr); }
 }

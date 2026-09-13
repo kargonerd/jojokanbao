@@ -1,3 +1,4 @@
+import { useMobileStore } from "../store/mobileStore";
 import { fetch } from "expo/fetch";
 
 const AGENT_URL = process.env.EXPO_PUBLIC_AGENT_API_URL?.trim()
@@ -98,6 +99,7 @@ export function askMobileBookAgent(
           content: message.content.replace(/\[cite:[A-Za-z0-9_-]+\]/g, ""),
         })),
         scope: {
+          librarySources: useMobileStore.getState().librarySources,
           mode: "selected",
           datasetIds: [request.datasetId],
           itemIds: [request.itemId],

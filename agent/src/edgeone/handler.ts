@@ -111,6 +111,10 @@ function requestBody(value: unknown): AgentRequestBody {
     return strings.length ? strings : undefined;
   };
   const datasetIds = stringList(scope?.datasetIds);
+  const librarySources = scope?.librarySources;
+  if (librarySources !== undefined && (!Array.isArray(librarySources) || librarySources.some((id) => id !== "jojo" && id !== "community"))) {
+    throw new AgentHttpError(400, "scope.librarySources must contain supported library source IDs");
+  }
   const contentType = scope?.contentType;
   if (contentType !== undefined && contentType !== "all" && contentType !== "book" && contentType !== "periodical") {
     throw new AgentHttpError(400, "scope.contentType must be all, book or periodical");
@@ -193,10 +197,11 @@ function requestBody(value: unknown): AgentRequestBody {
     message: message.trim(),
     ...(images.length ? { images } : {}),
     ...(history.length ? { history } : {}),
-    ...(contentType || mode || datasetIds || itemIds || manifestObjects
+    ...(librarySources !== undefined || contentType || mode || datasetIds || itemIds || manifestObjects
       ? { scope: {
         ...(contentType ? { contentType } : {}),
         ...(mode ? { mode } : {}),
+        ...(librarySources !== undefined ? { librarySources: librarySources as string[] } : {}),
         ...(datasetIds ? { datasetIds } : {}),
         ...(itemIds ? { itemIds } : {}),
         ...(manifestObjects ? { manifestObjects } : {}),

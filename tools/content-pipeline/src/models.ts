@@ -38,6 +38,7 @@ export interface DecodedWereadChapter {
   level: number;
   contentType: "application/xhtml+xml" | "text/plain";
   content: string;
+  stylesheets?: string[];
 }
 
 export interface DecodedWereadBook {

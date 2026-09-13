@@ -1,3 +1,4 @@
+import { libraryBookPolicy, isLibrarySourceEnabled } from "@jojo/content";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import type { SpeechLocation, SpeechReadingPosition } from "@jojo/content";
 import Slider from "@react-native-community/slider";
@@ -94,6 +95,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
   const cancelAgentRef = useRef<(() => void) | undefined>(undefined);
   const aiBookRouteRef = useRef("");
 
+  const librarySources = useMobileStore((state) => state.librarySources);
   const textScale = useMobileStore((state) => state.textScale);
   const setTextScale = useMobileStore((state) => state.setTextScale);
   const bookLineHeight = useMobileStore((state) => state.bookLineHeight);
@@ -273,7 +275,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
       .catch((reason: unknown) => { if (active) setError(reason instanceof Error ? reason.message : "无法打开书籍"); })
       .finally(() => { if (active) setItemLoading(false); });
     return () => { active = false; controller.abort(); };
-  }, [datasetId, initialAnchorId, initialChapterId, initialText, itemKey, retryToken, user?.id, offlineIdentityVersion]);
+  }, [datasetId, initialAnchorId, initialChapterId, initialText, itemKey, retryToken, user?.id, offlineIdentityVersion, librarySources]);
 
   useEffect(() => {
     if (!loaded || !activeChapterId) { setChapterLoading(false); return; }
@@ -664,6 +666,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
   }
 
   const sheetBottom = insets.bottom + 64;
+  if (loaded && !isLibrarySourceEnabled(libraryBookPolicy(loaded.book, loaded.volume, loaded.manifest).librarySource, librarySources)) return <SafeAreaView><Text>这本书的书源已关闭</Text><Pressable onPress={() => navigation.navigate("Settings", { section: "library" })}><Text>前往资料库设置 →</Text></Pressable></SafeAreaView>;
   return (
     <SafeAreaView edges={["top", "bottom"]} style={[styles.safe, { backgroundColor: theme.paper }]}>
       <ReaderEnvironment />

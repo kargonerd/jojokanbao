@@ -44,6 +44,14 @@ describe("book Dataset grouping", () => {
     });
   });
 
+  it.each(["新青年（原版全9卷）", "新青年（原版1-9卷）", "新青年（全9卷原版）"])("preserves edition parentheses in %s", (title) => {
+    expect(groupBookTitle(title)).toMatchObject({
+      datasetTitle: "新青年(原版)",
+      datasetId: "xin-qing-nian-yuan-ban",
+      declaredTotalVolumes: 9,
+    });
+  });
+
   it("groups chronological parts under one stable Dataset", () => {
     const first = groupBookTitle("毛泽东年谱：1893～1949（全3卷）（修订本）");
     const second = groupBookTitle("毛泽东年谱：1949～1976（全6卷）");

@@ -1,3 +1,5 @@
+import { libraryBookPolicy, isLibrarySourceEnabled, type LibrarySourceId } from "@jojo/content";
+import { useMobileStore } from "../store/mobileStore";
 import {
   JoxClient,
   ResourceCache,
@@ -27,6 +29,7 @@ export interface MobileBook {
   itemCount?: number;
   aiEnabled?: boolean;
   access?: JojoContentAccess;
+  librarySource?: LibrarySourceId;
 }
 
 export interface MobileBookVolume {
@@ -36,6 +39,7 @@ export interface MobileBookVolume {
   order: number;
   manifestObject: string;
   access?: JojoContentAccess;
+  librarySource?: LibrarySourceId;
 }
 
 export type MobileBookOpenTarget =
@@ -75,6 +79,7 @@ export interface LoadedMobileBookItem {
   offline?: boolean;
   ownerId?: string;
   access?: JojoContentAccess;
+  librarySource?: LibrarySourceId;
 }
 
 export interface LoadedMobileBookChapter {
@@ -149,7 +154,7 @@ export function selectPublishedBooks(entries: readonly JojoCatalogEntry[]): Mobi
       type: entry.type,
       itemCount: entry.itemCount,
       aiEnabled: entry.aiEnabled,
-      access: entry.access,
+      ...libraryBookPolicy(entry),
     }))
     .sort((left, right) => left.title.localeCompare(right.title, "zh-CN"));
 }
@@ -163,7 +168,7 @@ export function selectPublishedBookVolumes(items: readonly JojoDatasetItemSummar
       title: item.title,
       order: item.order,
       manifestObject: item.manifestObject,
-      access: item.access,
+      ...libraryBookPolicy(item),
     }))
     .sort((left, right) => left.order - right.order || left.title.localeCompare(right.title, "zh-CN"));
 }
@@ -186,8 +191,8 @@ export function loadMobileBookVolumes(book: MobileBook): Promise<MobileBookVolum
       .then(asJojoDatasetIndex)
       .then((index) => {
         if (index.datasetId !== book.datasetId) throw new Error("Dataset Index 格式无效");
-        book.access = index.access ?? book.access;
-        return selectPublishedBookVolumes(index.items);
+        Object.assign(book, libraryBookPolicy(book, index));
+        return selectPublishedBookVolumes(index.items.map((item) => ({ ...item, ...libraryBookPolicy(book, index, item) })));
       })
       .catch((error: unknown) => {
         volumePromises.delete(book.datasetId);
@@ -281,8 +286,8 @@ export async function loadMobileBookItem(datasetId: string, itemKey: string, sig
   const offline = await import("../offline/books").then(({ openMobileOfflineBook }) => openMobileOfflineBook(datasetId, itemKey)).catch(() => undefined);
   if (signal?.aborted) throw new Error("读取已取消");
   if (offline) return {
-    book: { datasetId, title: offline.entry.title, type: offline.entry.type as MobileBook["type"], indexObject: offline.entry.indexObject, access: offline.entry.access },
-    volume: { itemId: offline.item.itemId, itemKey: offline.item.itemKey, title: offline.item.title, order: offline.item.order, manifestObject: offline.item.manifestObject, access: offline.item.access },
+    book: { datasetId, title: offline.entry.title, type: offline.entry.type as MobileBook["type"], indexObject: offline.entry.indexObject, ...libraryBookPolicy(offline.entry, offline.index) },
+    volume: { itemId: offline.item.itemId, itemKey: offline.item.itemKey, title: offline.item.title, order: offline.item.order, manifestObject: offline.item.manifestObject, ...libraryBookPolicy(offline.entry, offline.index, offline.item) },
     manifest: offline.manifest, manifestObject: offline.manifestObject, contentClient: offline.client, offline: true,
     access: offline.scope === "public" ? "public" : "authenticated",
     ownerId: offline.scope.startsWith("user:") ? offline.scope.slice(5) : undefined,
@@ -300,12 +305,19 @@ export async function loadMobileBookItem(datasetId: string, itemKey: string, sig
   if (manifest.datasetId !== datasetId || manifest.itemId !== volume.itemId) {
     throw new Error("书籍内容格式无效");
   }
-  const access = manifest.access ?? volume.access ?? book.access ?? "public";
+  const { access } = libraryBookPolicy(book, volume, manifest);
   const contentClient = access === "authenticated"
     ? (await import("../offline/books")).mobileAuthenticatedBookClient()
     : client;
   const ownerId = access === "authenticated" ? (await import("../offline/books")).mobileBookOwnerId() ?? undefined : undefined;
   return { book, volume, manifest, manifestObject, contentClient, access, ownerId };
+}
+
+async function assertLibraryAccess(loaded: LoadedMobileBookItem) {
+  const policy = libraryBookPolicy(loaded.book, loaded.volume, loaded.manifest);
+  if (policy.publicationStatus === "draft") throw new Error("这本书已下架");
+  if (!isLibrarySourceEnabled(policy.librarySource, useMobileStore.getState().librarySources)) throw new Error("请在资料库设置中开启这本书的书源");
+  if (policy.access === "authenticated") (await import("../offline/books")).assertMobileBookOwner(loaded.ownerId, Boolean(loaded.offline));
 }
 
 export async function loadMobileBookChapter(
@@ -314,7 +326,7 @@ export async function loadMobileBookChapter(
   includeAssets = true,
   signal?: AbortSignal,
 ): Promise<LoadedMobileBookChapter> {
-  if (loaded.access === "authenticated") (await import("../offline/books")).assertMobileBookOwner(loaded.ownerId, Boolean(loaded.offline));
+  await assertLibraryAccess(loaded);
   const chapter = loaded.manifest.content.chapters?.find((candidate) => candidate.id === chapterId);
   if (!chapter) throw new Error("章节不存在");
   const contentClient = loaded.contentClient ?? client;
@@ -326,6 +338,7 @@ export async function loadMobileBookChapter(
   if (fragment.itemId !== loaded.manifest.itemId || fragment.fragmentId !== chapter.id) {
     throw new Error("章节内容格式无效");
   }
+  await assertLibraryAccess(loaded);
   if (!includeAssets) return { fragment, assetUrls: {} };
   const assetPairs = await Promise.all(fragment.assetRefs.map(async (assetId) => {
     const asset = loaded.manifest.assets.find((candidate) => candidate.id === assetId);
@@ -341,6 +354,7 @@ export async function loadMobileBookChapter(
   for (const pair of assetPairs) {
     if (pair) assetUrls[pair[0]] = pair[1];
   }
+  await assertLibraryAccess(loaded);
   return { fragment, assetUrls };
 }
 
@@ -472,7 +486,7 @@ export async function searchMobileBook(
   query: string,
   size = 30,
 ): Promise<MobileBookSearchResult[]> {
-  if (loaded.access === "authenticated") (await import("../offline/books")).assertMobileBookOwner(loaded.ownerId, Boolean(loaded.offline));
+  await assertLibraryAccess(loaded);
   if (!normalizedSearchText(query)) return [];
   const chapterTitles = new Map(
     (loaded.manifest.content.chapters ?? []).map((candidate) => [candidate.id, candidate.title]),

@@ -7,6 +7,7 @@ import type {
   JojoCanonicalChapter,
 } from "@jojo/content";
 import type { DecodedWereadChapter, PipelineDiagnostic } from "./models";
+import { preserveSourceFontWeight } from "./source-font-weight";
 
 const MATHML_TAGS = [
   "math", "mrow", "mi", "mn", "mo", "mtext", "ms", "mspace", "mfrac", "msqrt", "mroot",
@@ -513,6 +514,7 @@ export function convertWereadChapter(
     ? `<html><body>${textBody(source.content)}</body></html>`
     : source.content;
   const $ = cheerio.load(input, { xmlMode: true });
+  preserveSourceFontWeight($, source.stylesheets);
   // Exporters can repeat an ID on both halves of a heading, or concatenate
   // documents with independent ID scopes. Local links keep their first target.
   normalizeSourceAnchors($, source.id);

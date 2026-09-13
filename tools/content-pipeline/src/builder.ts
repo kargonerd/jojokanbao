@@ -494,6 +494,7 @@ async function buildItem(
     language: part.source.language,
     publicationStatus,
     access,
+    librarySource: part.source.sourceKind === "epub" ? "community" : "jojo",
     identifiers: { isbn: part.source.isbn || null },
     metadata: {
       authors: authors(part.source),
@@ -548,6 +549,7 @@ async function buildItem(
     language: part.source.language,
     publicationStatus,
     access,
+    librarySource: part.source.sourceKind === "epub" ? "community" : "jojo",
     identifiers: canonical.identifiers,
     metadata: canonical.metadata,
     content: {
@@ -620,6 +622,7 @@ async function buildItem(
       manifestObject: `items/${part.itemKey}/manifest.jox`,
       publicationStatus,
       access,
+    librarySource: part.source.sourceKind === "epub" ? "community" : "jojo",
     },
     search,
   };
@@ -929,7 +932,7 @@ export async function buildContentPipeline(
           itemId: part.itemId,
         });
       }
-      const result = await buildItem(part, roots, publicationStatus, access);
+      const result = await buildItem(part, roots, publicationStatus, part.source.sourceKind === "epub" ? "authenticated" : access);
       builtItems.push(result.summary);
       allSearch.push(...result.search);
       const state = datasets.get(part.datasetId) ?? {
@@ -955,6 +958,8 @@ export async function buildContentPipeline(
   };
   for (const dataset of [...datasets.values()].sort((left, right) => left.title.localeCompare(right.title, "zh-CN"))) {
     dataset.itemSummaries.sort((left, right) => left.order - right.order || left.title.localeCompare(right.title, "zh-CN"));
+    const librarySource = dataset.itemSummaries.some((item) => item.librarySource === "community") ? "community" : "jojo";
+    const datasetAccess = librarySource === "community" ? "authenticated" : access;
     const index: JojoDatasetIndex = {
       formatVersion: "jojo-delivery-index/1",
       revision: 1,
@@ -965,7 +970,8 @@ export async function buildContentPipeline(
       description: dataset.description,
       aiEnabled: true,
       publicationStatus,
-      access,
+      access: datasetAccess,
+      librarySource,
       items: dataset.itemSummaries,
     };
     const canonicalDataset: JojoCanonicalDataset = {
@@ -977,7 +983,8 @@ export async function buildContentPipeline(
       description: dataset.description,
       aiEnabled: true,
       publicationStatus,
-      access,
+      access: datasetAccess,
+      librarySource,
       itemPath: "items/{itemKey}/item.json.gz",
     };
     await writeJson(path.join(roots.canonical, "books", dataset.datasetId, "dataset.json"), canonicalDataset);
@@ -1011,7 +1018,8 @@ export async function buildContentPipeline(
       indexObject: `content/books/${dataset.datasetId}/index.jox`,
       aiEnabled: true,
       publicationStatus,
-      access,
+      access: datasetAccess,
+      librarySource,
     });
   }
   await writeJoxJson(roots.delivery, "catalog.jox", catalog);

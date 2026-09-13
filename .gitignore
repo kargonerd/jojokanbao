@@ -45,6 +45,8 @@ frontend/desktop/*diagnostic*.png
 frontend/desktop/*alignment*.png
 tmp/
 tools/data-workbench/server/.runtime/
+tools/jojo-admin/server/.runtime/
+tools/content-pipeline/.runtime/
 .review/
 
 # Local scratch directories used during migration/cleanup

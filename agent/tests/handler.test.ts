@@ -33,7 +33,7 @@ describe("createEdgeOneAgentHandler", () => {
         config: { provider: "openai-codex", model: model.id }, models, model, configured: true,
       }),
     });
-    const scope = { contentType, mode: "all", datasetIds: contentType === "all" ? ["rmrb", "book-a"] : [contentType === "book" ? "book-a" : "rmrb"] };
+    const scope = { contentType, mode: "all", librarySources: contentType === "all" ? ["jojo", "community"] : contentType === "book" ? ["community"] : [], datasetIds: contentType === "all" ? ["rmrb", "book-a"] : [contentType === "book" ? "book-a" : "rmrb"] };
     const response = await handle({ request: { body: { message: "黄河报道", scope } } });
     expect(response.status).toBe(200);
     expect(await response.text()).toContain("event: done");
@@ -44,6 +44,14 @@ describe("createEdgeOneAgentHandler", () => {
     const createModelRuntime = vi.fn();
     const handle = createEdgeOneAgentHandler({ authorize: async () => ({ id: "user-1" }), createModelRuntime });
     const response = await handle({ request: { body: { message: "test", scope: { contentType: "unknown" } } } });
+    expect(response.status).toBe(400);
+    expect(createModelRuntime).not.toHaveBeenCalled();
+  });
+
+  it.each([null, "community", ["unknown"]])("rejects invalid library sources: %j", async (librarySources) => {
+    const createModelRuntime = vi.fn();
+    const handle = createEdgeOneAgentHandler({ authorize: async () => ({ id: "user-1" }), createModelRuntime });
+    const response = await handle({ request: { body: { message: "test", scope: { librarySources } } } });
     expect(response.status).toBe(400);
     expect(createModelRuntime).not.toHaveBeenCalled();
   });

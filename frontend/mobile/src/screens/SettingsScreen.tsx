@@ -1,3 +1,4 @@
+import { LIBRARY_SOURCES, DEFAULT_LIBRARY_SOURCES } from "@jojo/content";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { ARCHIVE_WEB_ORIGIN, FEEDBACK_BILIBILI_URL, FEEDBACK_QQ_GROUP, PROJECT_COPYRIGHT_NOTICES, type TimesSourceRef } from "@jojo/content";
 import { useNavigation, useRoute, type NavigationProp, type RouteProp } from "@react-navigation/native";
@@ -48,6 +49,7 @@ function SettingRow({
         {description ? <Text style={[styles.settingDescription, { color: theme.muted, fontFamily: theme.sans }]}>{description}</Text> : null}
       </View>
       <Switch
+        accessibilityLabel={title}
         value={value}
         disabled={disabled}
         onValueChange={onValueChange}
@@ -98,7 +100,10 @@ export function SettingsScreen() {
   const timesSourceIds = useMemo(() => timesSources.map((source) => source.id), [timesSources]);
   const enabledTimesSourceCount = timesSources.filter((source) => !disabledTimesSources.has(source.id)).length;
   const allTimesSourcesEnabled = Boolean(timesSources.length) && enabledTimesSourceCount === timesSources.length;
+  const librarySources = useMobileStore((state) => state.librarySources) ?? DEFAULT_LIBRARY_SOURCES;
+  const setLibrarySourceEnabled = useMobileStore((state) => state.setLibrarySourceEnabled);
   const titles: Record<SettingsSection, string> = {
+    library: "资料库设置",
     reading: "阅读设置",
     interaction: "交互设置",
     times: "时事设置",
@@ -164,6 +169,10 @@ export function SettingsScreen() {
     <SafeAreaView edges={["top"]} style={[styles.safe, { backgroundColor: theme.paper }]}>
       <ScreenHeader title={section ? titles[section] : "设置"} onBack={() => navigation.goBack()} />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} overScrollMode={IS_EINK_RELEASE ? "never" : "always"}>
+        {!section || section === "library" ? <View>
+          <SectionTitle title="资料库设置" />
+          {LIBRARY_SOURCES.map((source) => <SettingRow key={source.id} title={source.title} description={source.description} value={librarySources.includes(source.id)} onValueChange={(enabled) => setLibrarySourceEnabled(source.id, enabled)} />)}
+        </View> : null}
         {!section || section === "reading" ? (
           <>
             <SectionTitle title="阅读设置" />

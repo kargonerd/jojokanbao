@@ -16,19 +16,12 @@ ROOT = Path(__file__).resolve().parents[3]
 
 
 def _load_root_env() -> None:
-    """Load missing values from the repo .env without adding a dependency."""
-    env_path = ROOT / ".env"
-    if not env_path.exists():
-        return
-    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        key, value = key.strip(), value.strip()
-        if value[:1] == value[-1:] and value[:1] in {"'", '"'}:
-            value = value[1:-1]
-        os.environ.setdefault(key, value)
+    """Reuse the local-tool loader: process env, worktree, then primary checkout."""
+    import sys
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    from tools.speech.environment import load_environment
+    load_environment(ROOT, use_rclone=False)
 
 
 def repair_config() -> dict[str, Any]:

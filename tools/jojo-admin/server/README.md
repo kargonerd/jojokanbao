@@ -27,11 +27,47 @@ debugging.
 
 ## Book imports
 
-The `/content` page accepts EPUB, WeRead WRX JSON, and DRM-free MOBI 6/7 through
-`POST /api/content/import-files` or `POST /api/content/import-paths`. Both routes
+The `/content` page accepts one EPUB, WeRead WRX JSON, or DRM-free MOBI 6/7 file at
+a time through `POST /api/content/import-files`, after the user selects a file and
+clicks “开始处理”. It has no directory picker or path input. The
+`POST /api/content/import-paths` endpoint remains available for scripted imports. Both routes
 invoke `@jojo/content-pipeline` with strict import defaults and expose job progress
 and diagnostics. Browser uploads retain their original sanitized filenames, including
 Chinese names, in separate directories so duplicate names cannot overwrite each other.
+The local reader at `/content/:jobId/preview` opens generated chapters, images, TOC
+links, and notes before publication, including draft and authenticated books.
+`GET /api/content/jobs/<job_id>/preview/delivery/<object_key>` serves only `.jox`
+files inside that completed job's Delivery directory with `no-store` caching.
+It uses the same Jox decoder and body renderer as the public Reader, without
+accessing HF/B2 or changing publication state. Source files and paths outside the
+job's Delivery directory are not exposed by the preview endpoint.
+The browser follows four steps: file selection, processing/preview, publication settings,
+and upload results. New browser imports start as local drafts. The publication request
+`POST /api/content/jobs/<job_id>/publish` accepts `targets`, `publicationStatus`
+(`draft` or `published`) and `access` (`public` or `authenticated`). Omitting the latter
+two retains the job's saved settings for existing scripted clients.
+For a single-book job, the same request accepts an optional `title` correction.
+It preserves Dataset/Item IDs and reading links while updating the catalog,
+canonical data, search labels, and the generated EPUB's package title and download
+name. Source chapter files and media are preserved. Both previously uploaded targets
+must be synchronized; EPUB downloads receive a new immutable object key.
+When settings change, the server updates Canonical Items/datasets, the HF mirror,
+Delivery manifests/indexes/catalog and canonical compressed sizes before uploading.
+It stages all changed metadata and rolls back on write errors; chapter bodies, media,
+EPUB exports and search text are unchanged. Existing HF snapshot caches invalidate
+when the mirror changes. Previously uploaded targets must be included in a settings change.
+Each target records the settings actually uploaded and its completion timestamp;
+failed attempts retain the last successful result. Retries do not rebuild the source.
+Book publication initializes `HF_HUB_DISABLE_XET=1` before the Hub's first import,
+including the configuration endpoint's cached-login lookup, to use HTTP/LFS on
+proxies where Xet transfers stall. Set it to `0` to opt into Xet and restart the
+admin server after changing transport options.
+The result UI distinguishes upload success from draft/public visibility, and restores
+the selected job and step through `/content?job=<job_id>&step=<1..4>`.
+Book publishing automatically appends an `elasticsearch` stage after HF/B2. It reads only this job's items from the immutable HF commit and reuses `es_sync.py` mapping validation and append-only deduplication.
+Use `ES_SYNC_INDEX` or the existing `ES_CONTENT_INDEX`; the current Kibana connection is reused.
+Local configuration uses the shared tools loader (process environment, worktree `.env.local`/`.env`, then the primary checkout, without overwriting existing values or copying credentials). Restart after changing configuration. Both HF and B2 must have completed before ES runs. Index failure preserves their successful results and can be retried with `targets: ["elasticsearch"]`. Drafts do not add documents. Existing indexed drafts are excluded through the active catalog search scope; content conflicts require the ES repair workflow.
+EPUB imports set `librarySource: community` and enforce authenticated access. Other imports use `jojo`; legacy missing fields also mean JOJO. Classification survives publication and title changes.
 See the [management workflow](../README.md) and
 [Content Pipeline reference](../../content-pipeline/README.md) for supported formats,
 validation rules, and the separate publication step. PDF book conversion uses external

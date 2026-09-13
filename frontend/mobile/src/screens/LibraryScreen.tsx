@@ -1,3 +1,4 @@
+import { useLibraryVisibility } from "../lib/libraryVisibility";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import {
   ARCHIVE_PUBLICATIONS,
@@ -49,7 +50,9 @@ export function LibraryScreen() {
   const theme = mobileTheme;
   const [type, setType] = useState<LibraryType>("all");
   const [query, setQuery] = useState("");
-  const [books, setBooks] = useState<MobileBook[]>([]);
+  const bookVisible = useLibraryVisibility();
+  const [allBooks, setBooks] = useState<MobileBook[]>([]);
+  const books = useMemo(() => allBooks.filter(bookVisible), [allBooks, bookVisible]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [retryToken, setRetryToken] = useState(0);

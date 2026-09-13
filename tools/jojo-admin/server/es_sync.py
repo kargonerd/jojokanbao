@@ -158,6 +158,8 @@ def book_documents(
     *,
     canonical_object: str,
 ) -> Iterator[IndexedDocument]:
+    if item.get("publicationStatus") == "draft" or collection.get("publicationStatus") == "draft":
+        return
     dataset_id = _required(item.get("datasetId") or collection.get("datasetId"), "datasetId")
     item_id = _required(item.get("itemId"), "itemId")
     item_title = _required(item.get("title") or collection.get("title"), "itemTitle")
@@ -181,6 +183,8 @@ def book_documents(
             "publisher": item_metadata.get("publisher"),
             "language": item.get("language") or collection.get("language"),
             "canonicalObject": canonical_object,
+            "librarySource": item.get("librarySource") or collection.get("librarySource") or "jojo",
+            "access": "authenticated" if any(level.get("librarySource") == "community" or level.get("access") == "authenticated" for level in (collection, item)) else "public",
         }
         yield IndexedDocument(
             stable_document_id("book", dataset_id, item_id, chapter_id),
