@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   materializeArtwork: vi.fn(), playbackProps: vi.fn(),
   annotationThreads: vi.fn(async () => [] as AnnotationThread[]),
   personalNotes: vi.fn(async () => [] as AnnotationThread[]),
+  publicNotes: vi.fn(async (_contentId: string, _userId: string | null, _options?: {afterId?: string | null; signal?: AbortSignal}): Promise<{ notes: AnnotationThread[]; nextCursor: string | null }> => ({ notes: [], nextCursor: null })),
   createAnnotation: vi.fn(),
   annotationComment: vi.fn(), annotationReport: vi.fn(), deleteMyAnnotationMark: vi.fn(),
   loadChapter: vi.fn(), prefetch: vi.fn(async (_loaded: unknown, _id: string, _signal: AbortSignal) => undefined),
@@ -90,7 +91,7 @@ vi.mock("./useBookReadingTime", () => ({ useBookReadingTime: () => ({ seconds: 0
 vi.mock("./speech", () => ({ speechTime: (value: number) => String(value), mobileSpeechSegments: () => ["正文"] }));
 vi.mock("../account/accountData", () => ({ mobileBookshelfContains: mocks.shelfContains, setMobileBookshelf: mocks.setShelf }));
 vi.mock("../annotations/api", () => ({
-  loadAnnotationThreads: mocks.annotationThreads, loadMyBookAnnotations: mocks.personalNotes,
+  loadAnnotationThreads: mocks.annotationThreads, loadMyBookAnnotations: mocks.personalNotes, loadPublicBookAnnotations: mocks.publicNotes,
   createAnnotation: mocks.createAnnotation, addAnnotationComment: mocks.annotationComment, reportAnnotationComment: mocks.annotationReport,
   deleteMyAnnotationMark: mocks.deleteMyAnnotationMark,
 }));
@@ -156,6 +157,7 @@ beforeEach(() => {
   mocks.eInk = false; mocks.focused = true; mocks.enabled = true; mocks.flagUserId = "reader"; mocks.user = { id: "reader" };
   mocks.state.bookAnnotations = [];
   mocks.annotationThreads.mockReset().mockResolvedValue([]); mocks.personalNotes.mockReset().mockResolvedValue([]);
+  mocks.publicNotes.mockReset().mockResolvedValue({ notes: [], nextCursor: null });
   mocks.deleteMyAnnotationMark.mockReset().mockResolvedValue(null);
   mocks.createAnnotation.mockReset().mockImplementation(async (subject: AnnotationSubject, anchor: TextAnchor, note?: string, visibility: AnnotationVisibility = "public") => {
     const saved: AnnotationThread = {
@@ -280,6 +282,24 @@ describe("listening appearance", () => {
 });
 
 describe("book thought integration", () => {
+  it("keeps personal notes separate from explicitly paged public book notes", async () => {
+    const base = {id:"public-1",contentType:"book" as const,contentId:"books:book",sectionId:"c1",contentTitle:"测试书",authorId:"other",authorName:"另一位读者",quote:"公开原文",prefix:"",suffix:"",startOffset:0,endOffset:4,createdAt:"2026-09-13",underlinedByMe:false,publiclyVisible:true,comments:[]};
+    mocks.publicNotes.mockResolvedValueOnce({notes:[base],nextCursor:"public-1"}).mockResolvedValueOnce({notes:[{...base,id:"public-2"}],nextCursor:null});
+    await renderReader();
+    await act(async()=>readerTool("笔记").props.onPress());
+    expect(mocks.publicNotes).not.toHaveBeenCalled();
+    await press("公开笔记");
+    const list=()=>view.root.findAllByType("section").find((node)=>Array.isArray(node.props.data))!;
+    expect(list().props.data.map((item:{id:string})=>item.id)).toEqual(["public-1"]);
+    expect(mocks.publicNotes).toHaveBeenCalledTimes(1);
+    await act(async()=>list().props.ListFooterComponent.props.onPress());
+    expect(mocks.publicNotes.mock.lastCall?.[2]).toMatchObject({afterId:"public-1"});
+    expect(list().props.data.map((item:{id:string})=>item.id)).toEqual(["public-1","public-2"]);
+    await press("我的笔记");
+    expect(list().props.data).toEqual([]);
+    expect(mocks.publicNotes).toHaveBeenCalledTimes(2);
+  });
+
   const composer = () => view.root.findByProps({ testID: "thought-composer" });
   const message = readerMessage;
   const tool = (label: string) => view.root.findAllByType("button").find((button) => button.findAllByType("span").some((span) => span.props.children === label))!;

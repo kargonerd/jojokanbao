@@ -35,6 +35,53 @@ function setup() {
 }
 
 describe("shared annotation API", () => {
+  it("times out a stalled public request and rejects a non-advancing page", async () => {
+    vi.useFakeTimers(); const {api,rpc}=setup();
+    rpc.mockReturnValueOnce(new Promise(()=>{}));
+    const loading=api.loadPublicBookAnnotations("book:one","reader:a");
+    const assertion=expect(loading).rejects.toThrow("笔记读取超时");
+    await vi.advanceTimersByTimeAsync(15_000); await assertion;
+    expect(rpc.mock.lastCall?.[3]?.aborted).toBe(true);
+    rpc.mockResolvedValue({data:Array.from({length:100},()=>({...thread("same"),publiclyVisible:true})),error:null});
+    await expect(api.loadPublicBookAnnotations("book:one","reader:a",{afterId:"same"})).rejects.toThrow("笔记分页未能继续");
+  });
+
+  it("reads one public page and strips all private comments, including the caller's", async () => {
+    const {api,rpc}=setup();
+    const comment = {id:"c",annotationId:"public",parentCommentId:null,authorId:"reader:a",authorName:"A",body:"private",visibility:"private" as const,createdAt:"2026-09-13",reportedByMe:false};
+    rpc.mockResolvedValue({data:[{...thread("public","reader:b"),publiclyVisible:true,comments:[comment,{...comment,id:"p",authorId:"reader:b",body:"public",visibility:"public"}]},{...thread("private"),publiclyVisible:false}],error:null});
+    const page=await api.loadPublicBookAnnotations("book:one","reader:a");
+    expect(page.notes).toHaveLength(1);
+    expect(page.notes[0]?.comments.map((entry)=>entry.body)).toEqual(["public"]);
+    expect(page.nextCursor).toBeNull();
+    expect(rpc).toHaveBeenCalledExactlyOnceWith("get_public_book_annotations",{p_content_id:"book:one",p_after_id:null,p_limit:100},"reader:a",expect.any(AbortSignal));
+  });
+  it("does not automatically fetch the next hundred public notes or share the personal cache", async () => {
+    const {api,rpc}=setup();
+    rpc.mockResolvedValueOnce({data:[],error:null});
+    await api.loadMyBookAnnotations("book:one","reader:a");
+    const notes=Array.from({length:100},(_,i)=>({...thread(String(i).padStart(3,"0"),"reader:b"),publiclyVisible:true}));
+    rpc.mockResolvedValueOnce({data:notes,error:null});
+    const page=await api.loadPublicBookAnnotations("book:one","reader:a");
+    expect(page.notes).toHaveLength(100);expect(page.nextCursor).toBe("099");expect(rpc).toHaveBeenCalledTimes(2);
+    rpc.mockResolvedValueOnce({data:[],error:null});
+    expect(await api.loadPublicBookAnnotations("book:one","reader:a",{afterId:page.nextCursor})).toEqual({notes:[],nextCursor:null});
+    expect(rpc.mock.lastCall?.[1]).toMatchObject({p_after_id:"099"});
+  });
+  it("rejects public data arriving after an account switch", async () => {
+    const {api,rpc,getCurrentUserId}=setup();const pending=deferred<RpcResult>();rpc.mockReturnValue(pending.promise);
+    const loading=api.loadPublicBookAnnotations("book:one","reader:a");
+    await vi.waitFor(()=>expect(rpc).toHaveBeenCalled());
+    getCurrentUserId.mockResolvedValue("reader:b");
+    pending.resolve({data:[],error:null});await expect(loading).rejects.toThrow("登录状态已变化");
+  });
+  it("aborts public transport when the panel closes", async () => {
+    const {api,rpc}=setup();rpc.mockReturnValue(new Promise(()=>{}));const controller=new AbortController();
+    const loading=api.loadPublicBookAnnotations("book:one","reader:a",{signal:controller.signal});
+    await vi.waitFor(()=>expect(rpc).toHaveBeenCalled());const assertion=expect(loading).rejects.toMatchObject({name:"AbortError"});
+    controller.abort();await assertion;expect(rpc.mock.lastCall?.[3]?.aborted).toBe(true);
+  });
+
   afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
   it.each(["like", "delete"] as const)("invalidates the affected book only after a successful %s", async (operation) => {

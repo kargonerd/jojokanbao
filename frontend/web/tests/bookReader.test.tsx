@@ -11,7 +11,8 @@ import type { AnnotationThread } from "../src/annotations/types";
 
 const annotationApi = vi.hoisted(() => ({
   loadAnnotationThreads: vi.fn(async (): Promise<AnnotationThread[]> => []),
-  loadMyBookAnnotations: vi.fn(async () => []),
+  loadMyBookAnnotations: vi.fn(async (): Promise<AnnotationThread[]> => []),
+  loadPublicBookAnnotations: vi.fn(async (_contentId: string, _userId: string | null, _options?: {afterId?: string | null; signal?: AbortSignal}): Promise<{ notes: AnnotationThread[]; nextCursor: string | null }> => ({ notes: [], nextCursor: null })),
   createAnnotation: vi.fn(),
   addAnnotationComment: vi.fn(),
   reportAnnotationComment: vi.fn(),
@@ -65,6 +66,7 @@ describe("BookReader", () => {
     useAccountSessionStore.setState({ initialized: true, userId: "11111111-1111-4111-8111-111111111111", displayName: "测试读者-ABC" });
     annotationApi.loadAnnotationThreads.mockResolvedValue([]);
     annotationApi.loadMyBookAnnotations.mockResolvedValue([]);
+    annotationApi.loadPublicBookAnnotations.mockReset().mockResolvedValue({ notes: [], nextCursor: null });
     annotationApi.createAnnotation.mockReset();
     annotationApi.addAnnotationComment.mockReset();
     annotationApi.reportAnnotationComment.mockReset();
@@ -1114,6 +1116,31 @@ describe("BookReader", () => {
       createdAt: "2026-08-18T10:00:00Z",
       comments: [],
     };
+
+
+  it("switches between personal and paged public notes while progress keeps the personal count", async () => {
+    const privateComment = { id: "mine-comment", annotationId: ownUnderline.id, authorId: "11111111-1111-4111-8111-111111111111", authorName: "我", body: "我的私密想法", visibility: "private" as const, createdAt: ownUnderline.createdAt, parentCommentId: null, reportedByMe: false };
+    annotationApi.loadMyBookAnnotations.mockResolvedValue([{ ...ownUnderline, comments: [privateComment] }]);
+    const first = { ...ownUnderline, id: "public-1", quote: "公开原文一", publiclyVisible: true, comments: [{ ...privateComment, id: "public-comment", body: "他人的公开想法", authorName: "另一位读者", authorId: "other", visibility: "public" as const }] };
+    annotationApi.loadPublicBookAnnotations.mockResolvedValueOnce({ notes: [first], nextCursor: "public-1" }).mockResolvedValueOnce({ notes: [{ ...first, id: "public-2", quote: "公开原文二", comments: [] }], nextCursor: null });
+    renderReader();
+    fireEvent.click(screen.getByRole("button", {name:"阅读笔记"}));
+    await screen.findByText("我的私密想法");
+    expect(annotationApi.loadPublicBookAnnotations).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("tab", {name:"公开"}));
+    await screen.findByText("公开原文一");
+    expect(screen.queryByText("我的私密想法")).toBeNull();
+    expect(screen.getByText("另一位读者")).toBeTruthy();
+    expect(annotationApi.loadPublicBookAnnotations).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button",{name:"加载更多公开笔记"}));
+    await screen.findByText("公开原文二");
+    expect(annotationApi.loadPublicBookAnnotations.mock.lastCall?.[2]).toMatchObject({afterId:"public-1"});
+    expect(screen.getByText("公开原文一")).toBeTruthy();
+    expect(screen.queryByRole("button",{name:"加载更多公开笔记"})).toBeNull();
+    fireEvent.click(screen.getByRole("button",{name:"阅读进度"}));
+    const stats=screen.getByRole("complementary",{name:"阅读进度面板"});
+    expect(within(stats).getByRole("button",{name:/1.*条.*笔记/})).toBeTruthy();
+  });
 
   it.each([false, true])("saves and deletes an underline without leaving selection feedback (located: %s)", async (located) => {
     annotationApi.createAnnotation.mockResolvedValue(ownUnderline);

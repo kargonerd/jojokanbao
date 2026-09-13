@@ -32,6 +32,7 @@ const api = createAnnotationApi({
 export const {
   loadAnnotationThreads,
   loadMyBookAnnotations,
+  loadPublicBookAnnotations,
   createAnnotation,
   addAnnotationComment,
   reportAnnotationComment,

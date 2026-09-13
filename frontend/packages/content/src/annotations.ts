@@ -31,6 +31,17 @@ export interface BookAnnotationOptions {
   refresh?: boolean;
 }
 
+export interface PublicBookAnnotationOptions {
+  signal?: AbortSignal;
+  afterId?: string | null;
+  refresh?: boolean;
+}
+
+export interface PublicBookAnnotationPage {
+  notes: AnnotationThread[];
+  nextCursor: string | null;
+}
+
 interface BookAnnotationCache {
   contentId: string;
   notes?: AnnotationThread[];
@@ -202,6 +213,45 @@ export function createAnnotationApi({ rpc, getCurrentUserId, currentPath = () =>
     }
   }
 
+  /** One bounded page of public book discussions; private thoughts never enter this view. */
+  async function loadPublicBookAnnotations(contentId: string, currentUserId: string | null, options: PublicBookAnnotationOptions = {}): Promise<PublicBookAnnotationPage> {
+    if (!currentUserId) return { notes: [], nextCursor: null };
+    checkAborted(options.signal);
+    const controller = new AbortController();
+    let rejectCancelled!: (reason: Error) => void;
+    const cancelled = new Promise<never>((_resolve, reject) => { rejectCancelled = reject; });
+    const abort = () => {
+      const error = new Error("笔记读取已取消"); error.name = "AbortError";
+      rejectCancelled(error); controller.abort();
+    };
+    options.signal?.addEventListener("abort", abort, { once: true });
+    const timer = setTimeout(() => {
+      rejectCancelled(new Error("笔记读取超时，请检查网络后重试")); controller.abort();
+    }, 15_000);
+    const read = async (): Promise<PublicBookAnnotationPage> => {
+      await requireSameReader(currentUserId);
+      checkAborted(controller.signal);
+      const { data, error } = await rpc("get_public_book_annotations", {
+        p_content_id: contentId, p_after_id: options.afterId ?? null, p_limit: 100,
+      }, currentUserId, controller.signal);
+      const result = resultOrThrow<unknown>(data, error);
+      if (!Array.isArray(result)) throw new Error("笔记服务返回了无效结果，请重试");
+      await requireSameReader(currentUserId);
+      checkAborted(controller.signal);
+      const page = result as AnnotationThread[];
+      const nextCursor = page.length === 100 ? page.at(-1)?.id ?? null : null;
+      if (page.length > 100 || (page.length === 100 && (!nextCursor || (options.afterId && nextCursor <= options.afterId)))) throw new Error("笔记分页未能继续，请重试");
+      return {
+        notes: page.filter((thread) => thread.publiclyVisible === true).map((thread) => ({
+          ...thread, comments: thread.comments.filter((comment) => comment.visibility === "public"),
+        })),
+        nextCursor,
+      };
+    };
+    try { return await Promise.race([read(), cancelled]); }
+    finally { clearTimeout(timer); options.signal?.removeEventListener("abort", abort); }
+  }
+
   async function createAnnotation(
     subject: AnnotationSubject,
     anchor: TextAnchor,
@@ -286,5 +336,5 @@ export function createAnnotationApi({ rpc, getCurrentUserId, currentPath = () =>
     }, expectedUserId);
   }
 
-  return { loadAnnotationThreads, loadMyBookAnnotations, createAnnotation, addAnnotationComment, reportAnnotationComment, setAnnotationCommentLike, deleteMyAnnotationMark };
+  return { loadAnnotationThreads, loadMyBookAnnotations, loadPublicBookAnnotations, createAnnotation, addAnnotationComment, reportAnnotationComment, setAnnotationCommentLike, deleteMyAnnotationMark };
 }

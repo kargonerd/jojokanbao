@@ -652,3 +652,7 @@ mark[data-book-search-target] {
 .book-continuous-error { display: flex; justify-content: center; align-items: center; gap: 16px; min-height: 64px; color: var(--color-muted); font-size: 13px; }
 .book-continuous-error button { border: 0; background: transparent; color: var(--color-red); padding: 12px; }
 @media (min-width: 768px) { .book-continuous-loading { bottom: 16px; } }
+
+.book-notes-tabs { display: flex; border-bottom: 1px solid var(--color-rule); margin-bottom: 20px; gap: 28px; }
+.book-notes-tabs button { border: 0; border-bottom: 2px solid transparent; padding: 8px 2px 12px; background: transparent; color: var(--color-muted); font: inherit; cursor: pointer; }
+.book-notes-tabs button[aria-selected="true"] { border-bottom-color: var(--color-red); color: var(--color-red); }

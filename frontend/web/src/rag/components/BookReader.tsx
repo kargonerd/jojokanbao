@@ -14,6 +14,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { IoBookOutline, IoCopyOutline, IoCreateOutline, IoDownloadOutline, IoListOutline, IoRadioButtonOnOutline, IoSearchOutline, IoSparklesOutline, IoTextOutline } from "react-icons/io5";
 import { bookProgressPercent, bookProgressLocation, estimatedReadingMinutes, formatReadingTime, type SpeechLocation } from "@jojo/content";
 import { createSpeechReader, SPEECH_EXCLUDED_ELEMENTS } from "@jojo/content/speech-dom";
+import { createUseCursorPages } from "@jojo/ui/cursor-pages";
 import type { ReaderSelectionRect } from "@jojo/ui/reader-selection";
 import { AnnotationDiscussionPanel } from "../../annotations/AnnotationDiscussionPanel";
 import { AnnotationMarkPopover } from "../../annotations/AnnotationMarkPopover";
@@ -39,7 +40,7 @@ import { ContinuousBookContent, type ContinuousBookContentHandle } from "./Conti
 import { ReaderSelectionPopover } from "../../reading/ReaderSelectionPopover";
 import { BookThoughtComposer } from "./BookThoughtComposer";
 import { useBookReadingTime } from "../../reading/readingStats";
-import { loadMyBookAnnotations } from "../../annotations/api";
+import { loadMyBookAnnotations, loadPublicBookAnnotations } from "../../annotations/api";
 import type { AnnotationThread } from "../../annotations/types";
 import "./BookReader.css";
 import {
@@ -50,6 +51,8 @@ import {
   setBookshelf,
   type ReusableExplanation,
 } from "../readerData";
+
+const useCursorPages = createUseCursorPages({ useCallback, useEffect, useRef, useState });
 
 export type BookReaderPaperColor = "ivory" | "white" | "dark";
 export type BookReaderMode = "paged" | "scroll";
@@ -239,6 +242,7 @@ export function BookReader({
   const [notesError, setNotesError] = useState("");
   const [notesLoading, setNotesLoading] = useState(false);
   const [notesRevision, setNotesRevision] = useState(0);
+  const [notesView, setNotesView] = useState<"mine" | "public">("mine");
   const [activeTocId, setActiveTocId] = useState<string>();
   const [positionRevision, setPositionRevision] = useState(0);
   const [columnsPerSpread, setColumnsPerSpread] = useState(() => window.innerWidth >= 900 ? 2 : 1);
@@ -310,6 +314,15 @@ export function BookReader({
   }, [activeChapterId, continuous]);
   const annotationAccess = annotationsEnabled && Boolean(currentUserId);
   const annotations = useAnnotationThreads(annotationSubject, annotationAccess, currentUserId);
+  const loadPublicPage = useCallback(async (cursor: string | null, signal: AbortSignal) => {
+    const page = await loadPublicBookAnnotations(datasetId + ":" + itemId, currentUserId ?? null, { afterId: cursor, signal });
+    return { items: page.notes, nextCursor: page.nextCursor };
+  }, [datasetId, itemId, currentUserId]);
+  const publicNotes = useCursorPages({
+    key: JSON.stringify([currentUserId, datasetId, itemId]),
+    enabled: annotationAccess && toolPopover === "notes" && notesView === "public",
+    loadPage: loadPublicPage,
+  });
   const activeAnnotation = annotations.threads.find((thread) => thread.id === activeAnnotationId);
   const ownMark = annotations.threads.find((thread) => thread.id === selectedMark?.id && thread.underlinedByMe);
   const readerOverlayOpen = aiOpen || tocOpen || searchOpen || Boolean(toolPopover || thoughtSelection || activeAnnotation || ownMark || expandedImage);
@@ -324,7 +337,7 @@ export function BookReader({
   useEffect(() => { setBookNotes([]); setNotesError(""); }, [currentUserId, datasetId, itemId]);
 
   useEffect(() => {
-    if (toolPopover !== "notes" && toolPopover !== "progress") { setNotesLoading(false); return; }
+    if ((toolPopover !== "notes" || notesView !== "mine") && toolPopover !== "progress") { setNotesLoading(false); return; }
     if (!annotationAccess) { setBookNotes([]); setNotesLoading(false); return; }
     let active = true;
     const controller = new AbortController();
@@ -336,7 +349,7 @@ export function BookReader({
       .catch(() => { if (active) setNotesError("笔记暂时无法读取，请重试。"); })
       .finally(() => { if (active) setNotesLoading(false); });
     return () => { active = false; controller.abort(); };
-  }, [annotationAccess, currentUserId, datasetId, itemId, toolPopover, annotations.threads, notesRevision]);
+  }, [annotationAccess, currentUserId, datasetId, itemId, toolPopover, annotations.threads, notesRevision, notesView]);
 
   useEffect(() => {
     setSelectedMark(undefined);
@@ -1270,7 +1283,17 @@ export function BookReader({
           <div className="book-progress-rail"><button type="button" aria-label="上一章" disabled={!previousChapter} onClick={() => chooseChapter(previousChapter?.id)}>‹</button><input type="range" min="0" max="100" step="0.1" value={progressPreview ?? exactBookProgress} onChange={(event) => setProgressPreview(+event.target.value)} onPointerUp={(event) => commitBookProgress(+event.currentTarget.value)} onKeyUp={(event) => { if (RANGE_KEYS.includes(event.key)) commitBookProgress(+event.currentTarget.value); }} onBlur={(event) => { if (progressPreview !== undefined) commitBookProgress(+event.currentTarget.value); }} onPointerCancel={() => setProgressPreview(undefined)} style={rangeFill(progressPreview ?? exactBookProgress)} className="reader-range book-reader-range" aria-label="全书进度" aria-valuetext={`${(progressPreview ?? bookProgress).toFixed(1)}%，${chapters.find((chapter) => chapter.id === previewLocation?.chapterId)?.title || "正文"}`} /><button type="button" aria-label="下一章" disabled={!nextChapter} onClick={() => chooseChapter(nextChapter?.id)}>›</button></div>
           <div className="book-progress-endpoints"><span>全书开头</span><span>全书结尾</span></div>
         </div> : toolPopover === "notes" ? <div className="book-notes-list">
-          {!annotationAccess ? <p>登录后可查看和保存阅读笔记。</p> : <>
+          <div className="book-notes-tabs" role="tablist" aria-label="笔记范围">
+            <button type="button" role="tab" aria-selected={notesView === "mine"} onClick={() => setNotesView("mine")}>我的</button>
+            <button type="button" role="tab" aria-selected={notesView === "public"} onClick={() => setNotesView("public")}>公开</button>
+          </div>
+          {!annotationAccess ? <p>登录后可查看和保存阅读笔记。</p> : notesView === "public" ? <>
+            {publicNotes.items.map((note) => <button type="button" key={note.id} onClick={() => { setToolPopover(undefined); onLocate(note.sectionId, note.quote); }}><span>{chapters.find((chapter) => chapter.id === note.sectionId)?.title || "正文"}</span><blockquote>{note.quote}</blockquote>{note.comments.map((comment) => <p key={comment.id}><strong>{comment.authorName || "JOJO 读者"}</strong>：{comment.body}</p>)}</button>)}
+            {publicNotes.loading && <p role="status">正在读取公开笔记…</p>}
+            {Boolean(publicNotes.error) && <div className="book-notes-error" role="alert"><p>公开笔记暂时无法读取，请重试。</p><button type="button" onClick={publicNotes.retry}>重试</button></div>}
+            {!publicNotes.loading && !publicNotes.error && !publicNotes.items.length && <p>还没有公开笔记。</p>}
+            {!publicNotes.error && publicNotes.hasMore && <button type="button" disabled={publicNotes.loading} onClick={publicNotes.loadMore}>加载更多公开笔记</button>}
+          </> : <>
             {notesError && <div className="book-notes-error" role="alert"><p>{notesError}</p><button type="button" onClick={() => setNotesRevision((revision) => revision + 1)}>重试</button></div>}
             {notesLoading && <p role="status">正在读取笔记…</p>}
             {!notesLoading && !notesError && !bookNotes.length && <p>还没有笔记。选中正文，可以划线或写下想法。</p>}
