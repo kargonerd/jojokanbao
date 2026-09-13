@@ -22,6 +22,8 @@ export interface BookAnnotation {
   prefix?: string;
   suffix?: string;
   note?: string;
+  /** Missing on older local notes; false keeps the thought without its underline. */
+  underlined?: boolean;
   createdAt: number;
 }
 
@@ -104,6 +106,7 @@ interface MobileState {
   updateBookAnnotationNote: (id: string, note: string) => void;
   claimLegacyBookAnnotations: (datasetId: string, itemKey: string, ownerId: string) => void;
   removeBookAnnotation: (id: string) => void;
+  removeBookAnnotationMark: (id: string) => void;
   upsertAiConversation: (conversation: MobileAiConversation) => void;
   removeAiConversation: (id: string, ownerId: string) => void;
   setTimesLanguage: (language: MobileState["timesLanguage"]) => void;
@@ -213,6 +216,10 @@ export const useMobileStore = create<MobileState>()(
       },
       removeBookAnnotation: (id) => set((state) => ({
         bookAnnotations: state.bookAnnotations.filter((annotation) => annotation.id !== id),
+      })),
+      removeBookAnnotationMark: (id) => set((state) => ({
+        bookAnnotations: state.bookAnnotations.flatMap((annotation) => annotation.id !== id
+          ? [annotation] : annotation.note?.trim() ? [{ ...annotation, underlined: false }] : []),
       })),
       upsertAiConversation: (conversation) => set((state) => ({
         aiConversations: [

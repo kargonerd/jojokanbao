@@ -317,24 +317,22 @@ export function BookReader({
   const remainingMinutes = estimatedReadingMinutes(characterCount, exactBookProgress);
   const previewLocation = bookProgressLocation(chapters, progressPreview ?? exactBookProgress);
 
-  const annotationSectionIds = useMemo(() => [activeChapterId, ...chapters.map((chapter) => chapter.id).filter((id) => id !== activeChapterId)], [activeChapterId, chapters]);
-
   useEffect(() => { setBookNotes([]); setNotesError(""); }, [currentUserId, datasetId, itemId]);
 
   useEffect(() => {
-    if (toolPopover !== "notes" && toolPopover !== "progress") return;
-    if (!annotationAccess) { setBookNotes([]); return; }
+    if (toolPopover !== "notes" && toolPopover !== "progress") { setNotesLoading(false); return; }
+    if (!annotationAccess) { setBookNotes([]); setNotesLoading(false); return; }
     let active = true;
     const controller = new AbortController();
     setNotesLoading(true); setNotesError("");
-    void loadMyBookAnnotations(`${datasetId}:${itemId}`, annotationSectionIds, currentUserId ?? null, {
+    void loadMyBookAnnotations(`${datasetId}:${itemId}`, currentUserId ?? null, {
       signal: controller.signal,
       onProgress: ({ notes }) => { if (active) setBookNotes(notes); },
     }).then((notes) => { if (active) setBookNotes(notes); })
       .catch(() => { if (active) setNotesError("笔记暂时无法读取，请重试。"); })
       .finally(() => { if (active) setNotesLoading(false); });
     return () => { active = false; controller.abort(); };
-  }, [annotationAccess, currentUserId, datasetId, itemId, toolPopover, annotations.threads, annotationSectionIds, notesRevision]);
+  }, [annotationAccess, currentUserId, datasetId, itemId, toolPopover, annotations.threads, notesRevision]);
 
   useEffect(() => {
     setSelectedMark(undefined);

@@ -4,10 +4,10 @@ import type { MobileTheme } from "../theme/tokens";
 import type { AnnotationVisibility } from "@jojo/content/annotations";
 import { CommentVisibilityControl } from "../annotations/CommentVisibilityControl";
 
-export function BookThoughtComposer({ quote, value, visibility, saving, error, localOnly, onChange, onVisibilityChange, onCancel, onSave, onSaveLocal, theme }: {
+export function BookThoughtComposer({ quote, value, visibility, saving, error, localOnly, onChange, onVisibilityChange, onCancel, onSave, onSaveLocal, onRemoveMark, theme }: {
   quote?: string; value: string; visibility: AnnotationVisibility; saving: boolean; error: string; localOnly?: boolean;
   onChange: (value: string) => void; onVisibilityChange: (value: AnnotationVisibility) => void;
-  onCancel: () => void; onSave: () => void; onSaveLocal?: () => void; theme: MobileTheme;
+  onCancel: () => void; onSave: () => void; onSaveLocal?: () => void; onRemoveMark?: () => void; theme: MobileTheme;
 }) {
   const canSave = Boolean(value.trim()) && value.length <= 2000 && !saving;
   const close = () => { if (!saving) onCancel(); };
@@ -22,6 +22,7 @@ export function BookThoughtComposer({ quote, value, visibility, saving, error, l
         {error ? <View><Text accessibilityRole="alert" style={[styles.error, { color: theme.red }]}>{error}</Text>{!localOnly && onSaveLocal ? <Pressable accessibilityRole="button" accessibilityLabel="先保存到本机" disabled={!canSave} onPress={onSaveLocal} style={[styles.localSave, { opacity: canSave ? 1 : .45 }]}><Text style={{ color: theme.red, fontFamily: theme.sans }}>先保存到本机</Text></Pressable> : null}</View> : null}
         </ScrollView>
         <View style={styles.footer}>
+          {onRemoveMark ? <Pressable accessibilityRole="button" accessibilityLabel="删除划线" disabled={saving} onPress={onRemoveMark} style={{ minHeight: 44, justifyContent: "center" }}><Text style={{ color: theme.red }}>删除划线</Text></Pressable> : null}
           {localOnly ? <Text style={{ color: theme.muted }}>仅保存在本机</Text> : <CommentVisibilityControl value={visibility} onChange={onVisibilityChange} disabled={saving} theme={theme} />}
           <Pressable accessibilityRole="button" accessibilityLabel="保存想法" disabled={!canSave} onPress={onSave} style={[styles.save, { backgroundColor: theme.red, opacity: canSave ? 1 : 0.4 }]}><Text style={{ color: theme.inverse }}>{saving ? "保存中…" : "保存"}</Text></Pressable>
         </View>

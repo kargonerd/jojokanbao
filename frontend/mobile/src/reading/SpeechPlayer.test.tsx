@@ -14,12 +14,12 @@ const mocks = vi.hoisted(() => ({
   annotationThreads: vi.fn(async () => [] as AnnotationThread[]),
   personalNotes: vi.fn(async () => [] as AnnotationThread[]),
   createAnnotation: vi.fn(),
-  annotationComment: vi.fn(), annotationReport: vi.fn(),
+  annotationComment: vi.fn(), annotationReport: vi.fn(), deleteMyAnnotationMark: vi.fn(),
   loadChapter: vi.fn(), prefetch: vi.fn(async (_loaded: unknown, _id: string, _signal: AbortSignal) => undefined),
   navigate: vi.fn(), injectJavaScript: vi.fn(), shelfContains: vi.fn(async () => false), setShelf: vi.fn(async () => undefined),
   state: { textScale: 1, bookLineHeight: 1.95, bookReadingMode: "paged", bookPaperColor: "white",
     bookFirstLineIndent: true, hapticsEnabled: false, leftTapNext: false, recentBooks: [], bookAnnotations: [] as import("../store/mobileStore").BookAnnotation[], rememberBook: vi.fn(),
-    claimLegacyBookAnnotations: vi.fn(), updateBookAnnotationNote: vi.fn(), removeBookAnnotation: vi.fn(),
+    claimLegacyBookAnnotations: vi.fn(), updateBookAnnotationNote: vi.fn(), removeBookAnnotation: vi.fn(), removeBookAnnotationMark: vi.fn(),
     addBookAnnotation: vi.fn((annotation: Record<string, unknown>) => ({ id: "new-annotation", ...annotation })) },
   playback: { open: vi.fn(), close: vi.fn(), toggle: vi.fn(), halt: vi.fn(), seek: vi.fn(), selectChapter: vi.fn(),
     setTimer: vi.fn(), changeVoice: vi.fn(), changeRate: vi.fn(), playing: true, busy: false,
@@ -92,6 +92,7 @@ vi.mock("../account/accountData", () => ({ mobileBookshelfContains: mocks.shelfC
 vi.mock("../annotations/api", () => ({
   loadAnnotationThreads: mocks.annotationThreads, loadMyBookAnnotations: mocks.personalNotes,
   createAnnotation: mocks.createAnnotation, addAnnotationComment: mocks.annotationComment, reportAnnotationComment: mocks.annotationReport,
+  deleteMyAnnotationMark: mocks.deleteMyAnnotationMark,
 }));
 vi.mock("../components/ReaderEnvironment", () => ({ ReaderEnvironment: () => null }));
 vi.mock("../components/ReaderNavigationSheet", () => ({ ReaderNavigationSheet: ({ children }: { children: import("react").ReactNode }) => children }));
@@ -155,10 +156,15 @@ beforeEach(() => {
   mocks.eInk = false; mocks.focused = true; mocks.enabled = true; mocks.flagUserId = "reader"; mocks.user = { id: "reader" };
   mocks.state.bookAnnotations = [];
   mocks.annotationThreads.mockReset().mockResolvedValue([]); mocks.personalNotes.mockReset().mockResolvedValue([]);
-  mocks.createAnnotation.mockReset().mockImplementation(async (subject: AnnotationSubject, anchor: TextAnchor, note?: string, visibility: AnnotationVisibility = "public") => ({
+  mocks.deleteMyAnnotationMark.mockReset().mockResolvedValue(null);
+  mocks.createAnnotation.mockReset().mockImplementation(async (subject: AnnotationSubject, anchor: TextAnchor, note?: string, visibility: AnnotationVisibility = "public") => {
+    const saved: AnnotationThread = {
     ...subject, ...anchor, id: "cloud-annotation", authorId: "reader", authorName: "我", createdAt: "2026-09-12T00:00:00Z", underlinedByMe: true,
     comments: note ? [{ id: "comment-1", annotationId: "cloud-annotation", parentCommentId: null, authorId: "reader", authorName: "我", body: note, visibility, createdAt: "2026-09-12T00:00:00Z", reportedByMe: false }] : [],
-  }));
+    };
+    mocks.personalNotes.mockResolvedValue([saved]);
+    return saved;
+  });
   mocks.state.bookReadingMode = "paged";
   mocks.state.bookPaperColor = "white";
   mocks.playback.part = 0; mocks.playback.playing = true; mocks.playback.elapsed = 12; mocks.playback.busy = false;
@@ -312,6 +318,31 @@ describe("book thought integration", () => {
     await act(async () => view.root.findByProps({ testID: "annotation-discussion" }).props.onComment("私密补充", undefined, "private"));
     expect(mocks.annotationComment).toHaveBeenCalledWith(thread.id, "私密补充", undefined, "private", "reader");
     expect(view.root.findByProps({ testID: "annotation-discussion" }).props.thread.comments).toHaveLength(2);
+  });
+
+  it("wires deletion from the cloud underline detail without deleting the saved private thought", async () => {
+    const thread = await mocks.createAnnotation({ contentType: "book", contentId: "books:book", sectionId: "c1", contentTitle: "测试书" }, { quote: "原文", startOffset: 0, endOffset: 2, prefix: "", suffix: "" }, "保留私密想法", "private");
+    mocks.annotationThreads.mockResolvedValue([thread]);
+    await renderReader();
+    await message({ type: "reader-annotation", id: thread.id });
+    await act(async () => view.root.findByProps({ testID: "annotation-discussion" }).props.onRemoveMark());
+    expect(mocks.deleteMyAnnotationMark).toHaveBeenCalledExactlyOnceWith(thread.id, "reader");
+    const detail = view.root.findByProps({ testID: "annotation-discussion" });
+    expect(detail.props.thread.underlinedByMe).toBe(false);
+    expect(detail.props.thread.comments[0].body).toBe("保留私密想法");
+    expect(mocks.injectJavaScript.mock.calls.some(([script]) => script.includes("__jojoReaderRemoveAnnotation") && script.includes(thread.id))).toBe(true);
+    expect(mocks.state.removeBookAnnotation).not.toHaveBeenCalled();
+  });
+
+  it("wires local underline removal separately from deleting the local thought", async () => {
+    mocks.user = null;
+    mocks.state.bookAnnotations = [{ id: "local", ownerId: null, datasetId: "books", itemKey: "book", chapterId: "c1", chapterTitle: "第一章", start: 0, end: 2, quote: "原文", note: "保留本地想法", createdAt: 1 }];
+    await renderReader();
+    await message({ type: "reader-annotation", id: "local" });
+    await act(async () => composer().props.onRemoveMark());
+    expect(mocks.state.removeBookAnnotationMark).toHaveBeenCalledExactlyOnceWith("local");
+    expect(mocks.state.removeBookAnnotation).not.toHaveBeenCalled();
+    expect(view.root.findAllByProps({ testID: "thought-composer" })).toHaveLength(0);
   });
 
   it("keeps guest writing local without publishing it", async () => {

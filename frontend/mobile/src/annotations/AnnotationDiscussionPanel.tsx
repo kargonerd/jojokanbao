@@ -12,6 +12,7 @@ export interface AnnotationDiscussionPanelProps {
   onClose: () => void;
   onComment: (body: string, parentCommentId?: string, visibility?: AnnotationVisibility) => Promise<unknown>;
   onReport: (commentId: string, reason: AnnotationReportReason, details?: string) => Promise<unknown>;
+  onRemoveMark?: () => Promise<unknown>;
   theme: MobileTheme;
 }
 
@@ -26,7 +27,7 @@ function displayTime(value: string): string {
     : "";
 }
 
-function DiscussionContent({ thread, currentUserId, onClose, onComment, onReport, theme }: AnnotationDiscussionPanelProps) {
+function DiscussionContent({ thread, currentUserId, onClose, onComment, onReport, onRemoveMark, theme }: AnnotationDiscussionPanelProps) {
   const [draft, setDraft] = useState("");
   const [visibility, setVisibility] = useState<AnnotationVisibility>("public");
   const [replyTo, setReplyTo] = useState<string>();
@@ -38,6 +39,7 @@ function DiscussionContent({ thread, currentUserId, onClose, onComment, onReport
   const [failure, setFailure] = useState<{ kind: "comment" } | { kind: "report"; commentId: string }>();
   const [notice, setNotice] = useState("");
   const [compact, setCompact] = useState(false);
+  const [removeError, setRemoveError] = useState(false);
   const busyRef = useRef(false);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -45,7 +47,22 @@ function DiscussionContent({ thread, currentUserId, onClose, onComment, onReport
   // rendering another reader's cached private comment.
   const comments = thread.comments.filter((comment) => comment.visibility !== "private" || comment.authorId === currentUserId);
   const reply = comments.find((comment) => comment.id === replyTo && comment.visibility !== "private");
-  const underlineCount = Number.isFinite(thread.underlineCount) ? Math.max(1, Math.trunc(thread.underlineCount!)) : 1;
+  const underlineCount = Number.isFinite(thread.underlineCount) ? Math.max(0, Math.trunc(thread.underlineCount!)) : 1;
+  const ownMark = thread.underlinedByMe ?? thread.authorId === currentUserId;
+
+  async function removeMark() {
+    if (!ownMark || !onRemoveMark || busyRef.current) return;
+    busyRef.current = true; setBusy(true); setRemoveError(false);
+    try {
+      await onRemoveMark();
+      if (mounted.current) onClose();
+    } catch {
+      if (mounted.current) setRemoveError(true);
+    } finally {
+      busyRef.current = false;
+      if (mounted.current) setBusy(false);
+    }
+  }
 
   async function submitComment() {
     const body = draft.trim();
@@ -103,6 +120,8 @@ function DiscussionContent({ thread, currentUserId, onClose, onComment, onReport
         <ScrollView style={styles.history} contentContainerStyle={styles.historyContent} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
           <View style={[styles.quote, { borderLeftColor: theme.red }]}><Text accessibilityLabel="划线原文" selectable style={[styles.quoteText, { color: theme.ink, fontFamily: theme.serif }]}>{thread.quote}</Text></View>
           <Text style={[styles.meta, { color: theme.red, fontFamily: theme.sans }]}>{underlineCount} 人划线</Text>
+          {ownMark && onRemoveMark ? <Pressable accessibilityRole="button" accessibilityLabel="删除自己的划线" disabled={busy} onPress={() => void removeMark()} style={{ minHeight: 44, justifyContent: "center", alignSelf: "flex-start" }}><Text style={{ color: theme.red, fontFamily: theme.sans }}>删除划线</Text></Pressable> : null}
+          {removeError ? <Text accessibilityRole="alert" style={{ color: theme.red }}>划线未能删除，请重试</Text> : null}
           <View style={[styles.commentsHeading, { borderBottomColor: theme.rule }]}><Text style={[styles.commentsTitle, { color: theme.ink, fontFamily: theme.serif }]}>想法</Text><Text style={{ color: theme.muted, fontFamily: theme.sans }}>{comments.length}</Text></View>
           {!comments.length ? <Text style={[styles.empty, { color: theme.muted, fontFamily: theme.sans }]}>还没有想法。</Text> : null}
           {comments.map((comment) => {

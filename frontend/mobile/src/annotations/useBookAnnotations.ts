@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AnnotationReportReason, AnnotationSubject, AnnotationThread, AnnotationVisibility, TextAnchor } from "@jojo/content/annotations";
-import { addAnnotationComment, createAnnotation, loadAnnotationThreads, loadMyBookAnnotations, reportAnnotationComment } from "./api";
+import { addAnnotationComment, createAnnotation, deleteMyAnnotationMark, loadAnnotationThreads, loadMyBookAnnotations, reportAnnotationComment } from "./api";
 
 interface Options {
   userId: string | null;
   contentId: string;
-  sectionIds: readonly string[];
   activeSectionId: string;
   loadAll: boolean;
 }
@@ -19,21 +18,22 @@ interface Snapshot {
 
 export function annotationError(reason: unknown): string {
   const message = reason instanceof Error ? reason.message : "";
+  if (/超时|timeout/i.test(message)) return "笔记读取超时，请检查网络后重试";
   if (/登录|账号|account|sign.?in|session/i.test(message)) return "登录状态已变化，请重新登录后重试";
   if (/not enabled|not allowed|permission|privilege/i.test(message)) return "暂时无法使用想法功能，请稍后重试";
   return "想法暂时无法保存或读取，请重试";
 }
 
 /** Cloud discussions stay in memory and are never reused across accounts. */
-export function useBookAnnotations({ userId, contentId, sectionIds, activeSectionId, loadAll }: Options) {
+export function useBookAnnotations({ userId, contentId, activeSectionId, loadAll }: Options) {
   const key = JSON.stringify([userId, contentId]);
   const current = useRef(key);
   current.current = key;
   const writeVersion = useRef(0);
+  const removals = useRef(new Map<string, Promise<AnnotationThread | null>>());
   const [revision, setRevision] = useState(0);
   const [writeRevision, setWriteRevision] = useState(0);
   const [snapshot, setSnapshot] = useState<Snapshot>({ key, sections: {}, personal: [], loading: false, error: "" });
-  const sectionKey = JSON.stringify(sectionIds);
   const update = useCallback((change: (value: Snapshot) => Snapshot) => {
     if (current.current !== key) return;
     setSnapshot((value) => change(value.key === key ? value : { key, sections: {}, personal: [], loading: false, error: "" }));
@@ -51,16 +51,19 @@ export function useBookAnnotations({ userId, contentId, sectionIds, activeSectio
   }, [key, userId, contentId, activeSectionId, revision, update]);
 
   useEffect(() => {
-    if (!userId || !loadAll) return;
+    if (!userId || !loadAll) {
+      update((value) => value.loading ? { ...value, loading: false } : value);
+      return;
+    }
     const controller = new AbortController();
     const version = writeVersion.current;
-    const receivePersonal = (notes: AnnotationThread[]) => {
+    const receivePersonal = (notes: AnnotationThread[], complete = true) => {
       if (controller.signal.aborted || version !== writeVersion.current) return;
       update((value) => {
         const fresh = new Map(notes.map((thread) => [thread.id, thread]));
         const sections = Object.fromEntries(Object.entries(value.sections).map(([sectionId, threads]) => [sectionId, threads.map((thread) => {
           const personal = fresh.get(thread.id);
-          if (!personal) return thread;
+          if (!personal) return complete ? { ...thread, underlinedByMe: false, comments: thread.comments.filter((comment) => comment.authorId !== userId) } : thread;
           const own = new Map(personal.comments.filter((comment) => comment.authorId === userId).map((comment) => [comment.id, comment]));
           const comments = thread.comments.flatMap((comment) => {
             if (comment.authorId !== userId) return [comment];
@@ -74,15 +77,15 @@ export function useBookAnnotations({ userId, contentId, sectionIds, activeSectio
       });
     };
     update((value) => ({ ...value, loading: true, error: "" }));
-    void loadMyBookAnnotations(contentId, JSON.parse(sectionKey) as string[], userId, {
+    void loadMyBookAnnotations(contentId, userId, {
       signal: controller.signal,
       refresh: revision > 0,
-      onProgress: ({ notes }) => receivePersonal(notes),
+      onProgress: ({ notes, complete }) => receivePersonal(notes, complete),
     }).then(receivePersonal)
       .catch((reason) => { if (!controller.signal.aborted && version === writeVersion.current) update((value) => ({ ...value, error: annotationError(reason) })); })
       .finally(() => { if (!controller.signal.aborted) update((value) => ({ ...value, loading: false })); });
     return () => controller.abort();
-  }, [key, userId, contentId, sectionKey, loadAll, revision, writeRevision, update]);
+  }, [key, userId, contentId, loadAll, revision, writeRevision, update]);
 
   const upsert = useCallback((thread: AnnotationThread) => {
     update((value) => ({ ...value, sections: {
@@ -105,7 +108,7 @@ export function useBookAnnotations({ userId, contentId, sectionIds, activeSectio
 
   return {
     threads, notes,
-    loading: snapshot.key === key && snapshot.loading,
+    loading: Boolean(userId && loadAll && snapshot.key === key && snapshot.loading),
     error: snapshot.key === key ? snapshot.error : "",
     refresh: () => { update((value) => ({ ...value, error: "" })); setRevision((value) => value + 1); },
     async create(subject: AnnotationSubject, anchor: TextAnchor, body?: string, visibility: AnnotationVisibility = "public") {
@@ -136,6 +139,35 @@ export function useBookAnnotations({ userId, contentId, sectionIds, activeSectio
       } }));
       setWriteRevision((value) => value + 1);
       return saved;
+    },
+    async removeMark(thread: AnnotationThread) {
+      ensureCurrent();
+      if (!(thread.underlinedByMe ?? thread.authorId === userId)) throw new Error("只能删除自己的划线");
+      const requestKey = JSON.stringify([key, thread.id]);
+      const pending = removals.current.get(requestKey);
+      if (pending) return pending;
+      const remove = async () => {
+        const changed = await deleteMyAnnotationMark(thread.id, userId!);
+        ensureCurrent(); writeVersion.current += 1;
+        update((value) => {
+          const latest = value.sections[thread.sectionId]?.find((entry) => entry.id === thread.id)
+            ?? value.personal.find((entry) => entry.id === thread.id) ?? thread;
+          const ownComments = (changed ?? latest).comments.filter((comment) => comment.authorId === userId);
+          const personal = { ...(changed ?? latest), underlinedByMe: false, comments: ownComments };
+          return { ...value,
+            personal: [...value.personal.filter((entry) => entry.id !== thread.id), ...(ownComments.length ? [personal] : [])],
+            sections: { ...value.sections, [thread.sectionId]: [
+              ...(value.sections[thread.sectionId] ?? []).filter((entry) => entry.id !== thread.id),
+              ...(changed ? [changed] : []),
+            ] },
+          };
+        });
+        setWriteRevision((value) => value + 1);
+        return changed;
+      };
+      const request = remove().finally(() => removals.current.delete(requestKey));
+      removals.current.set(requestKey, request);
+      return request;
     },
     async report(thread: AnnotationThread, commentId: string, reason: AnnotationReportReason, details?: string) {
       ensureCurrent();

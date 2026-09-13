@@ -139,4 +139,105 @@ describe("native annotation discussion", () => {
     expect(find("讨论想法内容").props.value).toBe("");
     expect(renderedText()).toContain("还没有想法。");
   });
+
+  it.each([
+    { authorId: "me", underlinedByMe: undefined, canRemove: true },
+    { authorId: "other", underlinedByMe: undefined, canRemove: false },
+    { authorId: "me", underlinedByMe: false, canRemove: false },
+    { authorId: "other", underlinedByMe: true, canRemove: true },
+  ])("only offers removal for the reader's own mark ($authorId, $underlinedByMe)", async ({ authorId, underlinedByMe, canRemove }) => {
+    props.thread = { ...thread, authorId, underlinedByMe };
+    await render();
+    expect(view.root.findAllByProps({ accessibilityLabel: "删除自己的划线" })).toHaveLength(0);
+    props.onRemoveMark = vi.fn(async () => undefined);
+    await act(async () => view.update(<AnnotationDiscussionPanel {...props} />));
+    expect(view.root.findAllByProps({ accessibilityLabel: "删除自己的划线" })).toHaveLength(canRemove ? 1 : 0);
+    expect(props.onRemoveMark).not.toHaveBeenCalled();
+  });
+
+  it("waits for removal before closing and blocks duplicate removal, comments and dismissal", async () => {
+    let resolve!: () => void;
+    props.onRemoveMark = vi.fn(() => new Promise<void>((done) => { resolve = done; }));
+    await render();
+    await input("讨论想法内容", "尚未发表的想法");
+    const remove = find("删除自己的划线").props.onPress;
+    const submit = find("发表想法").props.onPress;
+    await act(async () => { remove(); remove(); submit(); });
+    expect(props.onRemoveMark).toHaveBeenCalledOnce();
+    expect(props.onComment).not.toHaveBeenCalled();
+    expect(props.onClose).not.toHaveBeenCalled();
+    for (const label of ["删除自己的划线", "关闭划线详情", "关闭划线详情背景", "发表想法", "仅自己可见", "举报其他读者的想法"]) {
+      expect(find(label).props.disabled).toBe(true);
+    }
+    expect(find("讨论想法内容").props.editable).toBe(false);
+    expect(find("讨论想法内容").props.value).toBe("尚未发表的想法");
+    expect(renderedText()).toContain("自己的私密想法");
+    await press("关闭划线详情");
+    await press("关闭划线详情背景");
+    await act(async () => view.root.findByType("dialog").props.onRequestClose());
+    expect(props.onClose).not.toHaveBeenCalled();
+    await act(async () => resolve());
+    expect(props.onClose).toHaveBeenCalledOnce();
+    expect(props.onReport).not.toHaveBeenCalled();
+  });
+
+  it("keeps the panel, existing thoughts and private reply after a failed removal, then allows retry", async () => {
+    props.onRemoveMark = vi.fn().mockRejectedValueOnce(new Error("SQL private.annotation_marks failed")).mockResolvedValue(undefined);
+    await render();
+    await press("回复其他读者的想法");
+    await input("讨论想法内容", "保留未发表的回复");
+    await press("仅自己可见");
+    await press("删除自己的划线");
+    expect(props.onClose).not.toHaveBeenCalled();
+    expect(view.root.findByType("dialog")).toBeTruthy();
+    expect(find("删除自己的划线").props.disabled).toBe(false);
+    expect(find("讨论想法内容").props.editable).toBe(true);
+    expect(find("讨论想法内容").props.value).toBe("保留未发表的回复");
+    expect(find("仅自己可见").props.accessibilityState.checked).toBe(true);
+    expect(find("取消回复")).toBeTruthy();
+    expect(renderedText()).toContain("自己的公开想法");
+    expect(renderedText()).toContain("自己的私密想法");
+    expect(renderedText()).toContain("其他人的公开想法");
+    expect(renderedText()).toContain("划线未能删除，请重试");
+    expect(renderedText()).not.toContain("SQL");
+    expect(props.onComment).not.toHaveBeenCalled();
+    await press("删除自己的划线");
+    expect(props.onRemoveMark).toHaveBeenCalledTimes(2);
+    expect(props.onClose).toHaveBeenCalledOnce();
+    expect(renderedText()).not.toContain("划线未能删除，请重试");
+  });
+
+  it("does not remove a mark while a comment request is pending", async () => {
+    let resolve!: () => void;
+    props.onComment = vi.fn(() => new Promise<void>((done) => { resolve = done; }));
+    props.onRemoveMark = vi.fn(async () => undefined);
+    await render();
+    await input("讨论想法内容", "先保存想法");
+    const remove = find("删除自己的划线").props.onPress;
+    await press("发表想法");
+    expect(find("删除自己的划线").props.disabled).toBe(true);
+    await act(async () => remove());
+    expect(props.onRemoveMark).not.toHaveBeenCalled();
+    await act(async () => resolve());
+    expect(find("删除自己的划线").props.disabled).toBe(false);
+  });
+
+  it.each(["account", "thread"])("does not close a new %s panel when an earlier removal finishes", async (change) => {
+    let resolve!: () => void;
+    props.onRemoveMark = vi.fn(() => new Promise<void>((done) => { resolve = done; }));
+    await render();
+    await press("删除自己的划线");
+    const originalClose = props.onClose;
+    props = {
+      ...props,
+      onClose: vi.fn(),
+      ...(change === "account" ? { currentUserId: "another-user" } : { thread: { ...thread, id: "another-thread" } }),
+    };
+    await act(async () => view.update(<AnnotationDiscussionPanel {...props} />));
+    await input("讨论想法内容", "新面板中的想法");
+    await act(async () => resolve());
+    expect(originalClose).not.toHaveBeenCalled();
+    expect(props.onClose).not.toHaveBeenCalled();
+    expect(find("讨论想法内容").props.value).toBe("新面板中的想法");
+  });
 });

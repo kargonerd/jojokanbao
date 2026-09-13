@@ -1,14 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AnnotationSubject, AnnotationThread, TextAnchor } from "@jojo/content/annotations";
 
-const { rpc, getSession, authLoaded, setHeader } = vi.hoisted(() => ({ rpc: vi.fn(), getSession: vi.fn(), authLoaded: vi.fn(), setHeader: vi.fn() }));
+const { rpc, getSession, authLoaded, setHeader, abortSignal } = vi.hoisted(() => ({ rpc: vi.fn(), getSession: vi.fn(), authLoaded: vi.fn(), setHeader: vi.fn(), abortSignal: vi.fn() }));
 vi.mock("../account/auth", () => {
   authLoaded();
   return { mobileAuthClient: {
-    rpc: (name: string, params: Record<string, unknown>) => ({ setHeader: (header: string, value: string) => {
-      setHeader(header, value);
-      return rpc(name, params);
-    } }),
+    rpc: (name: string, params: Record<string, unknown>) => {
+      const request = {
+        setHeader: (header: string, value: string) => { setHeader(header, value); return request; },
+        abortSignal: (signal: AbortSignal) => { abortSignal(signal); return request; },
+        then: (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) => Promise.resolve(rpc(name, params)).then(resolve, reject),
+      };
+      return request;
+    },
     auth: { getSession },
   } };
 });
@@ -30,6 +34,7 @@ describe("native annotation RPC binding", () => {
     rpc.mockReset().mockResolvedValue({ data: savedThread, error: null });
     getSession.mockReset().mockResolvedValue({ data: { session: { user: { id: "reader:a" }, access_token: "token-a" } }, error: null });
     setHeader.mockReset();
+    abortSignal.mockReset();
     authLoaded.mockClear();
     api = await import("./api");
   });
@@ -46,17 +51,22 @@ describe("native annotation RPC binding", () => {
     });
     expect(getSession).toHaveBeenCalledTimes(3);
     expect(setHeader).toHaveBeenCalledExactlyOnceWith("Authorization", "Bearer token-a");
+    expect(abortSignal).not.toHaveBeenCalled();
   });
 
-  it("uses real discussion and personal-note reads and reuses successful native chapter requests", async () => {
+  it("keeps chapter discussions separate from completed personal-book reads", async () => {
     rpc.mockResolvedValue({ data: [savedThread], error: null });
     expect(await api.loadAnnotationThreads(subject)).toEqual([savedThread]);
-    expect(await api.loadMyBookAnnotations(subject.contentId, [subject.sectionId], "reader:a")).toEqual([savedThread]);
-    expect(await api.loadMyBookAnnotations(subject.contentId, [subject.sectionId], "reader:a")).toEqual([savedThread]);
+    expect(await api.loadMyBookAnnotations(subject.contentId, "reader:a")).toEqual([savedThread]);
+    expect(await api.loadMyBookAnnotations(subject.contentId, "reader:a")).toEqual([savedThread]);
     expect(rpc).toHaveBeenCalledTimes(2);
-    expect(rpc).toHaveBeenLastCalledWith("get_annotation_threads", {
+    expect(rpc).toHaveBeenNthCalledWith(1, "get_annotation_threads", {
       p_content_type: "book", p_content_id: "dataset:item", p_section_id: "chapter:2",
     });
+    expect(rpc).toHaveBeenLastCalledWith("get_my_book_annotations", {
+      p_content_id: "dataset:item", p_after_id: null, p_limit: 100,
+    });
+    expect(abortSignal).toHaveBeenCalledExactlyOnceWith(expect.any(AbortSignal));
   });
 
   it("sends private reply and report parameters while leaving public visibility at its database default", async () => {
@@ -72,18 +82,51 @@ describe("native annotation RPC binding", () => {
     });
   });
 
+  it("returns completed zero notes from one book RPC with the captured session and cancellation signal", async () => {
+    rpc.mockResolvedValue({ data: [], error: null });
+    const onProgress = vi.fn();
+    expect(await api.loadMyBookAnnotations(subject.contentId, "reader:a", { onProgress })).toEqual([]);
+    expect(rpc).toHaveBeenCalledExactlyOnceWith("get_my_book_annotations", {
+      p_content_id: "dataset:item", p_after_id: null, p_limit: 100,
+    });
+    expect(setHeader).toHaveBeenCalledExactlyOnceWith("Authorization", "Bearer token-a");
+    expect(abortSignal).toHaveBeenCalledExactlyOnceWith(expect.any(AbortSignal));
+    expect(onProgress).toHaveBeenLastCalledWith({ notes: [], complete: true });
+    expect(await api.loadMyBookAnnotations(subject.contentId, "reader:a")).toEqual([]);
+    expect(rpc).toHaveBeenCalledTimes(1);
+  });
+
+  it("aborts native transport on close without waiting for its response and reopens independently", async () => {
+    let finish!: () => void;
+    rpc.mockImplementationOnce(() => new Promise((resolve) => { finish = () => resolve({ data: [], error: null }); }));
+    const controller = new AbortController();
+    const loading = api.loadMyBookAnnotations(subject.contentId, "reader:a", { signal: controller.signal });
+    const rejected = expect(loading).rejects.toMatchObject({ name: "AbortError" });
+    await vi.waitFor(() => expect(rpc).toHaveBeenCalledTimes(1));
+    const signal = abortSignal.mock.calls[0]?.[0] as AbortSignal;
+    controller.abort();
+    await rejected;
+    expect(signal.aborted).toBe(true);
+    rpc.mockResolvedValueOnce({ data: [savedThread], error: null });
+    expect(await api.loadMyBookAnnotations(subject.contentId, "reader:a")).toEqual([savedThread]);
+    expect(abortSignal.mock.calls[1]?.[0]).not.toBe(signal);
+    finish();
+    expect(await api.loadMyBookAnnotations(subject.contentId, "reader:a")).toEqual([savedThread]);
+    expect(rpc).toHaveBeenCalledTimes(2);
+  });
+
   it("rejects previous-account requests before calling native RPCs", async () => {
     getSession.mockResolvedValue({ data: { session: { user: { id: "reader:b" }, access_token: "token-b" } }, error: null });
-    await expect(api.loadMyBookAnnotations(subject.contentId, [subject.sectionId], "reader:a"))
+    await expect(api.loadMyBookAnnotations(subject.contentId, "reader:a"))
       .rejects.toThrow("登录状态已变化");
     expect(rpc).not.toHaveBeenCalled();
   });
 
   it("does not serve cached notes when the native session is no longer available", async () => {
     rpc.mockResolvedValue({ data: [savedThread], error: null });
-    await api.loadMyBookAnnotations(subject.contentId, [subject.sectionId], "reader:a");
+    await api.loadMyBookAnnotations(subject.contentId, "reader:a");
     getSession.mockResolvedValue({ data: { session: null }, error: null });
-    await expect(api.loadMyBookAnnotations(subject.contentId, [subject.sectionId], "reader:a"))
+    await expect(api.loadMyBookAnnotations(subject.contentId, "reader:a"))
       .rejects.toThrow("登录状态已变化");
     expect(rpc).toHaveBeenCalledTimes(1);
   });

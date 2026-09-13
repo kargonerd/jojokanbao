@@ -137,6 +137,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
   const addBookAnnotation = useMobileStore((state) => state.addBookAnnotation);
   const updateBookAnnotationNote = useMobileStore((state) => state.updateBookAnnotationNote);
   const removeBookAnnotation = useMobileStore((state) => state.removeBookAnnotation);
+  const removeBookAnnotationMark = useMobileStore((state) => state.removeBookAnnotationMark);
   const claimLegacyBookAnnotations = useMobileStore((state) => state.claimLegacyBookAnnotations);
 
   const theme = useMemo(() => readerTheme(bookPaperColor), [bookPaperColor]);
@@ -379,7 +380,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
   const cloudAnnotations = useBookAnnotations({
     userId: loaded ? user?.id ?? null : null,
     contentId: `${loaded?.manifest.datasetId ?? datasetId}:${loaded?.manifest.itemId ?? loaded?.volume.itemId ?? itemKey}`,
-    sectionIds: chapters.map((entry) => entry.id), activeSectionId: activeChapterId,
+    activeSectionId: activeChapterId,
     loadAll: activeTool === "notes" || activeTool === "progress",
   });
   const localBookAnnotations = useMemo(() => annotations.filter((annotation) => (
@@ -393,7 +394,8 @@ export function BookReaderScreen({ route, navigation }: Props) {
     prefix: thread.prefix, suffix: thread.suffix, createdAt: Date.parse(thread.createdAt), thread,
   });
   const bookAnnotations: ReaderAnnotation[] = useMemo(() => [
-    ...localBookAnnotations, ...cloudAnnotations.threads.map(asReaderAnnotation),
+    ...localBookAnnotations.filter((annotation) => annotation.underlined !== false),
+    ...cloudAnnotations.threads.filter((thread) => (thread.underlinedByMe ?? thread.authorId === user?.id) || thread.publiclyVisible).map(asReaderAnnotation),
   ], [localBookAnnotations, cloudAnnotations.threads, loaded, user?.id]);
   const bookNotes = [...localBookAnnotations, ...cloudAnnotations.notes.map(asReaderAnnotation)] as ReaderAnnotation[];
   const activeCloudThread = cloudAnnotations.threads.find((thread) => thread.id === activeAnnotationId);
@@ -850,6 +852,27 @@ export function BookReaderScreen({ route, navigation }: Props) {
     if (noteComposer?.annotationId === annotation.id) setNoteComposer(undefined);
     void selectionHaptic(hapticsEnabled);
   }
+  function deleteLocalUnderline(annotation: BookAnnotation) {
+    removeBookAnnotationMark(annotation.id);
+    webViewRef.current?.injectJavaScript(createBookReaderRemoveAnnotationScript(annotation.id));
+    setNoteComposer(undefined); setActiveAnnotationId(undefined);
+    setReaderNotice("已删除划线");
+    void selectionHaptic(hapticsEnabled);
+  }
+  async function deleteCloudUnderline(thread: AnnotationThread) {
+    const context = noteContext;
+    const changed = await cloudAnnotations.removeMark(thread);
+    if (noteContextRef.current !== context) return;
+    if (!changed?.underlinedByMe && !changed?.publiclyVisible) webViewRef.current?.injectJavaScript(createBookReaderRemoveAnnotationScript(thread.id));
+    setReaderNotice("已删除自己的划线");
+    void selectionHaptic(hapticsEnabled);
+  }
+  function deleteNoteUnderline(thread: AnnotationThread) {
+    const context = noteContext;
+    void deleteCloudUnderline(thread).catch((reason) => {
+      if (noteContextRef.current === context) setReaderNotice(annotationError(reason));
+    });
+  }
   async function submitSearch() {
     const query = searchQuery.trim();
     if (!loaded || !query || searching) return;
@@ -1044,10 +1067,10 @@ export function BookReaderScreen({ route, navigation }: Props) {
             <Pressable accessibilityRole="button" accessibilityLabel={`定位笔记：${item.quote}`} onPress={() => locateText(item.chapterId, item.quote)}><Text style={[styles.noteChapter, { color: theme.red, fontFamily: theme.sans }]}>{item.chapterTitle}</Text><Text numberOfLines={3} style={[styles.noteQuote, { color: theme.ink, fontFamily: theme.serif }]}>{item.quote}</Text></Pressable>
             {item.thread ? <>
               {item.thread.comments.filter((comment) => comment.authorId === user?.id).map((comment) => <View key={comment.id}><Text style={[styles.noteBody, { color: theme.ink, fontFamily: theme.serif }]}>{comment.body}</Text><Text style={[styles.noteAction, { color: theme.muted }]}>{comment.visibility === "private" ? "仅自己可见" : "公开"}</Text></View>)}
-              <View style={styles.noteActions}><Pressable accessibilityRole="button" onPress={() => openDiscussion(item.thread!)} hitSlop={8}><Text style={[styles.noteAction, { color: theme.red, fontFamily: theme.sans }]}>查看想法</Text></Pressable></View>
+              <View style={styles.noteActions}>{(item.thread.underlinedByMe ?? item.thread.authorId === user?.id) ? <Pressable accessibilityRole="button" accessibilityLabel="删除自己的划线" onPress={() => deleteNoteUnderline(item.thread!)} hitSlop={8}><Text style={[styles.noteAction, { color: theme.red, fontFamily: theme.sans }]}>删除划线</Text></Pressable> : null}<Pressable accessibilityRole="button" onPress={() => openDiscussion(item.thread!)} hitSlop={8}><Text style={[styles.noteAction, { color: theme.red, fontFamily: theme.sans }]}>查看想法</Text></Pressable></View>
             </> : <>
               {item.note ? <Text style={[styles.noteBody, { color: theme.muted, fontFamily: theme.serif }]}>{item.note}</Text> : null}
-              <View style={styles.noteActions}><Pressable accessibilityRole="button" onPress={() => { setNoteComposer({ annotationId: item.id, quote: item.quote }); setNoteDraft(item.note ?? ""); setNoteVisibility("private"); setNoteError(""); }} hitSlop={8}><Text style={[styles.noteAction, { color: theme.red, fontFamily: theme.sans }]}>编辑</Text></Pressable><Pressable accessibilityRole="button" onPress={() => deleteAnnotation(item)} hitSlop={8}><Text style={[styles.noteAction, { color: theme.muted, fontFamily: theme.sans }]}>删除</Text></Pressable></View>
+              <View style={styles.noteActions}>{item.underlined !== false ? <Pressable accessibilityRole="button" accessibilityLabel="删除划线" onPress={() => deleteLocalUnderline(item)} hitSlop={8}><Text style={[styles.noteAction, { color: theme.red, fontFamily: theme.sans }]}>删除划线</Text></Pressable> : null}<Pressable accessibilityRole="button" onPress={() => { setNoteComposer({ annotationId: item.id, quote: item.quote }); setNoteDraft(item.note ?? ""); setNoteVisibility("private"); setNoteError(""); }} hitSlop={8}><Text style={[styles.noteAction, { color: theme.red, fontFamily: theme.sans }]}>编辑</Text></Pressable><Pressable accessibilityRole="button" onPress={() => deleteAnnotation(item)} hitSlop={8}><Text style={[styles.noteAction, { color: theme.muted, fontFamily: theme.sans }]}>删除</Text></Pressable></View>
             </>}
           </View>} />
         </ReaderNavigationSheet> : null}
@@ -1071,9 +1094,10 @@ export function BookReaderScreen({ route, navigation }: Props) {
       </> : null}
 
       {selection ? <ReaderSelectionToolbar selection={selection} frame={readerFrame} theme={theme} eInk={IS_EINK_RELEASE} onCopy={() => { void Clipboard.setStringAsync(selection.text); clearSelection(); }} onUnderline={underlineSelection} onThought={composeSelectionNote} onExplain={explainSelection} /> : null}
-      <BookThoughtComposer quote={noteComposer?.quote} value={noteDraft} visibility={noteVisibility} onVisibilityChange={setNoteVisibility} saving={noteSaving} error={noteError} localOnly={!user} onChange={setNoteDraft} onCancel={() => { if (!noteSaving) { setNoteComposer(undefined); setNoteDraft(""); setActiveAnnotationId(undefined); } }} onSave={() => void saveNote()} onSaveLocal={user ? saveNoteLocally : undefined} theme={theme} />
+      <BookThoughtComposer quote={noteComposer?.quote} value={noteDraft} visibility={noteVisibility} onVisibilityChange={setNoteVisibility} saving={noteSaving} error={noteError} localOnly={!user} onChange={setNoteDraft} onCancel={() => { if (!noteSaving) { setNoteComposer(undefined); setNoteDraft(""); setActiveAnnotationId(undefined); } }} onSave={() => void saveNote()} onSaveLocal={user ? saveNoteLocally : undefined} onRemoveMark={noteComposer?.annotationId && localBookAnnotations.some((entry) => entry.id === noteComposer.annotationId && entry.underlined !== false) ? () => deleteLocalUnderline(localBookAnnotations.find((entry) => entry.id === noteComposer!.annotationId)!) : undefined} theme={theme} />
       {activeCloudThread && user ? <AnnotationDiscussionPanel key={`${user.id}:${activeCloudThread.id}`} thread={activeCloudThread} currentUserId={user.id} theme={theme}
         onClose={() => setActiveAnnotationId(undefined)}
+        onRemoveMark={() => deleteCloudUnderline(activeCloudThread)}
         onComment={(body, parentId, visibility) => cloudAnnotations.comment(activeCloudThread, body, parentId, visibility)}
         onReport={(commentId, reason, details) => cloudAnnotations.report(activeCloudThread, commentId, reason, details)} /> : null}
       {loaded && activeChapterId ? <NativeSpeechPlayer documentId={`book:${datasetId}:${itemKey}`} title={loaded.manifest.title} chapterId={activeChapterId} chapters={loaded.manifest.content.chapters ?? []} loadChapter={loadSpeechChapter} getReadingPosition={getSpeechPosition} onSpeechLocation={showSpeechLocation} theme={theme} colorScheme={!IS_EINK_RELEASE && bookPaperColor === "dark" ? "dark" : "light"} cover={speechCover ? { uri: speechCover } : undefined} hidden={!chromeVisible || Boolean(activeTool || selection || noteComposer || activeAnnotationId || expandedImageUri)} bottom={insets.bottom + 64} onRead={(id, location) => location ? showSpeechLocation(location, true) : chooseChapter(id)} onBookshelf={() => void toggleBookshelf()} onShelf={onBookshelf} bookshelfBusy={bookshelfBusy} /> : null}

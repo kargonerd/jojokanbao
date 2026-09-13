@@ -87,3 +87,45 @@ it("offers local saving only after a cloud failure and keeps both retry choices 
   await act(async () => view.update(<BookThoughtComposer {...props} error="暂未保存，请重试。" onSaveLocal={undefined} />));
   expect(view.root.findAllByProps({ accessibilityLabel: "先保存到本机" })).toHaveLength(0);
 });
+
+it("only offers mark removal when provided and keeps it outside the scrollable editor", async () => {
+  await act(async () => { view = create(<BookThoughtComposer {...props} />); });
+  expect(view.root.findAllByProps({ accessibilityLabel: "删除划线" })).toHaveLength(0);
+  props.onRemoveMark = vi.fn();
+  await act(async () => view.update(<BookThoughtComposer {...props} />));
+  expect(find("删除划线").props.disabled).toBe(false);
+  expect(view.root.findByProps({ testID: "thought-editor-scroll" }).findAllByProps({ accessibilityLabel: "删除划线" })).toHaveLength(0);
+  await act(async () => find("删除划线").props.onPress());
+  expect(props.onRemoveMark).toHaveBeenCalledOnce();
+  expect(props.onSave).not.toHaveBeenCalled();
+  expect(props.onCancel).not.toHaveBeenCalled();
+  expect(props.onChange).not.toHaveBeenCalled();
+  expect(find("想法内容").props.value).toBe("想法");
+});
+
+it("disables mark removal during a request and preserves the thought when the owner reports failure", async () => {
+  props = { ...props, visibility: "private", onRemoveMark: vi.fn() };
+  await act(async () => { view = create(<BookThoughtComposer {...props} saving />); });
+  expect(find("删除划线").props.disabled).toBe(true);
+  expect(find("想法内容").props.editable).toBe(false);
+  await act(async () => view.root.findByType("dialog").props.onRequestClose());
+  expect(props.onCancel).not.toHaveBeenCalled();
+  await act(async () => view.update(<BookThoughtComposer {...props} error="划线未能删除，请重试" />));
+  expect(find("删除划线").props.disabled).toBe(false);
+  expect(find("想法内容").props.value).toBe("想法");
+  expect(find("仅自己可见").props.accessibilityState.checked).toBe(true);
+  expect(view.root.findByProps({ accessibilityRole: "alert" }).props.children).toBe("划线未能删除，请重试");
+  await act(async () => find("删除划线").props.onPress());
+  expect(props.onRemoveMark).toHaveBeenCalledOnce();
+  expect(props.onCancel).not.toHaveBeenCalled();
+});
+
+it("allows removing a local mark without requiring a thought", async () => {
+  props.onRemoveMark = vi.fn();
+  await act(async () => { view = create(<BookThoughtComposer {...props} localOnly value="" />); });
+  expect(find("保存想法").props.disabled).toBe(true);
+  expect(find("删除划线").props.disabled).toBe(false);
+  await act(async () => find("删除划线").props.onPress());
+  expect(props.onRemoveMark).toHaveBeenCalledOnce();
+  expect(props.onSave).not.toHaveBeenCalled();
+});

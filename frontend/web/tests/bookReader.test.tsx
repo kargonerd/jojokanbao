@@ -366,7 +366,7 @@ describe("BookReader", () => {
     expect(document.activeElement).toBe(input);
 
     const sheet = screen.getByRole("complementary", { name: "全书搜索" });
-    const frame = sheet.parentElement!;
+    const frame = sheet.closest<HTMLElement>(".book-navigation-viewport")!;
     act(() => { viewport.height = 380; viewport.offsetTop = 48; viewport.dispatchEvent(new Event("resize")); });
     expect(frame.style.height).toBe("380px");
     expect(frame.style.top).toBe("48px");
@@ -393,7 +393,7 @@ describe("BookReader", () => {
     const removeEventListener = vi.spyOn(window, "removeEventListener");
     renderReader();
     fireEvent.click(screen.getByRole("button", { name: "打开目录" }));
-    const frame = screen.getByRole("complementary", { name: "目录面板" }).parentElement!;
+    const frame = screen.getByRole("complementary", { name: "目录面板" }).closest<HTMLElement>(".book-navigation-viewport")!;
     expect(frame.style.height).toBe("844px");
     vi.stubGlobal("innerHeight", 380);
     fireEvent(window, new Event("resize"));
@@ -720,7 +720,6 @@ describe("BookReader", () => {
     expect(within(panel).queryByText("还没有笔记。选中正文，可以划线或写下想法。")).toBeNull();
     expect(annotationApi.loadMyBookAnnotations).toHaveBeenCalledExactlyOnceWith(
       "test-books:test-books:full-book",
-      ["chapter-1", "chapter-2"],
       "11111111-1111-4111-8111-111111111111",
       { signal: expect.any(AbortSignal), onProgress: expect.any(Function) },
     );

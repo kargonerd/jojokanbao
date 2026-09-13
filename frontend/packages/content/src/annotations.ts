@@ -11,7 +11,7 @@ export * from "./annotation-types";
 
 export interface AnnotationApiDependencies {
   /** Bind transport credentials to this reader; never borrow a newer live session. */
-  rpc: (name: string, params: Record<string, unknown>, expectedUserId: string) => PromiseLike<{
+  rpc: (name: string, params: Record<string, unknown>, expectedUserId: string, signal?: AbortSignal) => PromiseLike<{
     data: unknown;
     error: { message?: string } | null;
   }>;
@@ -21,22 +21,20 @@ export interface AnnotationApiDependencies {
 
 export interface BookAnnotationProgress {
   notes: AnnotationThread[];
-  loadedSections: number;
-  totalSections: number;
+  complete: boolean;
 }
 
 export interface BookAnnotationOptions {
   onProgress?: (progress: BookAnnotationProgress) => void;
   signal?: AbortSignal;
-  /** Synchronize changes from other devices; local writes invalidate their chapter. */
+  /** Synchronize changes from other devices; local writes invalidate their book. */
   refresh?: boolean;
 }
 
 interface BookAnnotationCache {
   contentId: string;
-  chapters: Map<string, { request: Promise<AnnotationThread[]>; expiresAt: number }>;
-  annotationSections: Map<string, string>;
-  commentSections: Map<string, string>;
+  notes?: AnnotationThread[];
+  expiresAt: number;
 }
 
 function subjectParams(subject: AnnotationSubject) {
@@ -83,26 +81,31 @@ export function createAnnotationApi({ rpc, getCurrentUserId, currentPath = () =>
     }, expectedUserId);
   }
 
-  // Session-only, separated by reader. Reopening a tool reuses loaded chapters.
+  // Cache only completed reads, separated by reader and book. Pending requests
+  // belong to their caller, so closing a tool can actually cancel its transport.
   const bookAnnotationCaches = new Map<string, BookAnnotationCache>();
 
-  function invalidateBookAnnotationChapter(contentId: string, sectionId: string) {
-    for (const cache of bookAnnotationCaches.values()) {
-      if (cache.contentId === contentId) cache.chapters.delete(sectionId);
+  function invalidateBookAnnotations(contentId: string) {
+    for (const [key, cache] of bookAnnotationCaches) {
+      if (cache.contentId === contentId) bookAnnotationCaches.delete(key);
     }
   }
 
   function invalidateBookAnnotationComment(annotationId: string) {
-    for (const cache of bookAnnotationCaches.values()) {
-      const sectionId = cache.annotationSections.get(annotationId);
-      if (sectionId) cache.chapters.delete(sectionId);
+    // A first thought on another reader's underline is absent from personal
+    // caches, so its book cannot be inferred from a cached personal thread.
+    if (![...bookAnnotationCaches.values()].some((cache) => cache.notes?.some((thread) => thread.id === annotationId))) {
+      bookAnnotationCaches.clear();
+      return;
+    }
+    for (const [key, cache] of bookAnnotationCaches) {
+      if (!cache.notes || cache.notes.some((thread) => thread.id === annotationId)) bookAnnotationCaches.delete(key);
     }
   }
 
   function invalidateBookAnnotationLike(commentId: string) {
-    for (const cache of bookAnnotationCaches.values()) {
-      const sectionId = cache.commentSections.get(commentId);
-      if (sectionId) cache.chapters.delete(sectionId);
+    for (const [key, cache] of bookAnnotationCaches) {
+      if (!cache.notes || cache.notes.some((thread) => thread.comments.some((comment) => comment.id === commentId))) bookAnnotationCaches.delete(key);
     }
   }
 
@@ -115,87 +118,88 @@ export function createAnnotationApi({ rpc, getCurrentUserId, currentPath = () =>
     });
   }
 
-  /** Reuse the deployed, chapter-scoped discussion API for this reader's notes. */
+  /** Query only this reader's notes across the book, paging by annotation ID. */
   async function loadMyBookAnnotations(
     contentId: string,
-    sectionIds: readonly string[],
     currentUserId: string | null,
     options: BookAnnotationOptions = {},
   ): Promise<AnnotationThread[]> {
     if (!currentUserId) return [];
     checkAborted(options.signal);
-    await requireSameReader(currentUserId);
+    const controller = new AbortController();
+    let rejectCancelled!: (reason: Error) => void;
+    const cancelled = new Promise<never>((_resolve, reject) => { rejectCancelled = reject; });
+    const abort = () => {
+      const error = new Error("笔记读取已取消");
+      error.name = "AbortError";
+      rejectCancelled(error);
+      controller.abort();
+    };
+    options.signal?.addEventListener("abort", abort, { once: true });
+    const timer = setTimeout(() => {
+      rejectCancelled(new Error("笔记读取超时，请检查网络后重试"));
+      controller.abort();
+    }, 15_000);
     const cacheKey = JSON.stringify([currentUserId, contentId]);
-    if (options.refresh) bookAnnotationCaches.delete(cacheKey);
-    let cache = bookAnnotationCaches.get(cacheKey);
-    if (!cache) {
-      cache = { contentId, chapters: new Map(), annotationSections: new Map(), commentSections: new Map() };
-      // Bound retained books, while keeping every chapter of an open book reusable.
-      if (bookAnnotationCaches.size >= 8) bookAnnotationCaches.delete(bookAnnotationCaches.keys().next().value!);
-      bookAnnotationCaches.set(cacheKey, cache);
-    }
-    const bookCache = cache;
-    const sections = [...new Set(sectionIds.filter(Boolean))];
-    const notes = new Map<string, AnnotationThread>();
-    // The deployed API is scoped to one chapter. Bound requests for long books.
-    for (let start = 0; start < sections.length; start += 4) {
-      checkAborted(options.signal);
+    let entry: BookAnnotationCache | undefined;
+    const read = async () => {
       await requireSameReader(currentUserId);
-      checkAborted(options.signal);
-      const chapters = await Promise.all(sections.slice(start, start + 4).map((sectionId) => {
-        const cached = bookCache.chapters.get(sectionId);
-        if (cached && cached.expiresAt > Date.now()) return cached.request;
-        let request!: Promise<AnnotationThread[]>;
-        request = (async () => {
-          const { data, error } = await rpc("get_annotation_threads", {
-            p_content_type: "book",
-            p_content_id: contentId,
-            p_section_id: sectionId,
-          }, currentUserId);
-          const result = resultOrThrow<unknown>(data, error);
-          await requireSameReader(currentUserId);
-          const threads = Array.isArray(result) ? result as AnnotationThread[] : [];
-          const entry = bookCache.chapters.get(sectionId);
-          if (entry?.request === request) {
-            entry.expiresAt = Date.now() + 60_000;
-            for (const [annotationId, chapterId] of bookCache.annotationSections) {
-              if (chapterId === sectionId) bookCache.annotationSections.delete(annotationId);
-            }
-            for (const [commentId, chapterId] of bookCache.commentSections) {
-              if (chapterId === sectionId) bookCache.commentSections.delete(commentId);
-            }
-            for (const thread of threads) {
-              bookCache.annotationSections.set(thread.id, sectionId);
-              for (const comment of thread.comments) bookCache.commentSections.set(comment.id, sectionId);
-            }
-          }
-          return personalBookNotes(threads, currentUserId);
-        })();
-        if (bookCache.chapters.size >= 2048 && !bookCache.chapters.has(sectionId)) {
-          const oldestSection = bookCache.chapters.keys().next().value!;
-          bookCache.chapters.delete(oldestSection);
-          for (const [annotationId, chapterId] of bookCache.annotationSections) {
-            if (chapterId === oldestSection) bookCache.annotationSections.delete(annotationId);
-          }
-          for (const [commentId, chapterId] of bookCache.commentSections) {
-            if (chapterId === oldestSection) bookCache.commentSections.delete(commentId);
-          }
-        }
-        bookCache.chapters.set(sectionId, { request, expiresAt: Number.POSITIVE_INFINITY });
-        void request.catch(() => {
-          if (bookCache.chapters.get(sectionId)?.request === request) bookCache.chapters.delete(sectionId);
-        });
-        return request;
-      }));
-      checkAborted(options.signal);
-      await requireSameReader(currentUserId);
-      checkAborted(options.signal);
-      for (const threads of chapters) {
-        for (const thread of threads) notes.set(thread.id, thread);
+      checkAborted(controller.signal);
+      const cached = bookAnnotationCaches.get(cacheKey);
+      if (!options.refresh && cached?.notes && cached.expiresAt > Date.now()) {
+        await requireSameReader(currentUserId);
+        checkAborted(controller.signal);
+        options.onProgress?.({ notes: cached.notes, complete: true });
+        await requireSameReader(currentUserId);
+        checkAborted(controller.signal);
+        return cached.notes;
       }
-      options.onProgress?.({ notes: [...notes.values()], loadedSections: Math.min(start + 4, sections.length), totalSections: sections.length });
+      entry = { contentId, expiresAt: 0 };
+      if (bookAnnotationCaches.size >= 8 && !bookAnnotationCaches.has(cacheKey)) {
+        bookAnnotationCaches.delete(bookAnnotationCaches.keys().next().value!);
+      }
+      bookAnnotationCaches.set(cacheKey, entry);
+      const notes = new Map<string, AnnotationThread>();
+      let afterId: string | null = null;
+      while (true) {
+        await requireSameReader(currentUserId);
+        checkAborted(controller.signal);
+        const { data, error } = await rpc("get_my_book_annotations", {
+          p_content_id: contentId, p_after_id: afterId, p_limit: 100,
+        }, currentUserId, controller.signal);
+        const result = resultOrThrow<unknown>(data, error);
+        if (!Array.isArray(result)) throw new Error("笔记服务返回了无效结果，请重试");
+        await requireSameReader(currentUserId);
+        checkAborted(controller.signal);
+        const page = result as AnnotationThread[];
+        for (const thread of personalBookNotes(page, currentUserId)) notes.set(thread.id, thread);
+        const complete = page.length < 100;
+        const loaded = [...notes.values()];
+        options.onProgress?.({ notes: loaded, complete });
+        // A callback may close the panel or switch accounts before we continue.
+        await requireSameReader(currentUserId);
+        checkAborted(controller.signal);
+        if (complete) {
+          if (bookAnnotationCaches.get(cacheKey) === entry) {
+            entry.notes = loaded;
+            entry.expiresAt = Date.now() + 60_000;
+          }
+          return loaded;
+        }
+        const nextId = page.at(-1)?.id;
+        if (!nextId || (afterId !== null && nextId <= afterId)) throw new Error("笔记分页未能继续，请重试");
+        afterId = nextId;
+      }
+    };
+    try {
+      return await Promise.race([read(), cancelled]);
+    } catch (reason) {
+      if (entry && bookAnnotationCaches.get(cacheKey) === entry) bookAnnotationCaches.delete(cacheKey);
+      throw reason;
+    } finally {
+      clearTimeout(timer);
+      options.signal?.removeEventListener("abort", abort);
     }
-    return [...notes.values()];
   }
 
   async function createAnnotation(
@@ -223,7 +227,7 @@ export function createAnnotationApi({ rpc, getCurrentUserId, currentPath = () =>
           : {}),
       }, userId);
       const result = resultOrThrow<AnnotationThread>(data, error);
-      if (subject.contentType === "book") invalidateBookAnnotationChapter(subject.contentId, subject.sectionId);
+      if (subject.contentType === "book") invalidateBookAnnotations(subject.contentId);
       return result;
     }, expectedUserId);
   }
