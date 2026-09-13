@@ -115,6 +115,12 @@ export function SelectableAnnotationArticle({
     setCommentOpen(false);
   }
 
+  async function removeUnderline(id: string) {
+    await annotations.removeMark(id);
+    clearSelection();
+    setSelectedMark(undefined);
+  }
+
   async function copySelection(): Promise<void> {
     if (!selection) return;
     try {
@@ -161,7 +167,7 @@ export function SelectableAnnotationArticle({
       <div ref={rootRef} onPointerUp={capturePointerSelection} onKeyUp={captureSelection}>{children}</div>
       {ownMark && selectedMark && access ? <AnnotationMarkPopover key={ownMark.id}
         thread={ownMark} rect={selectedMark.rect} onClose={() => setSelectedMark((current) => current?.id === ownMark.id ? undefined : current)}
-        onDelete={async () => { await annotations.removeMark(ownMark.id); setNotice("已删除划线"); }}
+        onDelete={async () => { await removeUnderline(ownMark.id); setNotice("已删除划线"); }}
         onDiscuss={() => { setActiveId(ownMark.id); setSelectedMark(undefined); }}
       /> : null}
       {selection ? (
@@ -182,7 +188,7 @@ export function SelectableAnnotationArticle({
         onComment={(body, parentCommentId, visibility) => annotations.comment(active.id, body, parentCommentId, visibility)}
         onReport={(commentId, reason, details) => annotations.report(active.id, commentId, reason, details)}
         onLike={(commentId, liked) => annotations.like(active.id, commentId, liked)}
-        onDeleteMark={() => annotations.removeMark(active.id)}
+        onDeleteMark={() => removeUnderline(active.id)}
       /> : null}
     </>
   );

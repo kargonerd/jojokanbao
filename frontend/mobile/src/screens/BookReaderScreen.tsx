@@ -18,6 +18,8 @@ import { ReaderSlider } from "../components/ReaderSlider";
 import { ReaderSelectionToolbar } from "../components/ReaderSelectionToolbar";
 import { BookThoughtComposer } from "../components/BookThoughtComposer";
 import { AnnotationDiscussionPanel } from "../annotations/AnnotationDiscussionPanel";
+import { createUseCursorPages } from "@jojo/ui/cursor-pages";
+import { loadPublicBookAnnotations } from "../annotations/api";
 import { annotationError, useBookAnnotations } from "../annotations/useBookAnnotations";
 import type { AnnotationThread, AnnotationVisibility } from "@jojo/content/annotations";
 import { BookshelfButton } from "../components/BookshelfButton";
@@ -73,6 +75,8 @@ import { useRetryOnFailure } from "../lib/useRetryOnFailure";
 import type { RootStackParamList } from "../navigation/types";
 import { useMobileStore, type BookAnnotation, type BookPaperColor } from "../store/mobileStore";
 import { mobileTheme, type MobileTheme } from "../theme/tokens";
+
+const useCursorPages = createUseCursorPages({ useCallback, useEffect, useRef, useState });
 
 type Props = NativeStackScreenProps<RootStackParamList, "BookReader">;
 type ReaderTool = "toc" | "search" | "ai" | "progress" | "notes" | "text";
@@ -137,6 +141,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
   const addBookAnnotation = useMobileStore((state) => state.addBookAnnotation);
   const updateBookAnnotationNote = useMobileStore((state) => state.updateBookAnnotationNote);
   const removeBookAnnotation = useMobileStore((state) => state.removeBookAnnotation);
+  const removeBookAnnotationMark = useMobileStore((state) => state.removeBookAnnotationMark);
   const claimLegacyBookAnnotations = useMobileStore((state) => state.claimLegacyBookAnnotations);
 
   const theme = useMemo(() => readerTheme(bookPaperColor), [bookPaperColor]);
@@ -149,6 +154,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
   const [error, setError] = useState("");
   const [chromeVisible, setChromeVisible] = useState(true);
   const [activeTool, setActiveTool] = useState<ReaderTool | null>(null);
+  const [notesView, setNotesView] = useState<"mine" | "public">("mine");
   const [pageState, setPageState] = useState<BookReaderPageMessage>();
   const [chapterEntryEdge, setChapterEntryEdge] = useState<BookChapterEdge>("start");
   const [retryToken, setRetryToken] = useState(0);
@@ -379,9 +385,15 @@ export function BookReaderScreen({ route, navigation }: Props) {
   const cloudAnnotations = useBookAnnotations({
     userId: loaded ? user?.id ?? null : null,
     contentId: `${loaded?.manifest.datasetId ?? datasetId}:${loaded?.manifest.itemId ?? loaded?.volume.itemId ?? itemKey}`,
-    sectionIds: chapters.map((entry) => entry.id), activeSectionId: activeChapterId,
-    loadAll: activeTool === "notes" || activeTool === "progress",
+    activeSectionId: activeChapterId,
+    loadAll: (activeTool === "notes" && notesView === "mine") || activeTool === "progress",
   });
+  const publicContentId = (loaded?.manifest.datasetId ?? datasetId) + ":" + (loaded?.manifest.itemId ?? loaded?.volume.itemId ?? itemKey);
+  const loadPublicPage = useCallback(async (cursor: string | null, signal: AbortSignal) => {
+    const page = await loadPublicBookAnnotations(publicContentId, user?.id ?? null, { afterId: cursor, signal });
+    return { items: page.notes, nextCursor: page.nextCursor };
+  }, [publicContentId, user?.id]);
+  const publicNotes = useCursorPages({ key: JSON.stringify([user?.id, publicContentId]), enabled: Boolean(loaded && user && activeTool === "notes" && notesView === "public"), loadPage: loadPublicPage });
   const localBookAnnotations = useMemo(() => annotations.filter((annotation) => (
     annotation.datasetId === datasetId && annotation.itemKey === itemKey && (annotation.ownerId ?? null) === (user?.id ?? null)
   )), [annotations, datasetId, itemKey, user?.id]);
@@ -393,9 +405,11 @@ export function BookReaderScreen({ route, navigation }: Props) {
     prefix: thread.prefix, suffix: thread.suffix, createdAt: Date.parse(thread.createdAt), thread,
   });
   const bookAnnotations: ReaderAnnotation[] = useMemo(() => [
-    ...localBookAnnotations, ...cloudAnnotations.threads.map(asReaderAnnotation),
+    ...localBookAnnotations.filter((annotation) => annotation.underlined !== false),
+    ...cloudAnnotations.threads.filter((thread) => (thread.underlinedByMe ?? thread.authorId === user?.id) || thread.publiclyVisible).map(asReaderAnnotation),
   ], [localBookAnnotations, cloudAnnotations.threads, loaded, user?.id]);
   const bookNotes = [...localBookAnnotations, ...cloudAnnotations.notes.map(asReaderAnnotation)] as ReaderAnnotation[];
+  const visibleNotes = notesView === "mine" ? bookNotes : publicNotes.items.map(asReaderAnnotation);
   const activeCloudThread = cloudAnnotations.threads.find((thread) => thread.id === activeAnnotationId);
   const chapterAnnotations = useMemo(() => bookAnnotations.filter((annotation) => annotation.chapterId === activeChapterId), [activeChapterId, bookAnnotations]);
   const bookAnnotationsRef = useRef(bookAnnotations);
@@ -524,9 +538,9 @@ export function BookReaderScreen({ route, navigation }: Props) {
     setActiveChapterId(chapterId);
   }
 
-  function clearSelection() {
+  function clearSelection(annotation?: Parameters<typeof createBookReaderClearSelectionScript>[0]) {
     setSelection(undefined);
-    webViewRef.current?.injectJavaScript(createBookReaderClearSelectionScript());
+    webViewRef.current?.injectJavaScript(createBookReaderClearSelectionScript(annotation));
   }
 
   function handleReaderMessage(event: WebViewMessageEvent) {
@@ -768,18 +782,21 @@ export function BookReaderScreen({ route, navigation }: Props) {
       note: note?.trim() || undefined,
     });
     webViewRef.current?.injectJavaScript(createBookReaderApplyAnnotationScript(created));
-    clearSelection();
+    clearSelection({ chapterId: created.chapterId, start: created.start, end: created.end, quote: created.quote, prefix: created.prefix, suffix: created.suffix });
     return created;
   }
   async function saveCloudAnnotation(selected: BookReaderSelectionMessage, note?: string, visibility: AnnotationVisibility = "public") {
+    const context = noteContext;
     const chapterId = selected.chapterId ?? activeChapterId;
     const contentDatasetId = loaded?.manifest.datasetId ?? datasetId;
     const contentItemId = loaded?.manifest.itemId ?? loaded?.volume.itemId ?? itemKey;
-    return cloudAnnotations.create({
+    const created = await cloudAnnotations.create({
       contentType: "book", contentId: `${contentDatasetId}:${contentItemId}`, sectionId: chapterId,
       contentTitle: `${title} · ${chapters.find((entry) => entry.id === chapterId)?.title ?? "正文"}`,
       contentUrl: `/book/${encodeURIComponent(datasetId)}/${encodeURIComponent(itemKey)}?${new URLSearchParams({ chapter: chapterId })}`,
     }, { quote: selected.text, prefix: selected.prefix ?? "", suffix: selected.suffix ?? "", startOffset: selected.start, endOffset: selected.end }, note, visibility);
+    if (noteContextRef.current === context) clearSelection({ chapterId, start: selected.start, end: selected.end, quote: selected.text, prefix: selected.prefix, suffix: selected.suffix });
+    return created;
   }
   async function underlineSelection() {
     if (!selection || noteRequestRef.current) return;
@@ -845,10 +862,36 @@ export function BookReaderScreen({ route, navigation }: Props) {
   }
   function deleteAnnotation(annotation: BookAnnotation) {
     removeBookAnnotation(annotation.id);
+    clearSelection({ chapterId: annotation.chapterId, start: annotation.start, end: annotation.end, quote: annotation.quote, prefix: annotation.prefix, suffix: annotation.suffix });
     if (bookReadingMode === "scroll" || annotation.chapterId === activeChapterId) webViewRef.current?.injectJavaScript(createBookReaderRemoveAnnotationScript(annotation.id));
     if (activeAnnotationId === annotation.id) setActiveAnnotationId(undefined);
     if (noteComposer?.annotationId === annotation.id) setNoteComposer(undefined);
     void selectionHaptic(hapticsEnabled);
+  }
+  function deleteLocalUnderline(annotation: BookAnnotation) {
+    removeBookAnnotationMark(annotation.id);
+    clearSelection({ chapterId: annotation.chapterId, start: annotation.start, end: annotation.end, quote: annotation.quote, prefix: annotation.prefix, suffix: annotation.suffix });
+    webViewRef.current?.injectJavaScript(createBookReaderRemoveAnnotationScript(annotation.id));
+    setNoteComposer(undefined); setActiveAnnotationId(undefined);
+    setReaderNotice("已删除划线");
+    void selectionHaptic(hapticsEnabled);
+  }
+  async function deleteCloudUnderline(thread: AnnotationThread) {
+    const context = noteContext;
+    const changed = await cloudAnnotations.removeMark(thread);
+    if (noteContextRef.current !== context) return;
+    publicNotes.refresh();
+    clearSelection({ chapterId: thread.sectionId, start: thread.startOffset ?? -1, end: thread.endOffset ?? -1, quote: thread.quote, prefix: thread.prefix, suffix: thread.suffix });
+    if (!changed?.underlinedByMe && !changed?.publiclyVisible) webViewRef.current?.injectJavaScript(createBookReaderRemoveAnnotationScript(thread.id));
+    setActiveAnnotationId((id) => id === thread.id ? undefined : id);
+    setReaderNotice("已删除自己的划线");
+    void selectionHaptic(hapticsEnabled);
+  }
+  function deleteNoteUnderline(thread: AnnotationThread) {
+    const context = noteContext;
+    void deleteCloudUnderline(thread).catch((reason) => {
+      if (noteContextRef.current === context) setReaderNotice(annotationError(reason));
+    });
   }
   async function submitSearch() {
     const query = searchQuery.trim();
@@ -1035,19 +1078,26 @@ export function BookReaderScreen({ route, navigation }: Props) {
         </ReaderNavigationSheet> : null}
 
         {activeTool === "notes" ? <ReaderNavigationSheet onClose={() => setActiveTool(null)} top={insets.top + 64} bottom={sheetBottom} theme={theme}>
-          <SheetHeader title="划线与笔记" meta={`${bookNotes.length}条`} theme={theme} />
-          {legacyNoteCount > 0 && user ? <View style={{ padding: 20, gap: 8 }}><Text style={{ color: theme.muted }}>本机有 {legacyNoteCount} 条本地笔记，尚未归属账号。</Text><Pressable accessibilityRole="button" onPress={() => claimLegacyBookAnnotations(datasetId, itemKey, user.id)}><Text style={{ color: theme.red }}>归入当前账号（保持本地保存）</Text></Pressable></View> : null}
-          {cloudAnnotations.loading ? <PanelStatus label="正在读取笔记" theme={theme} loading /> : null}
-          {cloudAnnotations.error ? <><PanelError message={cloudAnnotations.error} theme={theme} /><Pressable accessibilityRole="button" onPress={cloudAnnotations.refresh}><Text style={[styles.noteAction, { color: theme.red, padding: 16 }]}>重试读取笔记</Text></Pressable></> : null}
-          {!cloudAnnotations.loading && !cloudAnnotations.error && bookNotes.length === 0 ? <PanelStatus label="还没有划线或笔记" theme={theme} /> : null}
-          <FlatList data={bookNotes} keyExtractor={(item) => item.id} renderItem={({ item }) => <View style={[styles.noteRow, { borderBottomColor: theme.rule }]}>
+          <SheetHeader title="划线与笔记" meta={notesView === "mine" ? bookNotes.length + "条" : "已加载 " + visibleNotes.length + " 条"} theme={theme} />
+          <View style={{ flexDirection: "row", gap: 28, marginHorizontal: 20, marginBottom: 12, borderBottomWidth: 1, borderBottomColor: theme.rule }}>
+            {(["mine", "public"] as const).map((view) => <Pressable key={view} accessibilityRole="tab" accessibilityLabel={view === "mine" ? "我的笔记" : "公开笔记"} accessibilityState={{ selected: notesView === view }} onPress={() => setNotesView(view)} style={{ paddingVertical: 12, borderBottomWidth: 2, borderBottomColor: notesView === view ? theme.red : "transparent" }}><Text style={{ color: notesView === view ? theme.red : theme.muted, fontFamily: theme.sans }}>{view === "mine" ? "我的" : "公开"}</Text></Pressable>)}
+          </View>
+          {notesView === "public" && !user ? <PanelStatus label="登录后可查看公开笔记" theme={theme} /> : null}
+          {notesView === "public" && publicNotes.loading ? <PanelStatus label="正在读取公开笔记" theme={theme} loading /> : null}
+          {notesView === "public" && publicNotes.error ? <><PanelError message="公开笔记暂时无法读取，请重试。" theme={theme} /><Pressable accessibilityRole="button" onPress={publicNotes.retry}><Text style={[styles.noteAction, { color: theme.red, padding: 16 }]}>重试读取公开笔记</Text></Pressable></> : null}
+          {notesView === "public" && user && !publicNotes.loading && !publicNotes.error && !visibleNotes.length ? <PanelStatus label="还没有公开笔记" theme={theme} /> : null}
+          {notesView === "mine" && legacyNoteCount > 0 && user ? <View style={{ padding: 20, gap: 8 }}><Text style={{ color: theme.muted }}>本机有 {legacyNoteCount} 条本地笔记，尚未归属账号。</Text><Pressable accessibilityRole="button" onPress={() => claimLegacyBookAnnotations(datasetId, itemKey, user.id)}><Text style={{ color: theme.red }}>归入当前账号（保持本地保存）</Text></Pressable></View> : null}
+          {notesView === "mine" && cloudAnnotations.loading ? <PanelStatus label="正在读取笔记" theme={theme} loading /> : null}
+          {notesView === "mine" && cloudAnnotations.error ? <><PanelError message={cloudAnnotations.error} theme={theme} /><Pressable accessibilityRole="button" onPress={cloudAnnotations.refresh}><Text style={[styles.noteAction, { color: theme.red, padding: 16 }]}>重试读取笔记</Text></Pressable></> : null}
+          {notesView === "mine" && !cloudAnnotations.loading && !cloudAnnotations.error && bookNotes.length === 0 ? <PanelStatus label="还没有划线或笔记" theme={theme} /> : null}
+          <FlatList data={visibleNotes} keyExtractor={(item) => item.id} ListFooterComponent={notesView === "public" && publicNotes.hasMore && !publicNotes.error ? <Pressable accessibilityRole="button" disabled={publicNotes.loading} onPress={publicNotes.loadMore}><Text style={[styles.noteAction, { color: theme.red, padding: 20 }]}>加载更多公开笔记</Text></Pressable> : null} renderItem={({ item }) => <View style={[styles.noteRow, { borderBottomColor: theme.rule }]}>
             <Pressable accessibilityRole="button" accessibilityLabel={`定位笔记：${item.quote}`} onPress={() => locateText(item.chapterId, item.quote)}><Text style={[styles.noteChapter, { color: theme.red, fontFamily: theme.sans }]}>{item.chapterTitle}</Text><Text numberOfLines={3} style={[styles.noteQuote, { color: theme.ink, fontFamily: theme.serif }]}>{item.quote}</Text></Pressable>
             {item.thread ? <>
-              {item.thread.comments.filter((comment) => comment.authorId === user?.id).map((comment) => <View key={comment.id}><Text style={[styles.noteBody, { color: theme.ink, fontFamily: theme.serif }]}>{comment.body}</Text><Text style={[styles.noteAction, { color: theme.muted }]}>{comment.visibility === "private" ? "仅自己可见" : "公开"}</Text></View>)}
-              <View style={styles.noteActions}><Pressable accessibilityRole="button" onPress={() => openDiscussion(item.thread!)} hitSlop={8}><Text style={[styles.noteAction, { color: theme.red, fontFamily: theme.sans }]}>查看想法</Text></Pressable></View>
+              {item.thread.comments.filter((comment) => notesView === "public" ? comment.visibility === "public" : comment.authorId === user?.id).map((comment) => <View key={comment.id}><Text style={[styles.noteBody, { color: theme.ink, fontFamily: theme.serif }]}>{notesView === "public" ? (comment.authorName || "JOJO 读者") + "：" : ""}{comment.body}</Text><Text style={[styles.noteAction, { color: theme.muted }]}>{comment.visibility === "private" ? "仅自己可见" : "公开"}</Text></View>)}
+              <View style={styles.noteActions}>{(item.thread.underlinedByMe ?? item.thread.authorId === user?.id) ? <Pressable accessibilityRole="button" accessibilityLabel="删除自己的划线" onPress={() => deleteNoteUnderline(item.thread!)} hitSlop={8}><Text style={[styles.noteAction, { color: theme.red, fontFamily: theme.sans }]}>删除划线</Text></Pressable> : null}<Pressable accessibilityRole="button" onPress={() => openDiscussion(item.thread!)} hitSlop={8}><Text style={[styles.noteAction, { color: theme.red, fontFamily: theme.sans }]}>查看想法</Text></Pressable></View>
             </> : <>
               {item.note ? <Text style={[styles.noteBody, { color: theme.muted, fontFamily: theme.serif }]}>{item.note}</Text> : null}
-              <View style={styles.noteActions}><Pressable accessibilityRole="button" onPress={() => { setNoteComposer({ annotationId: item.id, quote: item.quote }); setNoteDraft(item.note ?? ""); setNoteVisibility("private"); setNoteError(""); }} hitSlop={8}><Text style={[styles.noteAction, { color: theme.red, fontFamily: theme.sans }]}>编辑</Text></Pressable><Pressable accessibilityRole="button" onPress={() => deleteAnnotation(item)} hitSlop={8}><Text style={[styles.noteAction, { color: theme.muted, fontFamily: theme.sans }]}>删除</Text></Pressable></View>
+              <View style={styles.noteActions}>{item.underlined !== false ? <Pressable accessibilityRole="button" accessibilityLabel="删除划线" onPress={() => deleteLocalUnderline(item)} hitSlop={8}><Text style={[styles.noteAction, { color: theme.red, fontFamily: theme.sans }]}>删除划线</Text></Pressable> : null}<Pressable accessibilityRole="button" onPress={() => { setNoteComposer({ annotationId: item.id, quote: item.quote }); setNoteDraft(item.note ?? ""); setNoteVisibility("private"); setNoteError(""); }} hitSlop={8}><Text style={[styles.noteAction, { color: theme.red, fontFamily: theme.sans }]}>编辑</Text></Pressable><Pressable accessibilityRole="button" onPress={() => deleteAnnotation(item)} hitSlop={8}><Text style={[styles.noteAction, { color: theme.muted, fontFamily: theme.sans }]}>删除</Text></Pressable></View>
             </>}
           </View>} />
         </ReaderNavigationSheet> : null}
@@ -1071,9 +1121,10 @@ export function BookReaderScreen({ route, navigation }: Props) {
       </> : null}
 
       {selection ? <ReaderSelectionToolbar selection={selection} frame={readerFrame} theme={theme} eInk={IS_EINK_RELEASE} onCopy={() => { void Clipboard.setStringAsync(selection.text); clearSelection(); }} onUnderline={underlineSelection} onThought={composeSelectionNote} onExplain={explainSelection} /> : null}
-      <BookThoughtComposer quote={noteComposer?.quote} value={noteDraft} visibility={noteVisibility} onVisibilityChange={setNoteVisibility} saving={noteSaving} error={noteError} localOnly={!user} onChange={setNoteDraft} onCancel={() => { if (!noteSaving) { setNoteComposer(undefined); setNoteDraft(""); setActiveAnnotationId(undefined); } }} onSave={() => void saveNote()} onSaveLocal={user ? saveNoteLocally : undefined} theme={theme} />
+      <BookThoughtComposer quote={noteComposer?.quote} value={noteDraft} visibility={noteVisibility} onVisibilityChange={setNoteVisibility} saving={noteSaving} error={noteError} localOnly={!user} onChange={setNoteDraft} onCancel={() => { if (!noteSaving) { setNoteComposer(undefined); setNoteDraft(""); setActiveAnnotationId(undefined); } }} onSave={() => void saveNote()} onSaveLocal={user ? saveNoteLocally : undefined} onRemoveMark={noteComposer?.annotationId && localBookAnnotations.some((entry) => entry.id === noteComposer.annotationId && entry.underlined !== false) ? () => deleteLocalUnderline(localBookAnnotations.find((entry) => entry.id === noteComposer!.annotationId)!) : undefined} theme={theme} />
       {activeCloudThread && user ? <AnnotationDiscussionPanel key={`${user.id}:${activeCloudThread.id}`} thread={activeCloudThread} currentUserId={user.id} theme={theme}
         onClose={() => setActiveAnnotationId(undefined)}
+        onRemoveMark={() => deleteCloudUnderline(activeCloudThread)}
         onComment={(body, parentId, visibility) => cloudAnnotations.comment(activeCloudThread, body, parentId, visibility)}
         onReport={(commentId, reason, details) => cloudAnnotations.report(activeCloudThread, commentId, reason, details)} /> : null}
       {loaded && activeChapterId ? <NativeSpeechPlayer documentId={`book:${datasetId}:${itemKey}`} title={loaded.manifest.title} chapterId={activeChapterId} chapters={loaded.manifest.content.chapters ?? []} loadChapter={loadSpeechChapter} getReadingPosition={getSpeechPosition} onSpeechLocation={showSpeechLocation} theme={theme} colorScheme={!IS_EINK_RELEASE && bookPaperColor === "dark" ? "dark" : "light"} cover={speechCover ? { uri: speechCover } : undefined} hidden={!chromeVisible || Boolean(activeTool || selection || noteComposer || activeAnnotationId || expandedImageUri)} bottom={insets.bottom + 64} onRead={(id, location) => location ? showSpeechLocation(location, true) : chooseChapter(id)} onBookshelf={() => void toggleBookshelf()} onShelf={onBookshelf} bookshelfBusy={bookshelfBusy} /> : null}

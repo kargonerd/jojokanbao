@@ -9,7 +9,7 @@ function loadAuth() {
 }
 
 const api = createAnnotationApi({
-  rpc: async (name, params, expectedUserId) => {
+  rpc: async (name, params, expectedUserId, signal) => {
     const { authClient } = await loadAuth();
     const { data, error } = await authClient.auth.getSession();
     const session = data.session;
@@ -18,7 +18,8 @@ const api = createAnnotationApi({
     const authorization = `Bearer ${session.access_token}`;
     // RPC rollout is intentionally independent of generated database typings.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (authClient as any).rpc(name, params).setHeader("Authorization", authorization);
+    const request = (authClient as any).rpc(name, params).setHeader("Authorization", authorization);
+    return signal ? request.abortSignal(signal) : request;
   },
   getCurrentUserId: async () => {
     const { authClient } = await loadAuth();
@@ -31,6 +32,7 @@ const api = createAnnotationApi({
 export const {
   loadAnnotationThreads,
   loadMyBookAnnotations,
+  loadPublicBookAnnotations,
   createAnnotation,
   addAnnotationComment,
   reportAnnotationComment,

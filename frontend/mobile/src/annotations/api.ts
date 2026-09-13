@@ -17,7 +17,7 @@ function loadAuth() {
 }
 
 const api = createAnnotationApi({
-  rpc: async (name, params, expectedUserId) => {
+  rpc: async (name, params, expectedUserId, signal) => {
     const { mobileAuthClient } = await loadAuth();
     const { data, error } = await mobileAuthClient.auth.getSession();
     const session = data.session;
@@ -26,7 +26,8 @@ const api = createAnnotationApi({
     const authorization = `Bearer ${session.access_token}`;
     // These deployed RPCs are shared with Web while generated schemas roll out.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (mobileAuthClient as any).rpc(name, params).setHeader("Authorization", authorization);
+    const request = (mobileAuthClient as any).rpc(name, params).setHeader("Authorization", authorization);
+    return signal ? request.abortSignal(signal) : request;
   },
   getCurrentUserId: async () => {
     const { mobileAuthClient } = await loadAuth();
@@ -39,7 +40,9 @@ const api = createAnnotationApi({
 export const {
   loadAnnotationThreads,
   loadMyBookAnnotations,
+  loadPublicBookAnnotations,
   createAnnotation,
   addAnnotationComment,
   reportAnnotationComment,
+  deleteMyAnnotationMark,
 } = api;

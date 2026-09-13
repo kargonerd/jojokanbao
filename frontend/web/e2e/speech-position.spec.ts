@@ -31,6 +31,46 @@ new Function("exports", "require", documentSource)(nativeDocument,
 const { createBookDocument } = nativeDocument;
 
 for (const mode of ["paged", "scroll"] as const) {
+  test(`native annotation completion clears selection and temporary feedback in ${mode} mode`, async ({ page }) => {
+    await page.setContent(createBookDocument({
+      fragment: { formatVersion: "jojo-fragment/1", itemId: "test", fragmentId: "c1", type: "chapter", order: 1, title: "正文",
+        body: { format: "html", value: '<p id="quote">已保存这段文字，保留想法。</p><p id="other">另一处搜索结果。</p><p id="footnote">脚注内容</p>' }, assetRefs: [], annotations: [] },
+      assetUrls: {}, textScale: 1, lineHeight: 1.95, firstLineIndent: true, eInk: false, readingMode: mode, paperColor: "ivory",
+    }));
+    await page.addScriptTag({ content: createBookReaderBridgeScript("start") });
+    const anchor = { chapterId: "c1", start: 0, end: 4, quote: "这段文字", prefix: "已保存", suffix: "，保留想法。" };
+    await page.addScriptTag({ content: nativeBridge.createBookReaderApplyAnnotationScript({ id: "own", ...anchor }) });
+    await page.addScriptTag({ content: nativeBridge.createBookReaderLocateTextScript(anchor.quote, "c1") });
+    const paragraph = page.locator('[data-reader-anchor-id="quote"]');
+    await expect(paragraph.locator("mark[data-search-target]")).toHaveCount(1);
+    await page.evaluate(() => {
+      const target = document.querySelector('mark[data-search-target]')!;
+      const range = document.createRange(); range.selectNodeContents(target);
+      const selection = window.getSelection()!; selection.removeAllRanges(); selection.addRange(range);
+      document.querySelector('[data-reader-anchor-id="other"]')!.innerHTML = '<mark data-search-target="unrelated">另一处搜索结果。</mark>';
+      document.querySelector('[data-reader-anchor-id="footnote"]')!.setAttribute("data-book-jump-target", "true");
+    });
+    expect(await page.evaluate(() => window.getSelection()?.toString())).toBe(anchor.quote);
+
+    await page.addScriptTag({ content: nativeBridge.createBookReaderClearSelectionScript(anchor) });
+
+    expect(await page.evaluate(() => window.getSelection()?.rangeCount)).toBe(0);
+    await expect(paragraph.locator("mark[data-search-target]")).toHaveCount(0);
+    await expect(paragraph.locator("[data-book-jump-target]")).toHaveCount(0);
+    await expect(paragraph.locator('mark[data-annotation-id="own"]')).toHaveCSS("text-decoration-style", "wavy");
+    await expect(page.locator('mark[data-search-target="unrelated"]')).toHaveCount(1);
+    await expect(page.locator('[data-reader-anchor-id="footnote"]')).toHaveAttribute("data-book-jump-target", "true");
+
+    await page.addScriptTag({ content: nativeBridge.createBookReaderRemoveAnnotationScript("own") });
+
+    await expect(paragraph.locator("mark")).toHaveCount(0);
+    await expect(paragraph).toHaveText("已保存这段文字，保留想法。");
+    await expect(paragraph).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    await expect(paragraph).toHaveCSS("text-decoration-line", "none");
+  });
+}
+
+for (const mode of ["paged", "scroll"] as const) {
   test(`native inline bootstrap initializes and resolves speech after reinjection in ${mode} mode`, async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 700 });
     const paragraphs = Array.from({ length: 55 }, (_, i) => `<p>第${i + 1}段。为什么会有不如意的事？事物的发展和变化都有一定的条件。这是一段检查手机章节加载与当前位置朗读的正文。</p>`).join("");

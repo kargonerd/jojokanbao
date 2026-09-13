@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BookNavigationSheet } from "../src/rag/components/BookNavigationSheet";
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe("book navigation sheet", () => {
   function renderSheet(onClose = vi.fn()) {
@@ -70,14 +70,82 @@ describe("book navigation sheet", () => {
     expect(sheet.style.height).toBe("auto");
     fireEvent(handle, new MouseEvent("pointerdown", { bubbles: true, clientY: 300 }));
     fireEvent(handle, new MouseEvent("pointermove", { bubbles: true, clientY: 340 }));
-    expect(sheet.style.height).toBe("280px");
+    expect(sheet.style.height).toBe("auto");
+    expect(sheet.style.getPropertyValue("--book-navigation-drag")).toBe("40px");
     fireEvent.pointerCancel(handle);
     expect(sheet.style.height).toBe("auto");
+    expect(sheet.style.getPropertyValue("--book-navigation-drag")).toBe("0px");
     fireEvent.click(handle);
     expect(handle.getAttribute("aria-expanded")).toBe("true");
     expect(sheet.style.height).toContain("100%");
     fireEvent.click(handle);
     expect(handle.getAttribute("aria-expanded")).toBe("false");
     expect(sheet.style.height).toBe("auto");
+  });
+
+  it("moves the surface directly without rerendering scroll content during the gesture", () => {
+    const renderContent = vi.fn();
+    function Content() { renderContent(); return <div>长目录</div>; }
+    render(<BookNavigationSheet mobile title="目录" onClose={vi.fn()} panelClass=""><Content /></BookNavigationSheet>);
+    const handle = screen.getByRole("button", { name: "调整书内导航高度" });
+    handle.setPointerCapture = vi.fn();
+    const sheet = screen.getByRole("complementary");
+    const restingHeight = sheet.style.height;
+    fireEvent(handle, new MouseEvent("pointerdown", { bubbles: true, clientY: 200 }));
+    fireEvent(handle, new MouseEvent("pointermove", { bubbles: true, clientY: 225 }));
+    expect(sheet.style.getPropertyValue("--book-navigation-drag")).toBe("25px");
+    fireEvent(handle, new MouseEvent("pointermove", { bubbles: true, clientY: 260 }));
+    expect(sheet.style.getPropertyValue("--book-navigation-drag")).toBe("60px");
+    expect(sheet.style.height).toBe(restingHeight);
+    expect(sheet.dataset.dragging).toBe("true");
+    expect(renderContent).toHaveBeenCalledTimes(1);
+    fireEvent.lostPointerCapture(handle);
+    expect(sheet.style.getPropertyValue("--book-navigation-drag")).toBe("0px");
+    expect(sheet.dataset.dragging).toBeUndefined();
+  });
+
+  it("dismisses a short downward flick using its recent velocity", () => {
+    const { handle, onClose } = renderSheet();
+    const pointer = (type: string, clientY: number, time: number) => {
+      const event = new MouseEvent(type, { bubbles: true, clientY });
+      Object.defineProperty(event, "timeStamp", { value: time });
+      fireEvent(handle, event);
+    };
+    pointer("pointerdown", 200, 100);
+    pointer("pointermove", 222, 120);
+    pointer("pointerup", 222, 130);
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("continues from the visible position when a returning sheet is grabbed again", () => {
+    const { handle } = renderSheet();
+    const sheet = screen.getByRole("complementary");
+    vi.spyOn(window, "getComputedStyle").mockReturnValueOnce({ transform: "matrix(1, 0, 0, 1, 0, 18)" } as CSSStyleDeclaration);
+    fireEvent(handle, new MouseEvent("pointerdown", { bubbles: true, clientY: 200 }));
+    expect(sheet.style.getPropertyValue("--book-navigation-drag")).toBe("18px");
+    fireEvent(handle, new MouseEvent("pointermove", { bubbles: true, clientY: 220 }));
+    expect(sheet.style.getPropertyValue("--book-navigation-drag")).toBe("38px");
+  });
+
+  it("does not use stale velocity after holding a short drag", () => {
+    const { handle, onClose } = renderSheet();
+    const pointer = (type: string, clientY: number, time: number) => {
+      const event = new MouseEvent(type, { bubbles: true, clientY });
+      Object.defineProperty(event, "timeStamp", { value: time });
+      fireEvent(handle, event);
+    };
+    pointer("pointerdown", 200, 100);
+    pointer("pointermove", 222, 120);
+    pointer("pointerup", 222, 350);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole("complementary").style.getPropertyValue("--book-navigation-drag")).toBe("0px");
+  });
+
+  it("keeps desktop panels free of mobile drag surfaces", () => {
+    render(<BookNavigationSheet mobile={false} title="目录" onClose={vi.fn()} panelClass=""><div>目录</div></BookNavigationSheet>);
+    expect(screen.queryByRole("button", { name: "调整书内导航高度" })).toBeNull();
+    const sheet = screen.getByRole("complementary");
+    expect(sheet.style.height).toBe("");
+    expect(sheet.closest(".book-navigation-sheet-clip")).toBeNull();
   });
 });

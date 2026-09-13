@@ -7,10 +7,12 @@ import { SpeechPlayer } from "../src/reading/SpeechPlayer";
 import { useFeatureFlagStore } from "../src/featureFlags";
 import { useAccountSessionStore } from "../src/account/session";
 import { useRecentReadingStore } from "../src/library/recentReadingStore";
+import type { AnnotationThread } from "../src/annotations/types";
 
 const annotationApi = vi.hoisted(() => ({
-  loadAnnotationThreads: vi.fn(async () => []),
-  loadMyBookAnnotations: vi.fn(async () => []),
+  loadAnnotationThreads: vi.fn(async (): Promise<AnnotationThread[]> => []),
+  loadMyBookAnnotations: vi.fn(async (): Promise<AnnotationThread[]> => []),
+  loadPublicBookAnnotations: vi.fn(async (_contentId: string, _userId: string | null, _options?: {afterId?: string | null; signal?: AbortSignal}): Promise<{ notes: AnnotationThread[]; nextCursor: string | null }> => ({ notes: [], nextCursor: null })),
   createAnnotation: vi.fn(),
   addAnnotationComment: vi.fn(),
   reportAnnotationComment: vi.fn(),
@@ -64,6 +66,7 @@ describe("BookReader", () => {
     useAccountSessionStore.setState({ initialized: true, userId: "11111111-1111-4111-8111-111111111111", displayName: "测试读者-ABC" });
     annotationApi.loadAnnotationThreads.mockResolvedValue([]);
     annotationApi.loadMyBookAnnotations.mockResolvedValue([]);
+    annotationApi.loadPublicBookAnnotations.mockReset().mockResolvedValue({ notes: [], nextCursor: null });
     annotationApi.createAnnotation.mockReset();
     annotationApi.addAnnotationComment.mockReset();
     annotationApi.reportAnnotationComment.mockReset();
@@ -96,12 +99,12 @@ describe("BookReader", () => {
   function renderReader(
     onChapterChange = vi.fn(),
     onInternalLink = vi.fn(),
-    focus?: { anchorId?: string; text?: string },
+    focus?: { anchorId?: string; text?: string; token?: number },
     strict = false,
     activeChapterId = "chapter-1",
     position?: number,
   ) {
-    const reader = (
+    const reader = (currentFocus = focus) => (
       <MemoryRouter initialEntries={[`/book/test-books/test-books:full-book${position === undefined ? "" : `?chapter=${activeChapterId}&position=${position}`}`]}>
         <BookReader
           bookTitle="测试书"
@@ -119,8 +122,8 @@ describe("BookReader", () => {
           ]}
           activeChapterId={activeChapterId}
           chapterKey={activeChapterId}
-          focusAnchorId={focus?.anchorId}
-          focusText={focus?.text ? { text: focus.text, token: 1 } : undefined}
+          focusAnchorId={currentFocus?.anchorId}
+          focusText={currentFocus?.text ? { text: currentFocus.text, token: currentFocus.token ?? 1 } : undefined}
           backHref="/rag/chat"
           onChapterChange={onChapterChange}
           onLocate={vi.fn()}
@@ -138,8 +141,8 @@ describe("BookReader", () => {
         <LocationProbe />
       </MemoryRouter>
     );
-    const view = render(strict ? <StrictMode>{reader}</StrictMode> : reader);
-    return { ...view, onChapterChange, onInternalLink };
+    const view = render(strict ? <StrictMode>{reader()}</StrictMode> : reader());
+    return { ...view, onChapterChange, onInternalLink, rerenderFocus: (next: typeof focus) => view.rerender(strict ? <StrictMode>{reader(next)}</StrictMode> : reader(next)) };
   }
 
   async function renderContinuousReader(position?: number) {
@@ -366,7 +369,7 @@ describe("BookReader", () => {
     expect(document.activeElement).toBe(input);
 
     const sheet = screen.getByRole("complementary", { name: "全书搜索" });
-    const frame = sheet.parentElement!;
+    const frame = sheet.closest<HTMLElement>(".book-navigation-viewport")!;
     act(() => { viewport.height = 380; viewport.offsetTop = 48; viewport.dispatchEvent(new Event("resize")); });
     expect(frame.style.height).toBe("380px");
     expect(frame.style.top).toBe("48px");
@@ -393,7 +396,7 @@ describe("BookReader", () => {
     const removeEventListener = vi.spyOn(window, "removeEventListener");
     renderReader();
     fireEvent.click(screen.getByRole("button", { name: "打开目录" }));
-    const frame = screen.getByRole("complementary", { name: "目录面板" }).parentElement!;
+    const frame = screen.getByRole("complementary", { name: "目录面板" }).closest<HTMLElement>(".book-navigation-viewport")!;
     expect(frame.style.height).toBe("844px");
     vi.stubGlobal("innerHeight", 380);
     fireEvent(window, new Event("resize"));
@@ -720,7 +723,6 @@ describe("BookReader", () => {
     expect(within(panel).queryByText("还没有笔记。选中正文，可以划线或写下想法。")).toBeNull();
     expect(annotationApi.loadMyBookAnnotations).toHaveBeenCalledExactlyOnceWith(
       "test-books:test-books:full-book",
-      ["chapter-1", "chapter-2"],
       "11111111-1111-4111-8111-111111111111",
       { signal: expect.any(AbortSignal), onProgress: expect.any(Function) },
     );
@@ -1097,8 +1099,7 @@ describe("BookReader", () => {
     expect(screen.queryByRole("toolbar", { name: "选中文字工具" })).toBeNull();
   });
 
-  it("saves a plain underline and deletes it through the mark toolbar", async () => {
-    annotationApi.createAnnotation.mockResolvedValue({
+  const ownUnderline: AnnotationThread = {
       id: "annotation-underline-1",
       contentType: "book",
       contentId: "test-books:test-books:full-book",
@@ -1114,9 +1115,38 @@ describe("BookReader", () => {
       endOffset: 8,
       createdAt: "2026-08-18T10:00:00Z",
       comments: [],
-    });
-    const { container } = renderReader();
-    const paragraph = screen.getByText("这是正文。");
+    };
+
+
+  it("switches between personal and paged public notes while progress keeps the personal count", async () => {
+    const privateComment = { id: "mine-comment", annotationId: ownUnderline.id, authorId: "11111111-1111-4111-8111-111111111111", authorName: "我", body: "我的私密想法", visibility: "private" as const, createdAt: ownUnderline.createdAt, parentCommentId: null, reportedByMe: false };
+    annotationApi.loadMyBookAnnotations.mockResolvedValue([{ ...ownUnderline, comments: [privateComment] }]);
+    const first = { ...ownUnderline, id: "public-1", quote: "公开原文一", publiclyVisible: true, comments: [{ ...privateComment, id: "public-comment", body: "他人的公开想法", authorName: "另一位读者", authorId: "other", visibility: "public" as const }] };
+    annotationApi.loadPublicBookAnnotations.mockResolvedValueOnce({ notes: [first], nextCursor: "public-1" }).mockResolvedValueOnce({ notes: [{ ...first, id: "public-2", quote: "公开原文二", comments: [] }], nextCursor: null });
+    renderReader();
+    fireEvent.click(screen.getByRole("button", {name:"阅读笔记"}));
+    await screen.findByText("我的私密想法");
+    expect(annotationApi.loadPublicBookAnnotations).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("tab", {name:"公开"}));
+    await screen.findByText("公开原文一");
+    expect(screen.queryByText("我的私密想法")).toBeNull();
+    expect(screen.getByText("另一位读者")).toBeTruthy();
+    expect(annotationApi.loadPublicBookAnnotations).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button",{name:"加载更多公开笔记"}));
+    await screen.findByText("公开原文二");
+    expect(annotationApi.loadPublicBookAnnotations.mock.lastCall?.[2]).toMatchObject({afterId:"public-1"});
+    expect(screen.getByText("公开原文一")).toBeTruthy();
+    expect(screen.queryByRole("button",{name:"加载更多公开笔记"})).toBeNull();
+    fireEvent.click(screen.getByRole("button",{name:"阅读进度"}));
+    const stats=screen.getByRole("complementary",{name:"阅读进度面板"});
+    expect(within(stats).getByRole("button",{name:/1.*条.*笔记/})).toBeTruthy();
+  });
+
+  it.each([false, true])("saves and deletes an underline without leaving selection feedback (located: %s)", async (located) => {
+    annotationApi.createAnnotation.mockResolvedValue(ownUnderline);
+    const { container, rerenderFocus } = renderReader(vi.fn(), vi.fn(), located ? { text: "这是正文。" } : undefined);
+    if (located) await waitFor(() => expect(container.querySelector("mark[data-book-search-target]")).not.toBeNull());
+    const paragraph = container.querySelector("#citation-target")!;
     const range = document.createRange();
     range.selectNodeContents(paragraph);
     window.getSelection()?.removeAllRanges();
@@ -1134,14 +1164,90 @@ describe("BookReader", () => {
     ));
     expect(screen.queryByRole("complementary", { name: "划线详情" })).toBeNull();
     expect(screen.getByText("已划线")).toBeTruthy();
+    expect(window.getSelection()?.rangeCount).toBe(0);
+    expect(container.querySelector("mark[data-book-search-target]")).toBeNull();
+    if (located) {
+      // Rerendering the same focus request must not resurrect its pink highlight.
+      rerenderFocus({ text: "这是正文。", token: 1 });
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 180)); });
+      expect(container.querySelector("mark[data-book-search-target]")).toBeNull();
+      // A deliberate new jump to this note must still work.
+      rerenderFocus({ text: "这是正文。", token: 2 });
+      await waitFor(() => expect(container.querySelector("mark[data-book-search-target]")).not.toBeNull());
+    }
     annotationApi.deleteMyAnnotationMark.mockResolvedValue(null);
     const mark = await screen.findByRole("button", { name: "查看这处划线，1 人划线" });
     vi.spyOn(mark, "getBoundingClientRect").mockReturnValue(new DOMRect(240, 220, 180, 30));
     fireEvent.click(mark);
     const toolbar = screen.getByRole("toolbar", { name: "划线工具" });
+    const remainingSelection = document.createRange();
+    remainingSelection.selectNodeContents(mark);
+    window.getSelection()?.addRange(remainingSelection);
     fireEvent.click(within(toolbar).getByRole("button", { name: "删除划线" }));
     await waitFor(() => expect(container.querySelector("mark[data-content-annotation]")).toBeNull());
+    expect(window.getSelection()?.rangeCount).toBe(0);
+    expect(container.querySelector("mark[data-book-search-target]")).toBeNull();
+    expect(container.querySelector("#citation-target")?.textContent).toBe("这是正文。");
+    if (located) {
+      fireEvent.click(screen.getByRole("button", { name: "文字设置" }));
+      fireEvent.click(screen.getByRole("button", { name: "滚动" }));
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 180)); });
+      expect(container.querySelector("mark[data-book-search-target]")).toBeNull();
+    }
     expect(annotationApi.deleteMyAnnotationMark).toHaveBeenLastCalledWith("annotation-underline-1", "11111111-1111-4111-8111-111111111111");
+  });
+
+  it("preserves a live selection when a delayed focus pass runs", async () => {
+    vi.useFakeTimers();
+    const { container, rerenderFocus } = renderReader(vi.fn(), vi.fn(), { text: "这是正文。", token: 1 });
+    await act(async () => { await vi.advanceTimersByTimeAsync(500); });
+    const marker = container.querySelector("mark[data-book-search-target]")!;
+    expect(marker).not.toBeNull();
+    const range = document.createRange();
+    range.selectNodeContents(marker);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+    rerenderFocus({ text: "这是正文。", token: 1 });
+    await act(async () => { await vi.advanceTimersByTimeAsync(500); });
+    expect(window.getSelection()?.toString()).toBe("这是正文。");
+    expect(container.querySelector("mark[data-book-search-target]")).toBe(marker);
+  });
+
+  it("keeps the selection and existing highlight when saving an underline fails", async () => {
+    annotationApi.createAnnotation.mockRejectedValueOnce(new Error("保存失败，请重试"));
+    const { container } = renderReader(vi.fn(), vi.fn(), { text: "这是正文。" });
+    await waitFor(() => expect(container.querySelector("mark[data-book-search-target]")).not.toBeNull());
+    const range = document.createRange();
+    range.selectNodeContents(container.querySelector("#citation-target")!);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+    fireEvent.pointerUp(container.querySelector("[data-book-page-flow]")!);
+    fireEvent.click(await screen.findByRole("button", { name: "划线" }));
+    await screen.findByText("保存失败，请重试");
+    expect(window.getSelection()?.toString()).toBe("这是正文。");
+    expect(container.querySelector("mark[data-book-search-target]")).not.toBeNull();
+    expect(screen.getByRole("toolbar", { name: "选中文字工具" })).toBeTruthy();
+  });
+
+  it.each(["这是正文。", "这是注释。"])("clears only overlapping pending focus feedback when saving before its timer (%s)", async (query) => {
+    vi.useFakeTimers();
+    annotationApi.createAnnotation.mockResolvedValue({ ...ownUnderline, quote: "正文", startOffset: 5, endOffset: 7 });
+    const { container } = renderReader(vi.fn(), vi.fn(), { text: query });
+    const text = container.querySelector("#citation-target")!.firstChild!;
+    const range = document.createRange();
+    range.setStart(text, 2);
+    range.setEnd(text, 4);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+    fireEvent.pointerUp(container.querySelector("[data-book-page-flow]")!);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    fireEvent.click(screen.getByRole("button", { name: "划线" }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(window.getSelection()?.rangeCount).toBe(0);
+    await act(async () => { await vi.advanceTimersByTimeAsync(200); });
+    expect(container.querySelector("mark[data-book-search-target]")?.textContent ?? null)
+      .toBe(query === "这是正文。" ? null : query);
+    expect(container.querySelector("h1[data-book-jump-target]")).toBeNull();
   });
 
   it("keeps AI available while hiding bookshelf and annotation writes when their flags are off", async () => {

@@ -115,8 +115,8 @@ export function createBookReaderRemoveAnnotationScript(id: string): string {
   return `window.__jojoReaderRemoveAnnotation && window.__jojoReaderRemoveAnnotation(${jsonArgument(id)}); true;`;
 }
 
-export function createBookReaderClearSelectionScript(): string {
-  return "window.__jojoReaderClearSelection && window.__jojoReaderClearSelection(); true;";
+export function createBookReaderClearSelectionScript(annotation?: Omit<BookReaderAnnotationMarker, "id">): string {
+  return `window.__jojoReaderClearSelection && window.__jojoReaderClearSelection(${annotation ? jsonArgument(annotation) : ""}); true;`;
 }
 
 export function parseBookReaderMessage(value: string): BookReaderMessage | null {
@@ -413,9 +413,41 @@ export function createBookReaderBridgeScript(
         return best;
       }
 
-      function clearSelection() {
+      function unwrapMark(mark) {
+        var parent = mark.parentNode;
+        if (!parent) return;
+        while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
+        parent.removeChild(mark);
+      }
+
+      function clearSelection(annotation) {
         var selection = window.getSelection && window.getSelection();
         if (selection) selection.removeAllRanges();
+        if (lastSelection) { lastSelection = ""; post({ type: "reader-selection-clear" }); }
+        // A note/search jump is temporary feedback, distinct from its saved
+        // underline. Clear only the feedback overlapping this successful action.
+        if (!annotation) return;
+        var root = articleRoot(annotation.chapterId);
+        if (!root) return;
+        var source = root.textContent || "";
+        var start = Number(annotation.start);
+        var end = Number(annotation.end);
+        if (typeof annotation.quote === "string" && annotation.quote) {
+          if (!Number.isInteger(start) || !Number.isInteger(end) || source.slice(start, end) !== annotation.quote) {
+            start = locateAnnotationQuote(source, annotation.quote, annotation.prefix, annotation.suffix, start);
+            end = start + annotation.quote.length;
+          }
+        }
+        if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end <= start) return;
+        var removed = false;
+        root.querySelectorAll("mark[data-search-target]").forEach(function (mark) {
+          var markStart = absoluteOffset(root, mark, 0);
+          var markEnd = markStart + (mark.textContent || "").length;
+          if (markStart >= end || markEnd <= start) return;
+          unwrapMark(mark);
+          removed = true;
+        });
+        if (removed) root.normalize();
       }
 
       var lastSelection = "";
@@ -646,18 +678,20 @@ export function createBookReaderBridgeScript(
         revealElement(findAnchor(anchorId, chapterId));
       };
       window.__jojoReaderRemoveAnnotation = function (id) {
+        var roots = [];
         document.querySelectorAll('mark[data-annotation-id="' + CSS.escape(id) + '"]').forEach(function (mark) {
-          mark.replaceWith(document.createTextNode(mark.textContent || ""));
+          var root = mark.closest("article");
+          if (root && roots.indexOf(root) < 0) roots.push(root);
+          unwrapMark(mark);
         });
-        var root = articleRoot();
-        if (root) root.normalize();
+        roots.forEach(function (root) { root.normalize(); });
         scheduleMeasure();
       };
       window.__jojoReaderLocateText = function (text, chapterId) {
         var root = articleRoot(chapterId);
         if (!root || !text) return;
         document.querySelectorAll("mark[data-search-target]").forEach(function (mark) {
-          mark.replaceWith(document.createTextNode(mark.textContent || ""));
+          unwrapMark(mark);
         });
         root.normalize();
         var source = root.textContent || "";
