@@ -1,6 +1,6 @@
 -- Readers can delete their own thoughts and replies. Deletion must never cascade
 -- into other readers' marks, but will clear likes and dissociate replies.
-create function public.delete_my_annotation_comment(p_comment_id uuid)
+create or replace function private.delete_my_annotation_comment(p_public_mark_threshold integer, p_comment_id uuid)
 returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -21,7 +21,7 @@ begin
   delete from public.annotation_comments
   where id = p_comment_id and user_id = reader_id;
 
-  snapshot := private.annotation_snapshot(target_annotation_id);
+  snapshot := private.annotation_snapshot(target_annotation_id, p_public_mark_threshold);
 
   return jsonb_build_object(
     'commentId', p_comment_id,
@@ -35,5 +35,29 @@ begin
   );
 end;
 $$;
+revoke all on function private.delete_my_annotation_comment(integer, uuid) from public, anon, authenticated;
+
+-- Public compatibility wrapper for direct RPC callers
+create or replace function public.delete_my_annotation_comment(p_comment_id uuid)
+returns jsonb
+language plpgsql security definer set search_path = '' as $$
+begin
+  return private.delete_my_annotation_comment(2, p_comment_id);
+end;
+$$;
 revoke all on function public.delete_my_annotation_comment(uuid) from public, anon;
 grant execute on function public.delete_my_annotation_comment(uuid) to authenticated;
+
+-- Update public.annotation_request to dispatch delete_my_annotation_comment
+do $$
+declare definition text;
+begin
+  select pg_get_functiondef('public.annotation_request(uuid,integer,text,jsonb)'::regprocedure) into definition;
+  definition := replace(definition,
+    'when ''delete_my_annotation_mark'' then',
+    'when ''delete_my_annotation_comment'' then
+      return private.delete_my_annotation_comment(p_public_mark_threshold, (p_params->>''p_comment_id'')::uuid);
+    when ''delete_my_annotation_mark'' then');
+  execute definition;
+end;
+$$;

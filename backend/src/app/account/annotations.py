@@ -15,7 +15,15 @@ router = APIRouter()
 
 class AnnotationRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    operation: Literal["get_annotation_threads", "create_content_annotation", "add_annotation_comment", "report_annotation_comment", "set_annotation_comment_like", "delete_my_annotation_mark"]
+    operation: Literal[
+        "get_annotation_threads",
+        "create_content_annotation",
+        "add_annotation_comment",
+        "report_annotation_comment",
+        "set_annotation_comment_like",
+        "delete_my_annotation_mark",
+        "delete_my_annotation_comment",
+    ]
     params: dict[str, Any]
 
 
