@@ -187,6 +187,7 @@ export function SelectableAnnotationArticle({
         onReport={(commentId, reason, details) => annotations.report(active.id, commentId, reason, details)}
         onLike={(commentId, liked) => annotations.like(active.id, commentId, liked)}
         onDeleteMark={() => removeUnderline(active.id)}
+        onDeleteComment={(commentId) => annotations.deleteComment(commentId)}
       /> : null}
     </>
   );

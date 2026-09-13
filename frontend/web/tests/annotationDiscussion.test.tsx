@@ -220,4 +220,111 @@ describe("AnnotationDiscussionPanel", () => {
     expect(screen.getByText("1 人划线")).toBeTruthy();
     expect(screen.queryByText("仅在你的阅读器显示")).toBeNull();
   });
+
+  it("renders SVG icons on like, reply, and delete action buttons", () => {
+    const threadWithOwnComment = {
+      ...thread,
+      comments: [
+        { ...thread.comments[0]!, authorId: "user-1", likeCount: 5 },
+      ],
+    };
+    render(<AnnotationDiscussionPanel
+      thread={threadWithOwnComment}
+      currentUserId="user-1"
+      onClose={vi.fn()}
+      onLike={vi.fn()}
+      onComment={vi.fn()}
+      onReport={vi.fn()}
+      onDeleteComment={vi.fn()}
+    />);
+
+    const likeButton = screen.getByRole("button", { name: "点赞，5 个赞" });
+    const replyButton = screen.getByRole("button", { name: "回复" });
+    const deleteButton = screen.getByRole("button", { name: "删除想法" });
+
+    expect(likeButton.querySelector("svg")).toBeTruthy();
+    expect(replyButton.querySelector("svg")).toBeTruthy();
+    expect(deleteButton.querySelector("svg")).toBeTruthy();
+  });
+
+  it("deletes reader's own thought, displays loading state, and reports error on failure", async () => {
+    let resolveDelete!: () => void;
+    let rejectDelete!: (err: Error) => void;
+    const onDeleteComment = vi.fn()
+      .mockImplementationOnce(() => new Promise<void>((res, rej) => { resolveDelete = res; rejectDelete = rej; }))
+      .mockRejectedValueOnce(new Error("网络异常，删除失败"));
+
+    const threadWithOwnComment = {
+      ...thread,
+      comments: [
+        { ...thread.comments[0]!, authorId: "user-1", body: "我要删除的想法" },
+        { ...thread.comments[0]!, id: "comment-other", authorId: "user-2", body: "别人想法" },
+      ],
+    };
+    const { rerender } = render(<AnnotationDiscussionPanel
+      thread={threadWithOwnComment}
+      currentUserId="user-1"
+      onClose={vi.fn()}
+      onLike={vi.fn()}
+      onComment={vi.fn()}
+      onReport={vi.fn()}
+      onDeleteComment={onDeleteComment}
+    />);
+
+    // Only own comment has delete button
+    const deleteButtons = screen.getAllByRole("button", { name: "删除想法" });
+    expect(deleteButtons).toHaveLength(1);
+
+    fireEvent.click(deleteButtons[0]!);
+    expect(onDeleteComment).toHaveBeenCalledWith("comment-1");
+    expect(deleteButtons[0]!.textContent).toContain("删除中…");
+    expect((deleteButtons[0]! as HTMLButtonElement).disabled).toBe(true);
+
+    // Resolve deletion
+    await act(async () => { resolveDelete(); });
+    expect(await screen.findByText("已删除想法。")).toBeTruthy();
+
+    // Rerender with failure case
+    rerender(<AnnotationDiscussionPanel
+      thread={threadWithOwnComment}
+      currentUserId="user-1"
+      onClose={vi.fn()}
+      onLike={vi.fn()}
+      onComment={vi.fn()}
+      onReport={vi.fn()}
+      onDeleteComment={onDeleteComment}
+    />);
+
+    const retryDeleteButton = screen.getAllByRole("button", { name: "删除想法" })[0]!;
+    fireEvent.click(retryDeleteButton);
+    expect(await screen.findByText("网络异常，删除失败")).toBeTruthy();
+  });
+
+  it("allows deleting own private thought while hiding reply and like actions", async () => {
+    const onDeleteComment = vi.fn(async () => undefined);
+    const privateThread = {
+      ...thread,
+      comments: [{ ...thread.comments[0]!, authorId: "user-1", visibility: "private" as const, body: "私密日记想法" }],
+    };
+    render(<AnnotationDiscussionPanel
+      thread={privateThread}
+      currentUserId="user-1"
+      onClose={vi.fn()}
+      onLike={vi.fn()}
+      onComment={vi.fn()}
+      onReport={vi.fn()}
+      onDeleteComment={onDeleteComment}
+    />);
+
+    expect(screen.queryByRole("button", { name: "回复" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /点赞/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "举报" })).toBeNull();
+
+    const deleteButton = screen.getByRole("button", { name: "删除想法" });
+    expect(deleteButton).toBeTruthy();
+    expect(deleteButton.querySelector("svg")).toBeTruthy();
+
+    fireEvent.click(deleteButton);
+    await waitFor(() => expect(onDeleteComment).toHaveBeenCalledWith("comment-1"));
+  });
 });

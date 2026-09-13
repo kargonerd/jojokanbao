@@ -701,15 +701,17 @@ export function BookReader({
 
   const previousPage = useCallback(() => {
     if (contentLoading) return;
+    if (focusRequestKey) dismissedFocusRef.current = focusRequestKey;
     if (pageMetrics.page > 0) goToPage(pageMetrics.page - 1, "auto");
     else if (previousChapter) chooseChapter(previousChapter.id, "end");
-  }, [contentLoading, chooseChapter, goToPage, pageMetrics.page, previousChapter]);
+  }, [contentLoading, chooseChapter, focusRequestKey, goToPage, pageMetrics.page, previousChapter]);
 
   const nextPage = useCallback(() => {
     if (contentLoading) return;
+    if (focusRequestKey) dismissedFocusRef.current = focusRequestKey;
     if (pageMetrics.page < pageMetrics.spreads - 1) goToPage(pageMetrics.page + 1, "auto");
     else if (nextChapter) chooseChapter(nextChapter.id);
-  }, [contentLoading, chooseChapter, goToPage, nextChapter, pageMetrics.page, pageMetrics.spreads]);
+  }, [contentLoading, chooseChapter, focusRequestKey, goToPage, nextChapter, pageMetrics.page, pageMetrics.spreads]);
 
   useEffect(() => {
     if (mode !== "paged" || readerOverlayOpen) return;
@@ -759,11 +761,18 @@ export function BookReader({
     if (target) revealElement(target);
   }, [revealElement, chapterRoot]);
 
+  const handledAnchorRef = useRef<string | undefined>(undefined);
+
   useEffect(() => {
     if (!focusAnchorId || contentLoading) return;
-    const timer = window.setTimeout(() => revealAnchor(focusAnchorId), 80);
+    const anchorKey = `${chapterKey}:${focusAnchorId}`;
+    if (handledAnchorRef.current === anchorKey) return;
+    const timer = window.setTimeout(() => {
+      revealAnchor(focusAnchorId);
+      handledAnchorRef.current = anchorKey;
+    }, 80);
     return () => window.clearTimeout(timer);
-  }, [contentLoading, focusAnchorId, pageMetrics.step, revealAnchor, positionRevision]);
+  }, [contentLoading, focusAnchorId, chapterKey, pageMetrics.step, revealAnchor, positionRevision]);
 
   useEffect(() => {
     if (!focusText?.text || contentLoading) return;
@@ -790,6 +799,7 @@ export function BookReader({
           marker.setAttribute("data-book-search-target", "true");
           range.surroundContents(marker);
           revealElement(marker);
+          dismissedFocusRef.current = focusRequestKey;
           return;
         }
         node = walker.nextNode();
@@ -797,7 +807,10 @@ export function BookReader({
       const anchorTarget = focusAnchorId ? scopedAnchor(root, focusAnchorId) : null;
       if (anchorTarget) return;
       const title = root.querySelector<HTMLElement>("h1,h2,h3");
-      if (title) revealElement(title);
+      if (title) {
+        revealElement(title);
+        dismissedFocusRef.current = focusRequestKey;
+      }
     }, 140);
     return () => window.clearTimeout(timer);
   }, [contentLoading, focusAnchorId, focusText, focusRequestKey, mode, pageMetrics.step, revealElement, chapterRoot, positionRevision]);
@@ -863,6 +876,7 @@ export function BookReader({
     const distance = swipe.distance;
     const duration = Math.max(1, Date.now() - swipe.time);
     const turn = Math.abs(distance) > Math.min(90, pageMetrics.step * .2) || (Math.abs(distance) > 24 && Math.abs(distance) / duration > .45);
+    if (turn && focusRequestKey) dismissedFocusRef.current = focusRequestKey;
     const target = pageMetrics.page + (turn ? (distance < 0 ? 1 : -1) : 0);
     if (target < 0 && previousChapter) chooseChapter(previousChapter.id, "end");
     else if (target >= pageMetrics.spreads && nextChapter) chooseChapter(nextChapter.id);
@@ -1268,6 +1282,7 @@ export function BookReader({
       onReport={(commentId, reason, details) => annotations.report(activeAnnotation.id, commentId, reason, details)}
       onLike={(commentId, liked) => annotations.like(activeAnnotation.id, commentId, liked)}
       onDeleteMark={() => removeUnderline(activeAnnotation)}
+      onDeleteComment={(commentId) => annotations.deleteComment(commentId)}
     /> : null}
 
     {toolPopover && <BookNavigationSheet mobile={mobileViewport} key={toolPopover} compact={toolPopover !== "notes"} title={toolPopover === "progress" ? "阅读进度" : toolPopover === "notes" ? "阅读笔记" : "文字设置"} label={toolPopover === "progress" ? "阅读进度面板" : toolPopover === "notes" ? "阅读笔记面板" : "文字设置面板"} onClose={() => { setToolPopover(undefined); setProgressPreview(undefined); }} panelClass={panelClass}>

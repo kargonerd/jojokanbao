@@ -49,6 +49,14 @@ describe("annotation API compatibility", () => {
     await expect(api.deleteMyAnnotationMark("annotation:one")).rejects.toThrow("删除失败");
   });
 
+  it("deletes the authenticated reader's comment and invalidates cache", async () => {
+    rpc.mockResolvedValue({ data: { annotationId: "annotation:one", thread: null }, error: null });
+    await expect(api.deleteMyAnnotationComment("comment-1")).resolves.toEqual({ annotationId: "annotation:one", thread: null });
+    expect(rpc).toHaveBeenLastCalledWith("delete_my_annotation_comment", { p_comment_id: "comment-1" });
+    rpc.mockResolvedValue({ data: null, error: { message: "Comment not found or already deleted" } });
+    await expect(api.deleteMyAnnotationComment("comment-1")).rejects.toThrow("Comment not found or already deleted");
+  });
+
   it("sets and clears likes idempotently and propagates service errors", async () => {
     rpc.mockResolvedValue({ data: { id: "comment-1", likeCount: 3, likedByMe: true }, error: null });
     await expect(api.setAnnotationCommentLike("comment-1", true)).resolves.toEqual({ id: "comment-1", likeCount: 3, likedByMe: true });
@@ -155,6 +163,8 @@ describe("annotation API compatibility", () => {
   it("invalidates the book after adding an underline or thought", async () => {
     rpc.mockImplementation(async (name: string) => name === "get_my_book_annotations"
       ? { data: [thread("one", { underlinedByMe: true })], error: null }
+      : name === "delete_my_annotation_comment"
+      ? { data: { annotationId: "one", thread: null }, error: null }
       : { data: thread("one", { underlinedByMe: true }), error: null });
     await api.loadMyBookAnnotations("book:one", "reader:me");
     await api.createAnnotation(subject, anchor);
@@ -163,6 +173,9 @@ describe("annotation API compatibility", () => {
     await api.addAnnotationComment("one", "新想法");
     await api.loadMyBookAnnotations("book:one", "reader:me");
     expect(rpc.mock.calls.filter(([name]) => name === "get_my_book_annotations")).toHaveLength(3);
+    await api.deleteMyAnnotationComment("comment-1");
+    await api.loadMyBookAnnotations("book:one", "reader:me");
+    expect(rpc.mock.calls.filter(([name]) => name === "get_my_book_annotations")).toHaveLength(4);
   });
 
   it("loads 101 notes in two serial pages using one abortable transport per book read", async () => {

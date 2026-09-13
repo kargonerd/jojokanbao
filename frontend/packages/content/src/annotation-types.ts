@@ -38,6 +38,12 @@ export interface AnnotationCommentLike {
   likedByMe: boolean;
 }
 
+export interface DeleteAnnotationCommentResult {
+  commentId: string;
+  annotationId?: string;
+  thread: AnnotationThread | null;
+}
+
 export function sortAnnotationComments(comments: readonly AnnotationComment[]): AnnotationComment[] {
   return [...comments].sort((a, b) => (b.likeCount ?? 0) - (a.likeCount ?? 0)
     || Date.parse(a.createdAt) - Date.parse(b.createdAt) || a.id.localeCompare(b.id));

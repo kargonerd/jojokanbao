@@ -84,7 +84,7 @@ describe("shared annotation API", () => {
 
   afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
-  it.each(["like", "delete"] as const)("invalidates the affected book only after a successful %s", async (operation) => {
+  it.each(["like", "delete", "delete-comment"] as const)("invalidates the affected book only after a successful %s", async (operation) => {
     const { api, rpc } = setup();
     const entry = { ...thread("one"), comments: [{
       id: "comment", annotationId: "one", parentCommentId: null, authorId: "reader:a", authorName: "读者",
@@ -97,14 +97,18 @@ describe("shared annotation API", () => {
     rpc.mockImplementation(async (name) => {
       if (name === "get_my_book_annotations") {
         return { data: !updated ? [entry, untouched] : operation === "delete" ? [untouched]
+          : operation === "delete-comment" ? [{ ...entry, comments: [] }, untouched]
           : [{ ...entry, comments: [{ ...entry.comments[0]!, likeCount: 1, likedByMe: true }] }, untouched], error: null };
       }
       if (fail) return { data: null, error: { message: "offline" } };
       updated = true;
-      return { data: operation === "delete" ? { thread: null } : { id: "comment", likeCount: 1, likedByMe: true }, error: null };
+      return { data: operation === "delete" ? { thread: null }
+        : operation === "delete-comment" ? { commentId: "comment", annotationId: "one", thread: null }
+        : { id: "comment", likeCount: 1, likedByMe: true }, error: null };
     });
     const read = () => api.loadMyBookAnnotations("book:one", "reader:a");
     const mutate = () => operation === "delete" ? api.deleteMyAnnotationMark("one", "reader:a")
+      : operation === "delete-comment" ? api.deleteMyAnnotationComment("comment", "reader:a")
       : api.setAnnotationCommentLike("comment", true, "reader:a");
     expect(await read()).toEqual([entry, untouched]);
     await expect(mutate()).rejects.toThrow("offline");
@@ -112,11 +116,17 @@ describe("shared annotation API", () => {
     expect(rpc.mock.calls.filter(([name]) => name === "get_my_book_annotations")).toHaveLength(1);
     fail = false;
     await mutate();
-    expect(rpc).toHaveBeenLastCalledWith(operation === "delete" ? "delete_my_annotation_mark" : "set_annotation_comment_like",
-      operation === "delete" ? { p_annotation_id: "one" } : { p_comment_id: "comment", p_liked: true }, "reader:a");
+    expect(rpc).toHaveBeenLastCalledWith(
+      operation === "delete" ? "delete_my_annotation_mark"
+      : operation === "delete-comment" ? "delete_my_annotation_comment"
+      : "set_annotation_comment_like",
+      operation === "delete" ? { p_annotation_id: "one" }
+      : operation === "delete-comment" ? { p_comment_id: "comment" }
+      : { p_comment_id: "comment", p_liked: true }, "reader:a");
     const notes = await read();
     expect(notes.find((note) => note.id === "two")).toEqual(untouched);
     if (operation === "delete") expect(notes.map((note) => note.id)).toEqual(["two"]);
+    else if (operation === "delete-comment") expect(notes[0]?.comments).toEqual([]);
     else expect(notes[0]?.comments[0]).toMatchObject({ likeCount: 1, likedByMe: true });
     expect(rpc.mock.calls.filter(([name]) => name === "get_my_book_annotations")).toHaveLength(2);
   });
