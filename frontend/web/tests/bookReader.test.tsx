@@ -1197,6 +1197,22 @@ describe("BookReader", () => {
     expect(annotationApi.deleteMyAnnotationMark).toHaveBeenLastCalledWith("annotation-underline-1", "11111111-1111-4111-8111-111111111111");
   });
 
+  it("preserves a live selection when a delayed focus pass runs", async () => {
+    vi.useFakeTimers();
+    const { container, rerenderFocus } = renderReader(vi.fn(), vi.fn(), { text: "这是正文。", token: 1 });
+    await act(async () => { await vi.advanceTimersByTimeAsync(500); });
+    const marker = container.querySelector("mark[data-book-search-target]")!;
+    expect(marker).not.toBeNull();
+    const range = document.createRange();
+    range.selectNodeContents(marker);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+    rerenderFocus({ text: "这是正文。", token: 1 });
+    await act(async () => { await vi.advanceTimersByTimeAsync(500); });
+    expect(window.getSelection()?.toString()).toBe("这是正文。");
+    expect(container.querySelector("mark[data-book-search-target]")).toBe(marker);
+  });
+
   it("keeps the selection and existing highlight when saving an underline fails", async () => {
     annotationApi.createAnnotation.mockRejectedValueOnce(new Error("保存失败，请重试"));
     const { container } = renderReader(vi.fn(), vi.fn(), { text: "这是正文。" });

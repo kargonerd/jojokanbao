@@ -775,6 +775,9 @@ export function BookReader({
       if (dismissedFocusRef.current === focusRequestKey) return;
       const root = chapterRoot();
       if (!root) return;
+      // A delayed layout/focus pass must not replace DOM nodes under an active selection.
+      const selection = window.getSelection();
+      if (selection && !selection.isCollapsed && selection.rangeCount && root.contains(selection.getRangeAt(0).commonAncestorContainer)) return;
       root.querySelectorAll("mark[data-book-search-target]").forEach((mark) => mark.replaceWith(...mark.childNodes));
       root.normalize();
       const query = focusText.text.replace(/\s+/g, " ").trim();
