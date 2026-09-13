@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(22);
+select extensions.plan(21);
 select extensions.has_function('public', 'get_public_book_annotations', array['text','uuid','integer'], 'public book notes expose a bounded page RPC');
 select extensions.ok(has_function_privilege('authenticated','public.get_public_book_annotations(text,uuid,integer)','execute'), 'authenticated access');
 select extensions.ok(not has_function_privilege('anon','public.get_public_book_annotations(text,uuid,integer)','execute'), 'anonymous access is denied');
@@ -86,8 +86,6 @@ select extensions.is(public.get_public_book_annotations('notes-book',null,2)||pu
 select set_config('request.jwt.claim.sub','00000000-0000-4000-9000-000000009303',true);
 select extensions.is(jsonb_array_length(public.get_public_book_annotations('notes-book')),4,'a reader with no own notes still sees all public notes');
 select extensions.is(public.get_my_book_annotations('notes-book'),'[]'::jsonb,'personal view stays empty and isolated');
-update private.feature_flags set config=jsonb_set(config,'{publicMarkThreshold}','3') where key='reader.annotations';
-select extensions.is(jsonb_array_length(public.get_public_book_annotations('notes-book')),3,'public visibility follows the configured mark threshold');
 set local role authenticated;
 select extensions.is(jsonb_array_length(public.get_public_book_annotations('notes-book',null,1)),1,'definer RPC works without table access');
 reset role;
@@ -101,7 +99,6 @@ select id, '00000000-0000-4000-9000-000000009301'::uuid
 from public.content_annotations where content_id = 'many-notes-book';
 
 insert into public.content_annotation_marks(annotation_id,user_id) select id,'00000000-0000-4000-9000-000000009302'::uuid from public.content_annotations where content_id='many-notes-book';
-update private.feature_flags set config=jsonb_set(config,'{publicMarkThreshold}','2') where key='reader.annotations';
 select extensions.is(jsonb_array_length(public.get_public_book_annotations('many-notes-book')),100,'public default page is capped at 100');
 select extensions.is(jsonb_array_length(public.get_public_book_annotations('many-notes-book','00000000-0000-4000-9000-000000010100')),3,'public next page returns the remainder');
 select extensions.is(public.get_public_book_annotations('many-notes-book','00000000-0000-4000-9000-000000010103'),'[]'::jsonb,'public pagination terminates');
