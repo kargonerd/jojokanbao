@@ -102,13 +102,13 @@ Reader 不依赖 EPUB 文件名即可精确跨章节跳转。`Image` 等
 
 ### 资料库书源
 
-书籍元数据 `librarySource` 支持 `jojo`（JOJO书库）和 `community`（网友分享）。EPUB 导入自动使用
+书籍元数据 `librarySource` 支持 `jojo`（JOJO书库）和 `community`（共享书库）。EPUB 导入自动使用
 `community` 并要求 `access: authenticated`；微信读书 JSON 和其他格式默认 `jojo`。字段贯穿
 Catalog、Dataset、Item summary、Canonical Item 和 Delivery Manifest，修改书名或发布设置时保留。
 旧数据缺少字段时视为 JOJO书库；未知书源不展示。已有 EPUB 根据 Canonical provenance 分类，
 不根据导出格式判断（每本书都可能提供 EPUB 下载）。分类不会更改草稿/发布状态。
 
-网页账号设置、桌面设置和移动端设置均有“资料库设置”。JOJO书库默认开启，网友分享默认关闭，
+网页账号设置、桌面设置和移动端设置均有“资料库设置”。JOJO书库默认开启，共享书库默认关闭，
 偏好保存在当前设备。可见条件同时满足：书籍未下架、书源开启、符合登录门槛。
 资料库、书架、最近阅读、阅读/下载/离线正文和 AI 检索沿用同一规则；关闭不会删除下载或阅读记录。
 缓存中的云端书架条目若尚无对应书目元数据，先等待分类；已下载正文按其离线快照判断。

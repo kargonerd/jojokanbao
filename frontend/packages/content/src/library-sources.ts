@@ -4,7 +4,7 @@ export type LibrarySourceId = "jojo" | "community";
 
 export const LIBRARY_SOURCES = [
   { id: "jojo", title: "JOJO书库", description: "JOJO 整理收录的书籍。" },
-  { id: "community", title: "网友分享", description: "网友分享的电子书，开启后需登录阅读。" },
+  { id: "community", title: "共享书库", description: "书友分享的电子书，开启后需登录阅读。" },
 ] as const;
 export const DEFAULT_LIBRARY_SOURCES: readonly LibrarySourceId[] = ["jojo"];
 

@@ -207,7 +207,7 @@ export function ContentDataPage() {
               <label className={publicationStatus === "draft" ? "selected" : ""}><input type="radio" name="publication" value="draft" checked={publicationStatus === "draft"} disabled={working} onChange={() => setPublicationStatus("draft")} /><span><b>草稿</b><small>上传保存，不在馆藏展示。</small></span></label>
               <label className={publicationStatus === "published" ? "selected" : ""}><input type="radio" name="publication" value="published" checked={publicationStatus === "published"} disabled={working} onChange={() => setPublicationStatus("published")} /><span><b>发布到馆藏</b><small>同步到阅读站点后，在馆藏展示。</small></span></label>
             </fieldset>
-            <p className="book-setting-help">书源：{job?.librarySource === "community" ? "网友分享（默认关闭，需登录并开启书源后可见）" : "JOJO书库"}</p>
+            <p className="book-setting-help">书源：{job?.librarySource === "community" ? "共享书库（默认关闭，需登录并开启书源后可见）" : "JOJO书库"}</p>
             <label className="book-access-choice">阅读门槛<select value={job?.librarySource === "community" ? "authenticated" : access} disabled={working || job?.librarySource === "community"} onChange={(event) => setAccess(event.target.value as ContentJob["access"])}><option value="public">任何人</option><option value="authenticated">仅登录用户（软门槛）</option></select></label>
             <fieldset className="book-upload-options"><legend>上传到哪里</legend>{destinations.map(({ name, title, description }) => <label key={name} className={targets.includes(name) ? "selected" : ""}>
               <input type="checkbox" checked={targets.includes(name)} disabled={working || !publishers?.[name].configured} onChange={() => setTargets((current) => current.includes(name) ? current.filter((item) => item !== name) : [...current, name])} />
