@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(34);
+select extensions.plan(33);
 
 select extensions.has_function('public', 'get_my_book_annotations', array['text', 'uuid', 'integer'], 'book notes expose a keyset page RPC');
 select extensions.ok(has_function_privilege('authenticated', 'public.get_my_book_annotations(text,uuid,integer)', 'execute'), 'authenticated readers may load their book notes');
@@ -19,18 +19,11 @@ insert into auth.users(id, email) values
  ('00000000-0000-4000-9000-000000009303', 'book-notes-empty@example.invalid');
 set local session_replication_role = origin;
 
-update private.feature_flags set rules = '[{"id":"00000000-0000-4000-9000-000000009399","conditionType":"authenticated","enabled":true,"serve":true}]'::jsonb
-where key = 'reader.annotations';
 select set_config('request.jwt.claim.sub', '', true);
 select set_config('request.jwt.claims', '{}', true);
 select extensions.throws_ok($$select public.get_my_book_annotations('notes-book')$$,
  '42501', 'Authentication is required', 'even an empty book requires authentication');
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-9000-000000009301', true);
-update private.feature_flags set rules = '[]'::jsonb where key = 'reader.annotations';
-select extensions.throws_ok($$select public.get_my_book_annotations('notes-book')$$,
- '42501', 'Reader annotations are not enabled', 'the existing annotation feature gate is enforced');
-update private.feature_flags set rules = '[{"id":"00000000-0000-4000-9000-000000009399","conditionType":"authenticated","enabled":true,"serve":true}]'::jsonb
-where key = 'reader.annotations';
 
 select extensions.throws_ok($$select public.get_my_book_annotations('notes-book', null, 0)$$,
  '22023', 'Book annotation limit must be between 1 and 100', 'zero limit is rejected');

@@ -22,6 +22,7 @@ const api = createAnnotationApi({
     const { data, error } = await mobileAuthClient.auth.getSession();
     const session = data.session;
     if (error || session?.user.id !== expectedUserId || !session.access_token) throw new Error("登录状态已变化，请重新打开笔记");
+    const authorization = `Bearer ${session.access_token}`;
     const base = process.env.EXPO_PUBLIC_READER_API_BASE?.replace(/\/$/, "") || "https://beta.jojokanbao.cn";
     const response = await fetch(`${base}/api/v1/annotations`, {
       method: "POST", headers: { "Authorization": authorization, "Content-Type": "application/json" },

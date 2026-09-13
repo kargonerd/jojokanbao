@@ -546,3 +546,68 @@ drop table private.feature_flags;
 drop function private.validate_agent_usage_feature_config();
 drop function private.validate_signup_feature_config();
 drop function private.validate_email_quota_monitor_config();
+
+create or replace function public.get_public_book_annotations(
+  p_content_id text,
+  p_after_id uuid default null,
+  p_limit integer default 100
+)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  reader_id uuid := private.require_annotation_reader();
+  public_threshold integer := 2;
+begin
+  if p_limit is null or p_limit not between 1 and 100 then
+    raise invalid_parameter_value using message = 'Book annotation limit must be between 1 and 100';
+  end if;
+
+  return (
+    with page as materialized (
+      select annotation.id
+      from public.content_annotations annotation
+      where annotation.content_type = 'book'
+        and annotation.content_id = p_content_id
+        and annotation.moderation_status = 'visible'
+        and (p_after_id is null or annotation.id > p_after_id)
+        and (
+          exists (
+            select 1 from public.annotation_comments public_comment
+            where public_comment.annotation_id = annotation.id
+              and public_comment.visibility = 'public'
+              and public_comment.moderation_status = 'visible'
+          )
+          or public_threshold <= (
+            select count(*) from (
+              select 1 from public.content_annotation_marks shared_mark
+              where shared_mark.annotation_id = annotation.id
+              limit public_threshold
+            ) readers
+          )
+        )
+      order by annotation.id
+      limit p_limit
+    ), snapshots as materialized (
+      select page.id, private.annotation_snapshot(page.id) as snapshot
+      from page
+    )
+    select coalesce(jsonb_agg(
+      snapshots.snapshot || jsonb_build_object('comments', coalesce((
+        select jsonb_agg(comment.value order by comment.position)
+        from jsonb_array_elements(snapshots.snapshot->'comments')
+          with ordinality as comment(value, position)
+        where comment.value->>'visibility' = 'public'
+      ), '[]'::jsonb))
+      order by snapshots.id
+    ), '[]'::jsonb)
+    from snapshots
+  );
+end;
+$$;
+
+revoke all on function public.get_public_book_annotations(text, uuid, integer) from public, anon;
+grant execute on function public.get_public_book_annotations(text, uuid, integer) to authenticated;
