@@ -13,6 +13,7 @@ export interface AnnotationDiscussionPanelProps {
   onComment: (body: string, parentCommentId?: string, visibility?: AnnotationVisibility) => Promise<unknown>;
   onReport: (commentId: string, reason: AnnotationReportReason, details?: string) => Promise<unknown>;
   onRemoveMark?: () => Promise<unknown>;
+  onDeleteComment?: (commentId: string) => Promise<unknown>;
   theme: MobileTheme;
 }
 
@@ -27,7 +28,7 @@ function displayTime(value: string): string {
     : "";
 }
 
-function DiscussionContent({ thread, currentUserId, onClose, onComment, onReport, onRemoveMark, theme }: AnnotationDiscussionPanelProps) {
+function DiscussionContent({ thread, currentUserId, onClose, onComment, onReport, onRemoveMark, onDeleteComment, theme }: AnnotationDiscussionPanelProps) {
   const [draft, setDraft] = useState("");
   const [visibility, setVisibility] = useState<AnnotationVisibility>("public");
   const [replyTo, setReplyTo] = useState<string>();
@@ -40,6 +41,7 @@ function DiscussionContent({ thread, currentUserId, onClose, onComment, onReport
   const [notice, setNotice] = useState("");
   const [compact, setCompact] = useState(false);
   const [removeError, setRemoveError] = useState(false);
+  const [deletingCommentId, setDeletingCommentId] = useState<string>();
   const busyRef = useRef(false);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -49,6 +51,20 @@ function DiscussionContent({ thread, currentUserId, onClose, onComment, onReport
   const reply = comments.find((comment) => comment.id === replyTo && comment.visibility !== "private");
   const underlineCount = Number.isFinite(thread.underlineCount) ? Math.max(0, Math.trunc(thread.underlineCount!)) : 1;
   const ownMark = thread.underlinedByMe ?? thread.authorId === currentUserId;
+
+  async function deleteComment(commentId: string) {
+    if (!onDeleteComment || deletingCommentId || busyRef.current) return;
+    busyRef.current = true; setBusy(true); setDeletingCommentId(commentId); setNotice("");
+    try {
+      await onDeleteComment(commentId);
+      if (mounted.current) setNotice("已删除想法。");
+    } catch (reason) {
+      if (mounted.current) setNotice(reason instanceof Error ? reason.message : "删除失败，请重试。");
+    } finally {
+      busyRef.current = false;
+      if (mounted.current) { setBusy(false); setDeletingCommentId(undefined); }
+    }
+  }
 
   async function removeMark() {
     if (!ownMark || !onRemoveMark || busyRef.current) return;
@@ -132,9 +148,12 @@ function DiscussionContent({ thread, currentUserId, onClose, onComment, onReport
               {comment.visibility === "private" ? <View style={styles.private}><Ionicons name="lock-closed-outline" size={12} color={theme.muted} /><Text style={[styles.small, { color: theme.muted, fontFamily: theme.sans }]}>仅自己可见</Text></View> : null}
               {parent ? <Text style={[styles.parent, { color: theme.muted, fontFamily: theme.sans }]}>回复 {parent.authorName}</Text> : null}
               <Text selectable style={[styles.body, { color: theme.ink, fontFamily: theme.serif }]}>{comment.body}</Text>
-              {comment.visibility !== "private" ? <View style={styles.actions}>
-                <Pressable accessibilityRole="button" accessibilityLabel={`回复${comment.authorName}的想法`} disabled={busy} onPress={() => startReply(comment.id)} style={styles.action}><Text style={[styles.small, { color: theme.red, fontFamily: theme.sans }]}>回复</Text></Pressable>
-                {comment.authorId !== currentUserId ? <Pressable accessibilityRole="button" accessibilityLabel={alreadyReported ? "已举报" : `举报${comment.authorName}的想法`} accessibilityState={{ disabled: busy || alreadyReported }} disabled={busy || alreadyReported} onPress={() => startReport(comment.id)} style={styles.action}><Text style={[styles.small, { color: theme.muted, fontFamily: theme.sans }]}>{alreadyReported ? "已举报" : "举报"}</Text></Pressable> : null}
+              {comment.visibility !== "private" || (comment.authorId === currentUserId && onDeleteComment) ? <View style={styles.actions}>
+                {comment.visibility !== "private" ? <>
+                  <Pressable accessibilityRole="button" accessibilityLabel={`回复${comment.authorName}的想法`} disabled={busy} onPress={() => startReply(comment.id)} style={styles.action}><Ionicons name="arrow-undo-outline" size={14} color={theme.red} /><Text style={[styles.small, { color: theme.red, fontFamily: theme.sans }]}>回复</Text></Pressable>
+                  {comment.authorId !== currentUserId ? <Pressable accessibilityRole="button" accessibilityLabel={alreadyReported ? "已举报" : `举报${comment.authorName}的想法`} accessibilityState={{ disabled: busy || alreadyReported }} disabled={busy || alreadyReported} onPress={() => startReport(comment.id)} style={styles.action}><Text style={[styles.small, { color: theme.muted, fontFamily: theme.sans }]}>{alreadyReported ? "已举报" : "举报"}</Text></Pressable> : null}
+                </> : null}
+                {comment.authorId === currentUserId && onDeleteComment ? <Pressable accessibilityRole="button" accessibilityLabel="删除想法" disabled={busy || deletingCommentId === comment.id} onPress={() => void deleteComment(comment.id)} style={styles.action}><Ionicons name="trash-outline" size={14} color={theme.red} /><Text style={[styles.small, { color: theme.red, fontFamily: theme.sans }]}>{deletingCommentId === comment.id ? "删除中…" : "删除"}</Text></Pressable> : null}
               </View> : null}
               {reporting === comment.id && comment.visibility !== "private" && comment.authorId !== currentUserId ? <View style={[styles.report, { backgroundColor: theme.paperSoft, borderColor: theme.rule }]}>
                 <Text style={[styles.reportHeading, { color: theme.ink, fontFamily: theme.sans }]}>举报原因</Text>
@@ -166,7 +185,7 @@ const styles = StyleSheet.create({
   history: { flex: 1, minHeight: 0 }, historyContent: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 12 }, quote: { borderLeftWidth: 2, paddingLeft: 14 }, quoteText: { fontSize: 16, lineHeight: 28 }, meta: { marginTop: 14, fontSize: 12, fontWeight: "700" },
   commentsHeading: { marginTop: 25, paddingBottom: 12, borderBottomWidth: 1, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }, commentsTitle: { fontSize: 17, fontWeight: "700" }, empty: { paddingVertical: 26, fontSize: 13 },
   comment: { paddingTop: 18, paddingBottom: 12, borderBottomWidth: StyleSheet.hairlineWidth }, byline: { flexDirection: "row", gap: 12, alignItems: "baseline" }, author: { fontSize: 12, fontWeight: "700", flex: 1 }, time: { fontSize: 10 }, private: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 7 },
-  small: { fontSize: 12, lineHeight: 18 }, parent: { marginTop: 8, fontSize: 11 }, body: { fontSize: 15, lineHeight: 25, marginTop: 10 }, actions: { flexDirection: "row", gap: 24 }, action: { minHeight: 40, justifyContent: "center", paddingHorizontal: 3 },
+  small: { fontSize: 12, lineHeight: 18 }, parent: { marginTop: 8, fontSize: 11 }, body: { fontSize: 15, lineHeight: 25, marginTop: 10 }, actions: { flexDirection: "row", gap: 24 }, action: { flexDirection: "row", alignItems: "center", gap: 4, minHeight: 40, justifyContent: "center", paddingHorizontal: 3 },
   report: { borderWidth: 1, padding: 12, marginBottom: 6 }, reportHeading: { fontSize: 12, fontWeight: "700", marginBottom: 10 }, reasons: { flexDirection: "row", flexWrap: "wrap", gap: 8 }, reason: { borderWidth: 1, paddingVertical: 8, paddingHorizontal: 10 },
   reportInput: { minHeight: 70, fontSize: 14, lineHeight: 22, borderBottomWidth: 1, marginTop: 12, paddingVertical: 8, textAlignVertical: "top" }, reportActions: { flexDirection: "row", justifyContent: "flex-end", gap: 20 },
   composer: { paddingHorizontal: 20, paddingTop: 9, paddingBottom: 10, borderTopWidth: 1, minHeight: 0, flexShrink: 1, maxHeight: "65%" }, editor: { minHeight: 0, flexShrink: 1 }, reply: { flexDirection: "row", alignItems: "center", gap: 12 }, replyText: { fontSize: 12, flex: 1 },

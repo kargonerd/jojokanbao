@@ -5,6 +5,7 @@ import type {
   AnnotationSubject,
   AnnotationThread,
   AnnotationVisibility,
+  DeleteAnnotationCommentResult,
   TextAnchor,
 } from "./annotation-types";
 export * from "./annotation-types";
@@ -336,5 +337,15 @@ export function createAnnotationApi({ rpc, getCurrentUserId, currentPath = () =>
     }, expectedUserId);
   }
 
-  return { loadAnnotationThreads, loadMyBookAnnotations, loadPublicBookAnnotations, createAnnotation, addAnnotationComment, reportAnnotationComment, setAnnotationCommentLike, deleteMyAnnotationMark };
+  async function deleteMyAnnotationComment(commentId: string, expectedUserId?: string): Promise<DeleteAnnotationCommentResult> {
+    return forCurrentReader(async (userId) => {
+      const { data, error } = await rpc("delete_my_annotation_comment", { p_comment_id: commentId }, userId);
+      const result = resultOrThrow<DeleteAnnotationCommentResult>(data, error);
+      if (result.annotationId) invalidateBookAnnotationComment(result.annotationId);
+      else invalidateBookAnnotationLike(commentId);
+      return result;
+    }, expectedUserId);
+  }
+
+  return { loadAnnotationThreads, loadMyBookAnnotations, loadPublicBookAnnotations, createAnnotation, addAnnotationComment, reportAnnotationComment, setAnnotationCommentLike, deleteMyAnnotationMark, deleteMyAnnotationComment };
 }

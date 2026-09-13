@@ -1,4 +1,5 @@
 import { type CSSProperties, useLayoutEffect, useRef, useState } from "react";
+import { IoArrowUndoOutline, IoThumbsUp, IoThumbsUpOutline, IoTrashOutline } from "react-icons/io5";
 import { CommentVisibilityControl } from "./CommentVisibilityControl";
 import { DeleteUnderlineIcon } from "./AnnotationMarkPopover";
 import { ANNOTATION_REPORT_LABELS, sortAnnotationComments, type AnnotationReportReason, type AnnotationThread, type AnnotationVisibility } from "./types";
@@ -12,6 +13,7 @@ interface AnnotationDiscussionPanelProps {
   onReport: (commentId: string, reason: AnnotationReportReason, details?: string) => Promise<unknown>;
   onLike: (commentId: string, liked: boolean) => Promise<unknown>;
   onDeleteMark?: () => Promise<unknown>;
+  onDeleteComment?: (commentId: string) => Promise<unknown>;
 }
 
 function displayTime(value: string): string {
@@ -22,7 +24,7 @@ function visibleViewport() {
   return { top: window.visualViewport?.offsetTop ?? 0, height: window.visualViewport?.height ?? window.innerHeight };
 }
 
-export function AnnotationDiscussionPanel({ thread, currentUserId, onClose, onComment, onReport, onLike, onDeleteMark }: AnnotationDiscussionPanelProps) {
+export function AnnotationDiscussionPanel({ thread, currentUserId, onClose, onComment, onReport, onLike, onDeleteMark, onDeleteComment }: AnnotationDiscussionPanelProps) {
   const [viewport, setViewport] = useState(visibleViewport);
   const [draft, setDraft] = useState("");
   const [visibility, setVisibility] = useState<AnnotationVisibility>("public");
@@ -38,6 +40,21 @@ export function AnnotationDiscussionPanel({ thread, currentUserId, onClose, onCo
   const underlineCount = Math.max(0, Math.trunc(thread.underlineCount ?? 1));
   const deleting = useRef(false);
   const [removing, setRemoving] = useState(false);
+  const [deletingCommentId, setDeletingCommentId] = useState<string>();
+
+  async function removeComment(commentId: string) {
+    if (!onDeleteComment || deletingCommentId) return;
+    setDeletingCommentId(commentId);
+    setNotice("");
+    try {
+      await onDeleteComment(commentId);
+      setNotice("已删除想法。");
+    } catch (reason) {
+      setNotice(reason instanceof Error ? reason.message : "删除失败，请重试。");
+    } finally {
+      setDeletingCommentId(undefined);
+    }
+  }
 
   async function removeMark() {
     if (!onDeleteMark || !thread.underlinedByMe || deleting.current) return;
@@ -147,19 +164,33 @@ export function AnnotationDiscussionPanel({ thread, currentUserId, onClose, onCo
               <div className="annotation-comment__byline"><span><b>{comment.authorName}</b>{comment.visibility === "private" ? <em>仅自己可见</em> : null}</span><time>{displayTime(comment.createdAt)}</time></div>
               {parent ? <small>回复 {parent.authorName}</small> : null}
               <p>{comment.body}</p>
-              {comment.visibility !== "private" ? <div className="annotation-comment__actions">
-                <button type="button" className="annotation-comment__like" aria-pressed={Boolean(comment.likedByMe)}
-                  aria-label={`${comment.likedByMe ? "取消点赞" : "点赞"}，${comment.likeCount ?? 0} 个赞`}
-                  disabled={liking.has(comment.id)} onClick={() => void changeLike(comment.id, !comment.likedByMe)}>
-                  {comment.likedByMe ? "已赞" : "赞"} {comment.likeCount ?? 0}
-                </button>
-                <button type="button" onClick={() => { setReplyTo(comment.id); setReporting(undefined); }}>回复</button>
-                {comment.authorId !== currentUserId ? (
-                  <button type="button" disabled={comment.reportedByMe} onClick={() => { setReporting(comment.id); setReplyTo(undefined); }}>
-                    {comment.reportedByMe ? "已举报" : "举报"}
-                  </button>
-                ) : null}
-              </div> : null}
+              {comment.visibility !== "private" || (comment.authorId === currentUserId && onDeleteComment) ? (
+                <div className="annotation-comment__actions">
+                  {comment.visibility !== "private" ? <>
+                    <button type="button" className="annotation-comment__like" aria-pressed={Boolean(comment.likedByMe)}
+                      aria-label={`${comment.likedByMe ? "取消点赞" : "点赞"}，${comment.likeCount ?? 0} 个赞`}
+                      disabled={liking.has(comment.id)} onClick={() => void changeLike(comment.id, !comment.likedByMe)}>
+                      {comment.likedByMe ? <IoThumbsUp aria-hidden="true" /> : <IoThumbsUpOutline aria-hidden="true" />}
+                      <span>{comment.likeCount ?? 0}</span>
+                    </button>
+                    <button type="button" aria-label="回复" title="回复" onClick={() => { setReplyTo(comment.id); setReporting(undefined); }}>
+                      <IoArrowUndoOutline aria-hidden="true" />
+                      <span>回复</span>
+                    </button>
+                    {comment.authorId !== currentUserId ? (
+                      <button type="button" disabled={comment.reportedByMe} onClick={() => { setReporting(comment.id); setReplyTo(undefined); }}>
+                        {comment.reportedByMe ? "已举报" : "举报"}
+                      </button>
+                    ) : null}
+                  </> : null}
+                  {comment.authorId === currentUserId && onDeleteComment ? (
+                    <button type="button" className="annotation-comment__delete" aria-label="删除想法" title="删除想法" disabled={deletingCommentId === comment.id} onClick={() => void removeComment(comment.id)}>
+                      <IoTrashOutline aria-hidden="true" />
+                      <span>{deletingCommentId === comment.id ? "删除中…" : "删除"}</span>
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
               {reporting === comment.id ? (
                 <div className="annotation-report-form">
                   <div className="annotation-report-form__heading">选择原因</div>

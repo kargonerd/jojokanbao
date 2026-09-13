@@ -10,6 +10,7 @@ const annotationApi = vi.hoisted(() => ({
   reportAnnotationComment: vi.fn(),
   setAnnotationCommentLike: vi.fn(),
   deleteMyAnnotationMark: vi.fn(),
+  deleteMyAnnotationComment: vi.fn(),
 }));
 
 vi.mock("../src/annotations/api", () => annotationApi);
@@ -236,5 +237,71 @@ describe("useAnnotationThreads", () => {
     await waitFor(() => expect(result.current.threads).toHaveLength(2));
     expect(result.current.threads.map((value) => value.id)).toEqual(["annotation-chapter-1", "shared"]);
     expect(result.current.threads[0]).toMatchObject({ underlineCount: 1, underlinedByMe: true, publiclyVisible: false });
+  });
+
+  it("deletes a comment and updates the local thread with server snapshot", async () => {
+    const base = thread("chapter-1");
+    const comment1 = { id: "c1", annotationId: base.id, parentCommentId: null, authorId: "user-1", authorName: "读者", body: "第一条想法", visibility: "public" as const, createdAt: base.createdAt, reportedByMe: false };
+    const comment2 = { id: "c2", annotationId: base.id, parentCommentId: null, authorId: "user-2", authorName: "其他读者", body: "第二条想法", visibility: "public" as const, createdAt: base.createdAt, reportedByMe: false };
+    const initialThread = { ...base, comments: [comment1, comment2] };
+    annotationApi.loadAnnotationThreads.mockResolvedValue([initialThread]);
+    annotationApi.deleteMyAnnotationComment.mockResolvedValue({
+      annotationId: base.id,
+      thread: { ...initialThread, comments: [comment2] },
+    });
+
+    const { result } = renderHook(() => useAnnotationThreads(subject("chapter-1"), true, "user-1"));
+    await waitFor(() => expect(result.current.threads[0]?.comments).toHaveLength(2));
+
+    await act(async () => {
+      await result.current.deleteComment("c1");
+    });
+
+    expect(annotationApi.deleteMyAnnotationComment).toHaveBeenCalledWith("c1", "user-1");
+    expect(result.current.threads[0]?.comments).toHaveLength(1);
+    expect(result.current.threads[0]?.comments[0]?.id).toBe("c2");
+  });
+
+  it("removes the thread completely when the only thought is deleted and there is no underline", async () => {
+    const base = { ...thread("chapter-1"), underlineCount: 0, underlinedByMe: false, publiclyVisible: false };
+    const comment1 = { id: "c1", annotationId: base.id, parentCommentId: null, authorId: "user-1", authorName: "读者", body: "唯一想法", visibility: "public" as const, createdAt: base.createdAt, reportedByMe: false };
+    const initialThread = { ...base, comments: [comment1] };
+    annotationApi.loadAnnotationThreads.mockResolvedValue([initialThread]);
+    annotationApi.deleteMyAnnotationComment.mockResolvedValue({
+      annotationId: base.id,
+      thread: null,
+    });
+
+    const { result } = renderHook(() => useAnnotationThreads(subject("chapter-1"), true, "user-1"));
+    await waitFor(() => expect(result.current.threads).toHaveLength(1));
+
+    await act(async () => {
+      await result.current.deleteComment("c1");
+    });
+
+    expect(annotationApi.deleteMyAnnotationComment).toHaveBeenCalledWith("c1", "user-1");
+    expect(result.current.threads).toHaveLength(0);
+  });
+
+  it("ignores a late deleteComment response if user account has changed", async () => {
+    let finish!: (value: unknown) => void;
+    const base = thread("chapter-1");
+    const comment1 = { id: "c1", annotationId: base.id, parentCommentId: null, authorId: "user-1", authorName: "读者", body: "想法", visibility: "public" as const, createdAt: base.createdAt, reportedByMe: false };
+    annotationApi.loadAnnotationThreads.mockResolvedValue([{ ...base, comments: [comment1] }]);
+    annotationApi.deleteMyAnnotationComment.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+
+    const { result, rerender } = renderHook(({ user }) => useAnnotationThreads(subject("chapter-1"), true, user), { initialProps: { user: "user-1" } });
+    await waitFor(() => expect(result.current.threads).toHaveLength(1));
+
+    let pending!: Promise<unknown>;
+    act(() => { pending = result.current.deleteComment("c1").catch((error: unknown) => error); });
+
+    rerender({ user: "user-2" });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      finish({ annotationId: base.id, thread: null });
+      expect(await pending).toBeInstanceOf(Error);
+    });
   });
 });

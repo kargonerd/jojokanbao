@@ -38,4 +38,5 @@ export const {
   reportAnnotationComment,
   setAnnotationCommentLike,
   deleteMyAnnotationMark,
+  deleteMyAnnotationComment,
 } = api;

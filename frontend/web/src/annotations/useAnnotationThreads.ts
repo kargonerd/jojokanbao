@@ -3,6 +3,7 @@ import {
   addAnnotationComment,
   createAnnotation,
   deleteMyAnnotationMark,
+  deleteMyAnnotationComment,
   loadAnnotationThreads,
   reportAnnotationComment,
   setAnnotationCommentLike,
@@ -136,6 +137,25 @@ export function useAnnotationThreads(subject: AnnotationSubject, enabled: boolea
         updateThreads((threads) => threads.flatMap((thread) => thread.id === annotationId
           ? normalized ? [normalized] : []
           : [thread]));
+        return changed;
+      },
+      async deleteComment(commentId: string) {
+        const expectedUserId = requireCurrentUser();
+        const changed = await deleteMyAnnotationComment(commentId, expectedUserId);
+        requireCurrentUser();
+        const normalized = changed.thread ? compatibleThread(changed.thread, currentUserId) : undefined;
+        updateThreads((threads) => threads.flatMap((thread) => {
+          if (changed.annotationId ? thread.id === changed.annotationId : thread.comments.some((c) => c.id === commentId)) {
+            if (normalized) return [normalized];
+            if (changed.annotationId && changed.thread === null) return [];
+            const remaining = thread.comments.filter((c) => c.id !== commentId);
+            if (thread.underlinedByMe || remaining.length > 0) {
+              return [{ ...thread, comments: remaining }];
+            }
+            return [];
+          }
+          return [thread];
+        }));
         return changed;
       },
       async like(annotationId: string, commentId: string, liked: boolean) {
