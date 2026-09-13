@@ -4,7 +4,7 @@ alter table private.feature_flag_operator_secret rename to operator_credentials;
 alter function private.feature_flag_operator_authorized(text) rename to operator_authorized;
 alter function private.require_feature_flag_operator(text) rename to require_operator;
 
--- Preserve the existing operator credential used by moderation, AI and maintenance.
+-- Preserve the existing operator credential used by moderation and AI.
 do $$
 declare routine record; definition text;
 begin
@@ -24,6 +24,14 @@ $$;
 
 alter policy reader_bookshelf_own on public.reader_bookshelf
   using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+
+-- Deployment checks this contract before publishing clients that require it.
+create function public.get_reader_runtime_contract()
+returns text language sql immutable set search_path = '' as $$
+  select '202609130002'::text;
+$$;
+revoke all on function public.get_reader_runtime_contract() from public;
+grant execute on function public.get_reader_runtime_contract() to anon, authenticated;
 
 create or replace function private.require_annotation_reader()
 returns uuid language plpgsql stable security definer set search_path = '' as $$

@@ -125,6 +125,9 @@ Web/Desktop 恢复联网时也刷新。无效响应保留有效缓存，公开�
 
 ## 部署与初始化
 
+Web 发布前查询数据库的 `get_reader_runtime_contract`。所需迁移未安装时，master 合并仍执行构建验证，
+Beta 上传暂缓；正式发布报错退出。完成运行环境配置与数据库迁移后，重新运行 Deploy Web 发布。
+
 1. 在 PostHog 核对五份全局配置，保留部署目标的实际值；确保公开项目 Token 能读取完整 payload。
 2. 配置客户端构建变量。Python API、Agent 和邮件额度 SCF 的运行环境均设置
    `POSTHOG_PROJECT_TOKEN`、`POSTHOG_API_HOST`。GitHub 构建变量不会自动成为云函数运行环境变量。
