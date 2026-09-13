@@ -31,12 +31,17 @@ describe("SelectableAnnotationArticle", () => {
     fireEvent.click(mark);
     const toolbar = screen.getByRole("toolbar", { name: "划线工具" });
     expect(within(toolbar).getByRole("button", { name: "复制" })).toBeTruthy();
+    const range = document.createRange();
+    range.selectNodeContents(mark);
+    window.getSelection()?.addRange(range);
     fireEvent.click(within(toolbar).getByRole("button", { name: "删除划线" }));
     expect(await screen.findByText("网络连接失败")).toBeTruthy();
     expect(container.querySelector("mark[data-underlined-by-me]")).toBeTruthy();
+    expect(window.getSelection()?.toString()).toBe("报刊正文");
     fireEvent.click(within(toolbar).getByRole("button", { name: "删除划线" }));
     await waitFor(() => expect(container.querySelector("mark")).toBeNull());
     expect(screen.getByText("报刊正文")).toBeTruthy();
+    expect(window.getSelection()?.rangeCount).toBe(0);
     expect(annotationApi.deleteMyAnnotationMark).toHaveBeenLastCalledWith(ownThread.id, "user-1");
   });
 

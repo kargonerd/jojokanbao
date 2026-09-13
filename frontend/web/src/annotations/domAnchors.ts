@@ -18,7 +18,9 @@ function textNodes(root: HTMLElement): Text[] {
       if (!parent || parent.closest("script,style,textarea,input,button,[aria-hidden='true']")) {
         return NodeFilter.FILTER_REJECT;
       }
-      return node.textContent ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+      // Range.surroundContents leaves empty text nodes at either edge. They
+      // still represent valid DOM selection boundaries, with zero text width.
+      return NodeFilter.FILTER_ACCEPT;
     },
   });
   let node = walker.nextNode();
@@ -126,6 +128,35 @@ function textSlices(
 export function clearAnnotationMarks(root: HTMLElement): void {
   root.querySelectorAll<HTMLElement>(MARK_SELECTOR).forEach((mark) => mark.replaceWith(...mark.childNodes));
   root.normalize();
+}
+
+/** Resolve pending jump feedback even when saving has split its text into annotation nodes. */
+export function textAnchorOverlapsText(root: HTMLElement, anchor: TextAnchor, query: string): boolean {
+  if (!query) return false;
+  const text = textNodes(root).map((node) => node.data).join("");
+  const location = locateAnchor(text, anchor);
+  if (!location) return false;
+  const start = text.indexOf(query);
+  return start >= 0 && start < location[1] && start + query.length > location[0];
+}
+
+/** Unwrap temporary highlights overlapping an anchor without removing nested annotations or links. */
+export function clearTextAnchorMarks(root: HTMLElement, selector: string, anchor: TextAnchor): boolean {
+  const text = textNodes(root).map((node) => node.data).join("");
+  const location = locateAnchor(text, anchor);
+  if (!location) return false;
+  let removed = false;
+  root.querySelectorAll<HTMLElement>(selector).forEach((mark) => {
+    const range = document.createRange();
+    range.selectNodeContents(mark);
+    const target = textAnchorFromRange(root, range);
+    if (target?.startOffset == null || target.endOffset == null
+      || target.endOffset <= location[0] || target.startOffset >= location[1]) return;
+    mark.replaceWith(...mark.childNodes);
+    removed = true;
+  });
+  if (removed) root.normalize();
+  return removed;
 }
 
 function wrapTextSlice(node: Text, start: number, end: number, thread: AnnotationThread, onOpen: OpenAnnotation): void {

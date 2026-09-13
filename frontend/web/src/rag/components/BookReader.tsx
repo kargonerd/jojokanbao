@@ -19,9 +19,11 @@ import { AnnotationDiscussionPanel } from "../../annotations/AnnotationDiscussio
 import { AnnotationMarkPopover } from "../../annotations/AnnotationMarkPopover";
 import {
   clearReaderExplanationMarks,
+  clearTextAnchorMarks,
   renderAnnotationMarks,
   renderReaderExplanationMarks,
   textAnchorFromRange,
+  textAnchorOverlapsText,
 } from "../../annotations/domAnchors";
 import type { AnnotationVisibility, TextAnchor } from "../../annotations/types";
 import { useAnnotationThreads } from "../../annotations/useAnnotationThreads";
@@ -266,6 +268,8 @@ export function BookReader({
       ? { chapterId: query.get("chapter"), progress: Math.max(0, Math.min(1, position)) } : null;
   })());
   const jumpTimerRef = useRef<number | undefined>(undefined);
+  const dismissedFocusRef = useRef<string | undefined>(undefined);
+  const focusRequestKey = focusText ? JSON.stringify([datasetId, itemId, activeChapterId, focusText.token]) : undefined;
   const aiPreparationRef = useRef(0);
 
   const activeChapterIndex = Math.max(0, chapters.findIndex((chapter) => chapter.id === activeChapterId));
@@ -755,6 +759,7 @@ export function BookReader({
   useEffect(() => {
     if (!focusText?.text || contentLoading) return;
     const timer = window.setTimeout(() => {
+      if (dismissedFocusRef.current === focusRequestKey) return;
       const root = chapterRoot();
       if (!root) return;
       root.querySelectorAll("mark[data-book-search-target]").forEach((mark) => mark.replaceWith(...mark.childNodes));
@@ -783,7 +788,7 @@ export function BookReader({
       if (title) revealElement(title);
     }, 140);
     return () => window.clearTimeout(timer);
-  }, [contentLoading, focusAnchorId, focusText, mode, pageMetrics.step, revealElement, chapterRoot, positionRevision]);
+  }, [contentLoading, focusAnchorId, focusText, focusRequestKey, mode, pageMetrics.step, revealElement, chapterRoot, positionRevision]);
 
   function startReaderTap(event: ReactPointerEvent<HTMLElement>): void {
     suppressSwipeClickRef.current = false;
@@ -964,6 +969,25 @@ export function BookReader({
     setThoughtSelection(undefined);
   }
 
+  function clearAnnotationSelection(anchor: TextAnchor, chapterId: string): void {
+    clearSelection();
+    const root = chapterRoot(chapterId);
+    if (!root) return;
+    const removed = clearTextAnchorMarks(root, "mark[data-book-search-target]", anchor);
+    // A layout update must not recreate a dismissed note/search highlight.
+    // Also cover an annotation saved before the pending focus timer has run.
+    if (chapterId === activeChapterId && (removed || (focusText?.text
+      && textAnchorOverlapsText(root, anchor, focusText.text.replace(/\s+/g, " ").trim())))) {
+      dismissedFocusRef.current = focusRequestKey;
+    }
+  }
+
+  async function removeUnderline(thread: AnnotationThread): Promise<void> {
+    await annotations.removeMark(thread.id);
+    clearAnnotationSelection(thread, thread.sectionId);
+    setSelectedMark(undefined);
+  }
+
   function composeThought(): void {
     if (!textSelection) return;
     setThoughtSelection(textSelection);
@@ -1003,7 +1027,7 @@ export function BookReader({
     setAnnotationSaving(true);
     try {
       await annotations.create(anchor);
-      clearSelection();
+      clearAnnotationSelection(anchor, annotationChapterId);
       setReaderNotice("已划线");
     } catch (reason) { setReaderNotice(reason instanceof Error ? reason.message : String(reason)); }
     finally { setAnnotationSaving(false); }
@@ -1018,7 +1042,7 @@ export function BookReader({
     try {
       const saved = await annotations.create(anchor, thought.trim(), thoughtVisibility);
       setDiscussionChapterId(thoughtSelection?.chapterId || activeChapterId);
-      clearSelection();
+      clearAnnotationSelection(anchor, annotationChapterId);
       setActiveAnnotationId(saved.id);
       setThought("");
       setThoughtVisibility("public");
@@ -1220,7 +1244,7 @@ export function BookReader({
 
     {ownMark && selectedMark && annotationAccess ? <AnnotationMarkPopover key={ownMark.id}
       thread={ownMark} rect={selectedMark.rect} onClose={() => setSelectedMark((current) => current?.id === ownMark.id ? undefined : current)}
-      onDelete={() => annotations.removeMark(ownMark.id)}
+      onDelete={() => removeUnderline(ownMark)}
       onDiscuss={() => { setActiveAnnotationId(ownMark.id); setSelectedMark(undefined); }}
     /> : null}
 
@@ -1231,7 +1255,7 @@ export function BookReader({
       onComment={(body, parentCommentId, visibility) => annotations.comment(activeAnnotation.id, body, parentCommentId, visibility)}
       onReport={(commentId, reason, details) => annotations.report(activeAnnotation.id, commentId, reason, details)}
       onLike={(commentId, liked) => annotations.like(activeAnnotation.id, commentId, liked)}
-      onDeleteMark={() => annotations.removeMark(activeAnnotation.id)}
+      onDeleteMark={() => removeUnderline(activeAnnotation)}
     /> : null}
 
     {toolPopover && <BookNavigationSheet mobile={mobileViewport} key={toolPopover} compact={toolPopover !== "notes"} title={toolPopover === "progress" ? "阅读进度" : toolPopover === "notes" ? "阅读笔记" : "文字设置"} label={toolPopover === "progress" ? "阅读进度面板" : toolPopover === "notes" ? "阅读笔记面板" : "文字设置面板"} onClose={() => { setToolPopover(undefined); setProgressPreview(undefined); }} panelClass={panelClass}>

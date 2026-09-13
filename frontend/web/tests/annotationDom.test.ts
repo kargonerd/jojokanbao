@@ -57,6 +57,23 @@ describe("shared annotation DOM anchors", () => {
     expect(textAnchorFromRange(root, range)).toBeUndefined();
   });
 
+  it("captures a paragraph or text-node selection at the empty boundaries of a search highlight", () => {
+    const root = document.createElement("div");
+    root.innerHTML = "<p>这是正文。</p>";
+    document.body.append(root);
+    const paragraph = root.querySelector("p")!;
+    const range = document.createRange();
+    range.selectNodeContents(paragraph.firstChild!);
+    range.surroundContents(document.createElement("mark"));
+    expect(paragraph.firstChild?.textContent).toBe("");
+    expect(paragraph.lastChild?.textContent).toBe("");
+    range.selectNodeContents(paragraph);
+    expect(textAnchorFromRange(root, range)).toMatchObject({ quote: "这是正文。", startOffset: 0, endOffset: 5 });
+    range.setStart(paragraph.firstChild!, 0);
+    range.setEnd(paragraph.lastChild!, 0);
+    expect(textAnchorFromRange(root, range)).toMatchObject({ quote: "这是正文。", startOffset: 0, endOffset: 5 });
+  });
+
   it("opens only the innermost thread when annotation ranges overlap", () => {
     const root = document.createElement("div");
     root.textContent = "一段可以重叠划线的正文";

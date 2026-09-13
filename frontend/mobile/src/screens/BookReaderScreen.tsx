@@ -526,9 +526,9 @@ export function BookReaderScreen({ route, navigation }: Props) {
     setActiveChapterId(chapterId);
   }
 
-  function clearSelection() {
+  function clearSelection(annotation?: Parameters<typeof createBookReaderClearSelectionScript>[0]) {
     setSelection(undefined);
-    webViewRef.current?.injectJavaScript(createBookReaderClearSelectionScript());
+    webViewRef.current?.injectJavaScript(createBookReaderClearSelectionScript(annotation));
   }
 
   function handleReaderMessage(event: WebViewMessageEvent) {
@@ -770,18 +770,21 @@ export function BookReaderScreen({ route, navigation }: Props) {
       note: note?.trim() || undefined,
     });
     webViewRef.current?.injectJavaScript(createBookReaderApplyAnnotationScript(created));
-    clearSelection();
+    clearSelection({ chapterId: created.chapterId, start: created.start, end: created.end, quote: created.quote, prefix: created.prefix, suffix: created.suffix });
     return created;
   }
   async function saveCloudAnnotation(selected: BookReaderSelectionMessage, note?: string, visibility: AnnotationVisibility = "public") {
+    const context = noteContext;
     const chapterId = selected.chapterId ?? activeChapterId;
     const contentDatasetId = loaded?.manifest.datasetId ?? datasetId;
     const contentItemId = loaded?.manifest.itemId ?? loaded?.volume.itemId ?? itemKey;
-    return cloudAnnotations.create({
+    const created = await cloudAnnotations.create({
       contentType: "book", contentId: `${contentDatasetId}:${contentItemId}`, sectionId: chapterId,
       contentTitle: `${title} · ${chapters.find((entry) => entry.id === chapterId)?.title ?? "正文"}`,
       contentUrl: `/book/${encodeURIComponent(datasetId)}/${encodeURIComponent(itemKey)}?${new URLSearchParams({ chapter: chapterId })}`,
     }, { quote: selected.text, prefix: selected.prefix ?? "", suffix: selected.suffix ?? "", startOffset: selected.start, endOffset: selected.end }, note, visibility);
+    if (noteContextRef.current === context) clearSelection({ chapterId, start: selected.start, end: selected.end, quote: selected.text, prefix: selected.prefix, suffix: selected.suffix });
+    return created;
   }
   async function underlineSelection() {
     if (!selection || noteRequestRef.current) return;
@@ -847,6 +850,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
   }
   function deleteAnnotation(annotation: BookAnnotation) {
     removeBookAnnotation(annotation.id);
+    clearSelection({ chapterId: annotation.chapterId, start: annotation.start, end: annotation.end, quote: annotation.quote, prefix: annotation.prefix, suffix: annotation.suffix });
     if (bookReadingMode === "scroll" || annotation.chapterId === activeChapterId) webViewRef.current?.injectJavaScript(createBookReaderRemoveAnnotationScript(annotation.id));
     if (activeAnnotationId === annotation.id) setActiveAnnotationId(undefined);
     if (noteComposer?.annotationId === annotation.id) setNoteComposer(undefined);
@@ -854,6 +858,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
   }
   function deleteLocalUnderline(annotation: BookAnnotation) {
     removeBookAnnotationMark(annotation.id);
+    clearSelection({ chapterId: annotation.chapterId, start: annotation.start, end: annotation.end, quote: annotation.quote, prefix: annotation.prefix, suffix: annotation.suffix });
     webViewRef.current?.injectJavaScript(createBookReaderRemoveAnnotationScript(annotation.id));
     setNoteComposer(undefined); setActiveAnnotationId(undefined);
     setReaderNotice("已删除划线");
@@ -863,6 +868,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
     const context = noteContext;
     const changed = await cloudAnnotations.removeMark(thread);
     if (noteContextRef.current !== context) return;
+    clearSelection({ chapterId: thread.sectionId, start: thread.startOffset ?? -1, end: thread.endOffset ?? -1, quote: thread.quote, prefix: thread.prefix, suffix: thread.suffix });
     if (!changed?.underlinedByMe && !changed?.publiclyVisible) webViewRef.current?.injectJavaScript(createBookReaderRemoveAnnotationScript(thread.id));
     setActiveAnnotationId((id) => id === thread.id ? undefined : id);
     setReaderNotice("已删除自己的划线");

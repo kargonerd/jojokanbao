@@ -288,6 +288,26 @@ describe("book thought integration", () => {
     await act(async () => view.root.findByProps({ testID: "selection-toolbar" }).props.onThought());
   }
 
+  it.each([true, false])("clears native selection and its temporary annotation feedback after a successful underline (signed in: %s)", async (signedIn) => {
+    if (!signedIn) mocks.user = null;
+    await renderReader();
+    await message({ type: "reader-selection", chapterId: "c1", text: "所选正文", start: 4, end: 8, prefix: "前文", suffix: "后文" });
+    mocks.injectJavaScript.mockClear();
+    await act(async () => view.root.findByProps({ testID: "selection-toolbar" }).props.onUnderline());
+    expect(view.root.findAllByProps({ testID: "selection-toolbar" })).toHaveLength(0);
+    expect(mocks.injectJavaScript.mock.calls.some(([script]) => script.includes('__jojoReaderClearSelection({"chapterId":"c1","start":4,"end":8,"quote":"所选正文"'))).toBe(true);
+  });
+
+  it("keeps the selected text available when saving an underline fails", async () => {
+    await renderReader();
+    await message({ type: "reader-selection", chapterId: "c1", text: "所选正文", start: 4, end: 8 });
+    mocks.createAnnotation.mockRejectedValueOnce(new Error("offline"));
+    mocks.injectJavaScript.mockClear();
+    await act(async () => view.root.findByProps({ testID: "selection-toolbar" }).props.onUnderline());
+    expect(view.root.findAllByProps({ testID: "selection-toolbar" })).toHaveLength(1);
+    expect(mocks.injectJavaScript.mock.calls.some(([script]) => script.includes("__jojoReaderClearSelection"))).toBe(false);
+  });
+
   it("keeps private draft on a failed save and sends the chosen visibility when retried", async () => {
     await renderReader(); await compose();
     expect(composer().props.localOnly).toBe(false);
@@ -336,6 +356,28 @@ describe("book thought integration", () => {
     expect(notes?.props.data[0].thread.comments[0].body).toBe("保留私密想法");
     expect(mocks.injectJavaScript.mock.calls.some(([script]) => script.includes("__jojoReaderRemoveAnnotation") && script.includes(thread.id))).toBe(true);
     expect(mocks.state.removeBookAnnotation).not.toHaveBeenCalled();
+    expect(view.root.findAllByProps({ testID: "selection-toolbar" })).toHaveLength(0);
+    expect(mocks.injectJavaScript.mock.calls.some(([script]) => script.includes('__jojoReaderClearSelection({"chapterId":"c1","start":0,"end":2,"quote":"原文"'))).toBe(true);
+  });
+
+  it("clears selection after removing my underline while preserving a remaining public discussion mark", async () => {
+    const thread = await mocks.createAnnotation({ contentType: "book", contentId: "books:book", sectionId: "c1", contentTitle: "测试书" }, { quote: "原文", startOffset: 0, endOffset: 2, prefix: "", suffix: "" }, "保留公开想法", "public");
+    mocks.annotationThreads.mockResolvedValue([thread]);
+    await renderReader();
+    await message({ type: "reader-selection", chapterId: "c1", text: "原文", start: 0, end: 2 });
+    await message({ type: "reader-annotation", id: thread.id });
+    const changed = { ...thread, underlinedByMe: false, publiclyVisible: true };
+    mocks.deleteMyAnnotationMark.mockResolvedValue(changed);
+    mocks.personalNotes.mockResolvedValue([changed]);
+    mocks.injectJavaScript.mockClear();
+    await act(async () => view.root.findByProps({ testID: "annotation-discussion" }).props.onRemoveMark());
+    expect(view.root.findAllByProps({ testID: "selection-toolbar" })).toHaveLength(0);
+    expect(mocks.injectJavaScript.mock.calls.some(([script]) => script.includes('__jojoReaderClearSelection({"chapterId":"c1","start":0,"end":2,"quote":"原文"'))).toBe(true);
+    expect(mocks.injectJavaScript.mock.calls.some(([script]) => script.includes("__jojoReaderRemoveAnnotation"))).toBe(false);
+    await message({ type: "reader-tap" });
+    await act(async () => tool("笔记").props.onPress());
+    const notes = view.root.findAllByType("section").find((node) => node.props.data?.some((item: { id: string }) => item.id === thread.id));
+    expect(notes?.props.data[0].thread.comments[0].body).toBe("保留公开想法");
   });
 
   it("wires local underline removal separately from deleting the local thought", async () => {
@@ -347,6 +389,7 @@ describe("book thought integration", () => {
     expect(mocks.state.removeBookAnnotationMark).toHaveBeenCalledExactlyOnceWith("local");
     expect(mocks.state.removeBookAnnotation).not.toHaveBeenCalled();
     expect(view.root.findAllByProps({ testID: "thought-composer" })).toHaveLength(0);
+    expect(mocks.injectJavaScript.mock.calls.some(([script]) => script.includes('__jojoReaderClearSelection({"chapterId":"c1","start":0,"end":2,"quote":"原文"'))).toBe(true);
   });
 
   it("keeps guest writing local without publishing it", async () => {

@@ -4,9 +4,12 @@ import type { JojoFragment } from "@jojo/content";
 import { bookChapterAnchorId, createBookChapterMarkup } from "./bookDocument";
 import {
   createBookReaderApplyAnnotationScript,
+  createBookReaderClearSelectionScript,
   createBookReaderBridgeScript,
   createBookReaderInsertChapterScript,
   createBookReaderRevealAnchorScript,
+  createBookReaderLocateTextScript,
+  createBookReaderRemoveAnnotationScript,
   createBookReaderSpeechPositionScript,
   createBookReaderSpeechHighlightScript,
   type BookReaderAnnotationMarker,
@@ -282,6 +285,63 @@ describe("continuous chapter WebView bridge", () => {
     execute(createBookReaderApplyAnnotationScript({ id: "cloud", chapterId: "chapter-2", start: 1, end: 4, quote: "乙丙丁", prefix: "甲", suffix: "戊己" }));
     expect(paragraph("chapter-2").querySelector('mark[data-annotation-id="cloud"]')?.textContent).toBe("乙丙丁");
     expect(root("chapter-1").querySelector("mark")).toBeNull();
+  });
+
+  it("clears the selected annotation's temporary jump highlight without clearing other chapters or footnotes", () => {
+    mount();
+    const anchor = { chapterId: "chapter-2", start: 1, end: 4, quote: "乙丙丁", prefix: "甲", suffix: "戊己" };
+    execute(createBookReaderApplyAnnotationScript({ id: "own", ...anchor }));
+    execute(createBookReaderLocateTextScript("乙丙丁", "chapter-2"));
+    const temporary = paragraph("chapter-2").querySelector("mark[data-search-target]")!;
+    expect(temporary).not.toBeNull();
+    const first = paragraph("chapter-1");
+    first.innerHTML = '<mark data-search-target="unrelated">无关搜索</mark>';
+    first.setAttribute("data-book-jump-target", "true");
+    select(temporary.firstChild!, 0, temporary.firstChild!, 3);
+
+    execute(createBookReaderClearSelectionScript(anchor));
+
+    expect(window.getSelection()?.toString()).toBe("");
+    expect(messages.at(-1)).toEqual({ type: "reader-selection-clear" });
+    expect(root("chapter-2").querySelector("mark[data-search-target]")).toBeNull();
+    expect(root("chapter-2").querySelector("[data-book-jump-target]")).toBeNull();
+    expect(root("chapter-2").querySelector('mark[data-annotation-id="own"]')?.textContent).toBe("乙丙丁");
+    expect(first.querySelector("mark[data-search-target]")?.textContent).toBe("无关搜索");
+    expect(first.hasAttribute("data-book-jump-target")).toBe(true);
+  });
+
+  it("unwraps only a deleted mark while preserving nested public marks, links and formatting", () => {
+    mount();
+    const block = paragraph("chapter-2");
+    block.innerHTML = '<mark data-annotation-id="own"><em>甲</em><mark data-annotation-id="public">乙丙</mark><a href="#footnote">丁</a></mark>戊己';
+    const text = block.textContent;
+    execute(createBookReaderRemoveAnnotationScript("own"));
+    expect(block.querySelector('mark[data-annotation-id="own"]')).toBeNull();
+    expect(block.querySelector('mark[data-annotation-id="public"]')?.textContent).toBe("乙丙");
+    expect(block.querySelector("em")?.textContent).toBe("甲");
+    expect(block.querySelector("a")?.getAttribute("href")).toBe("#footnote");
+    expect(block.textContent).toBe(text);
+  });
+
+  it("preserves saved marks when replacing a temporary text-location wrapper", () => {
+    mount();
+    const block = paragraph("chapter-2");
+    block.innerHTML = '甲<mark data-search-target="old"><mark data-annotation-id="public">乙丙</mark>丁</mark>戊己';
+    execute(createBookReaderLocateTextScript("戊己", "chapter-2"));
+    expect(block.querySelector('mark[data-annotation-id="public"]')?.textContent).toBe("乙丙");
+    expect(block.querySelector("mark[data-search-target]")?.textContent).toBe("戊己");
+    expect(block.textContent).toBe("甲乙丙丁戊己");
+  });
+
+  it("leaves search and footnote feedback intact when only dismissing the selection toolbar", () => {
+    mount();
+    execute(createBookReaderLocateTextScript("乙丙丁", "chapter-2"));
+    const temporary = paragraph("chapter-2").querySelector("mark[data-search-target]")!;
+    select(temporary.firstChild!, 0, temporary.firstChild!, 3);
+    execute(createBookReaderClearSelectionScript());
+    expect(window.getSelection()?.toString()).toBe("");
+    expect(paragraph("chapter-2").querySelector("mark[data-search-target]")).toBe(temporary);
+    expect(temporary.hasAttribute("data-book-jump-target")).toBe(true);
   });
 
   it("chooses the repeated quote whose surrounding context matches, ahead of an unrelated nearby occurrence", () => {
