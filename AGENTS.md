@@ -44,13 +44,14 @@ pnpm test:backend
 
 ## 运行配置约定
 
-- 已迁移的 `auth.signup`、`reader.annotations`、`ai.usage_limits`、`ops.email_quota` 参数在 PostHog Remote config 管理，现有数据库 `config` 保留为服务端缓存和审计记录。同步由 `tools/posthog` 执行；管理台按 `configProvider` 只读展示。QQ群号使用公开的 `support_config`。接入和切换步骤见 `docs/posthog.md`。
-- 新增配置前，先查找并复用已有配置存储、读取函数和管理入口。限额、阈值、超时等少量运行参数，优先放入 `private.feature_flags.config`，不为一组参数单独建立 `*_settings` 或 `*_policy` 表。
-- 同一功能的参数归入已有 flag；独立功能可新增有明确业务含义的 key。`rules` 表达启用范围，`config` 表达参数，两者是否关联由业务明确规定；不能通过规则开关意外关闭必须执行的限额。
-- 管理入口复用 JOJO 管理台的功能开关页面，以及现有 Operator 发布、版本冲突检查、修改历史和回滚能力；保留未修改的规则与配置字段。
+- `auth.signup`、`reader.annotations`、`ai.usage_limits`、`ops.email_quota` 参数在 PostHog Remote config 管理，`private.feature_flags.config` 是服务端缓存和审计存储。同步由 `tools/posthog` 执行；管理台按 `configProvider` 只读展示。QQ群号使用公开的 `support_config`。部署步骤见 `docs/posthog.md`。
+- 新增配置前，先查找并复用已有配置文档、存储、读取函数和管理入口。限额、阈值、超时等少量运行参数优先扩展 PostHog Remote config，服务端读取复用 `private.feature_flags.config` 缓存，不为一组参数单独建立 `*_settings` 或 `*_policy` 表。
+- 同一功能的参数归入同一份配置；独立功能可新增有明确业务含义的 key。功能启用范围与运行参数的关系由业务明确规定；必须执行的限额始终生效。
+- 参数修改与回滚在 PostHog 完成，JOJO 管理台展示服务端实际值、同步时间和历史。同步复用 Operator 鉴权、版本冲突检查和审计发布，保留未修改的规则与配置字段。
 - 写入端校验参数类型和范围，读取端明确默认值、边界及生效时机。配置表不存密钥，也不存用户计数、并发租约、任务状态等运行数据；后者使用各自的状态存储。
 - 合并旧配置时用新迁移保留线上实际值，不用默认值覆盖；保持业务状态和历史，切换读取路径后再删除冗余表。确需独立配置表时，在 PR 中说明现有机制无法满足的具体需求。
 - 具体边界、现有配置示例和接入步骤见 [运行配置复用](infrastructure/supabase/README.md#runtime-configuration-reuse)。
+- 设计与使用文档直接描述当前结构、行为和操作方法；接入过程、已删除开关和新旧设计对比放在 PR 记录中。
 
 ## Agent 约定
 

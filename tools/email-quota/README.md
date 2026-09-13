@@ -28,13 +28,14 @@ GitHub 工作流只做离线代码验证。
 表示付费套餐无限日额度；月额度仍检查。周期遵从接口的重置时间，避免自行
 计算账期。请求有 8 秒超时及 64 KiB 响应上限；函数上限 55 秒，并发上限 1。
 
-预警和紧急阈值复用 `private.feature_flags` 的 `ops.email_quota.config`：
+预警和紧急阈值在 PostHog 的 `ops_email_quota_config` 管理，
+由同步工作流写入 `private.feature_flags` 的 `ops.email_quota.config`：
 `warningPercent` 默认 80，`criticalPercent` 默认 90；耗尽固定为 100。
 `usageSource` 默认 `records`；估算采用 `dailyLimit=100`、`monthlyLimit=3000`，
-与本账号已核实的免费套餐一致，更换套餐时从同一管理入口更新。
-发布端要求整数且 `1 <= warning < critical <= 99`。管理台功能开关页面沿用
-Operator 发布、revision 冲突检查、历史与回滚，保留无关配置和规则。
-每次检查读取新配置；规则不能关闭额度检查。公开 RPC 只返回这五个非敏感
+更换套餐时在 PostHog 更新额度参数。
+写入要求整数且 `1 <= warning < critical <= 99`；同步执行 Operator 鉴权、
+revision 冲突检查及审计记录。管理台只读展示服务端实际值、版本与同步时间。
+每次检查读取成功同步的配置，额度检查始终执行。公开 RPC 只返回这五个非敏感
 策略值，不暴露实际用量、规则、账号、密钥或历史。
 
 ## 通知和去重

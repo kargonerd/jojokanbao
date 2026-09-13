@@ -1,10 +1,10 @@
 # JOJO Web
 
-`@jojo/web` 是部署到 `reader.jojokanbao.cn` 的统一 Web 客户端。应用外壳、首页、资料库分别位于 `src/shell`、`src/home`、`src/library`；Archive、Account、RAG、JOJO Times 分别位于 `src/archive`、`src/account`、`src/rag`、`src/times`。不再为每个模块维护独立 SPA，也不额外套 `features/`。
+`@jojo/web` 是部署到 `reader.jojokanbao.cn` 的统一 Web 客户端。应用外壳、首页、资料库分别位于 `src/shell`、`src/home`、`src/library`；Archive、Account、RAG、JOJO Times 分别位于 `src/archive`、`src/account`、`src/rag`、`src/times`，由统一应用外壳组织路由。
 
 ## 路由与发布
 
-生产、预览和本地开发统一使用当前首页、资料库、账号和阅读界面；不再维护旧站构建分支。`/archive` 跳转资料库，`/legacy/*` 返回首页，报刊阅读入口保留。Beta 与 stable 继续通过既有发布渠道区分。
+生产、预览和本地开发使用统一的首页、资料库、账号和阅读界面。`/archive` 跳转资料库，`/legacy/*` 返回首页，报刊阅读入口提供深链接访问。Beta 与 stable 通过发布渠道区分。
 
 旧 Reader 地址（例如 `/rmrb/19761009#page-5`）以及短暂使用过的 `/reader/*` 前缀会迁移到 `/archive/*`，并保留查询参数和锚点。静态托管必须将未知路径回退到 `index.html`，否则深链接会返回 404。
 
@@ -65,10 +65,10 @@ Base 或直连 Agent 域名。AI 与时事入口仍只向已登录读者显示�
 
 ## 划线评论
 
-最新设计中的书籍阅读器和新闻正文共用 `src/annotations/`。读者必须登录且命中
-`reader.annotations` 功能开关，才能读取划线、发表评论、回复其他读者或举报评论。
-旧 `src/archive/` PDF 页面不接入此能力。后端契约由 Supabase 迁移
-`202608180001_unified_annotations.sql` 提供。
+书籍阅读器和新闻正文共用 `src/annotations/`。登录读者按内容可见性与数据权限
+读取划线、发表评论、回复其他读者或举报评论。
+该组件面向可选取的正文，报刊 PDF 使用自身阅读器。
+后端契约由 Supabase 的批注表、RLS 和 RPC 提供。
 
 `202609120002_annotation_comment_likes.sql` 为公开想法及回复增加点赞／取消点赞，
 服务端按点赞数降序、发表时间升序、评论 ID 排序；前端操作后保持同样顺序。
@@ -76,7 +76,7 @@ Base 或直连 Agent 域名。AI 与时事入口仍只向已登录读者显示�
 迁移需先于客户端发布，Web 和 Desktop 共用此实现。
 
 同一迁移还提供通用站内通知表和用户 RPC。回复评论会通知被回复者，直接评论划线会
-通知划线作者；自己触发的事件不会给自己发通知。登录读者可从新版页头进入
+通知划线作者；自己触发的事件不会给自己发通知。登录读者可从页头进入
 `/notifications`。同一账号共用前台 5 分钟刷新，后台暂停，返回前台时刷新并对
 30 秒内的重复事件去重。打开的信箱复用这次刷新同步列表，即使未读数量没有变化；
 其他页面只查询未读数。当前不包含邮件或系统推送。
@@ -98,7 +98,7 @@ IndexedDB，因此重启本地 Agent 不会清空历史。`.env.local` 可用
 `JOJO_AGENT_URL=http://127.0.0.1:8789/rag` 让 Web 开发代理连接它。正式环境不使用这套
 进程内聊天存储；国际 EdgeOne Makers Agent 只负责流式回答，Web 历史仍留在用户浏览器。
 
-书架、共享批注、听读已移除产品开关判断，保留登录与服务端校验。小型运行配置统一见 [PostHog 接入](../../docs/posthog.md)。
+书架、共享批注、听读是登录后可用的常规功能，访问权限由服务端校验。小型运行配置统一见 [PostHog 接入](../../docs/posthog.md)。
 
 其他未完成模块默认不可路由、不会显示在导航中，但源码仍会随项目进行类型检查和单元测试。账号模块需要配置根目录 `.env.example` 列出的 Supabase 浏览器端公开值。
 

@@ -1,10 +1,10 @@
 # JOJO 管理台
 
 Internal JOJO management application for PDF intake, publication data generation,
-append-only Elasticsearch repairs, feature flags, and Agent operations.
+append-only Elasticsearch repairs, runtime configuration inspection, and Agent operations.
 
 The product UI and internal package are both named **JOJO 管理台**, covering content operations, search maintenance,
-and runtime feature rules. `/content` is the JOJO v1 content importer and publisher. It accepts local
+and runtime configuration. `/content` is the JOJO v1 content importer and publisher. It accepts local
 WeRead WRX JSON, EPUB, and DRM-free MOBI 6/7 (`.azw`, `.mobi`, `.prc`) through a
 single-file picker. It runs the same [Content Pipeline](../content-pipeline/README.md),
 shows background job progress and diagnostics, then publishes Canonical data to
@@ -61,23 +61,22 @@ From the repository root:
 pnpm dev:admin
 ```
 
-功能开关页面位于 `http://127.0.0.1:4174/features`。它只通过同机 Flask
-服务访问 Supabase：Flask 从仓库根目录 `.env` 读取现有的
-`JOJO_OPERATOR_TOKEN`，浏览器不接收、不保存这个密钥，也不需要单独登录。
+`http://127.0.0.1:4174/features` 展示服务端运行配置。
+页面通过同机 Flask 访问 Supabase；Flask 从仓库根目录 `.env` 读取
+`JOJO_OPERATOR_TOKEN`，浏览器只接收查询结果。
 
-限额、阈值、超时等运行参数也在这个页面查看，复用同一 flag 的 `config`、发布原因和
-修改历史。应用 `202609120001_posthog_runtime_config.sql` 后，`auth.signup`、
-`reader.annotations`、`ai.usage_limits`、`ops.email_quota` 的配置源为 PostHog；
-页面按 `configProvider` 显示只读参数、同步时间和远端版本，修改与回滚在 PostHog 完成。
-已退役的书架、听读、RAG/Olds 工作区开关从列表隐藏，批注只保留公开阈值参数；原数据库行与历史保留供旧客户端使用。
-尚未迁移的数据库继续显示参数输入和 Operator 发布、回滚入口，批注参数发布/回滚保留原规则。后续同类参数优先扩展现有机制，
-存储边界和接入步骤见 [运行配置复用](../../infrastructure/supabase/README.md#runtime-configuration-reuse)。
+`auth.signup`、`reader.annotations`、`ai.usage_limits`、`ops.email_quota`
+在 PostHog Remote config 中编辑与回滚。管理台按 `configProvider=posthog` 只读展示
+服务端实际值、最后同步时间、远端版本和修改历史，也可导出快照。
+这用于确认 PostHog 的参数是否已同步到业务服务，或排查同步故障。
+新增参数的存储边界和接入步骤见
+[运行配置复用](../../infrastructure/supabase/README.md#runtime-configuration-reuse)。
 
 评论审核页面位于 `http://127.0.0.1:4174/moderation`。它复用同一个
 `JOJO_OPERATOR_TOKEN`，读取读者举报并支持隐藏、恢复评论或驳回举报；每次操作
 必须填写理由，数据库会保留审核事件。管理员 token 始终只由同机 Flask 代理读取。
 
-首次启用功能开关管理时，需要在目标 Supabase 项目中执行已评审的迁移，并按
+首次部署管理台时，需要在目标 Supabase 项目中执行已评审的迁移，并按
 `infrastructure/supabase/README.md` 将同一个 Operator Token 的摘要写入数据库。
 
 Agent 管理页面位于 `http://127.0.0.1:4174/agent`。设置
@@ -98,10 +97,8 @@ Antigravity 使用独立加密命名空间，更新时保留项目 ID，不替�
 管理台的 provider 选择决定上传对象；实际运行时切换在 Agent 环境设置
 `JOJO_AGENT_PROVIDER`，并清空 `JOJO_AGENT_MODEL` 使用该 provider 默认模型或指定兼容模型。
 
-划线评论和审核依赖
-`infrastructure/supabase/migrations/202608180001_unified_annotations.sql`。部署迁移后，
-匿名角色没有表或用户 RPC 权限；登录读者通过 `reader.annotations` 功能开关访问，
-Workbench 通过 operator RPC 审核。
+划线评论和审核使用 Supabase 表及 RPC。登录读者按内容可见性和数据权限访问，
+匿名角色没有表或用户 RPC 权限；管理台通过 Operator RPC 审核。
 
 人民日报缺失正文工作台位于 `http://127.0.0.1:4174/rmrb-review`。它读取由
 Hugging Face Canonical 生成的 `indexes/missing-articles.jsonl.gz`，按日期升序展示

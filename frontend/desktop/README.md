@@ -1,8 +1,7 @@
 # JOJO看报 Desktop
 
-`@jojo/desktop` 是 JOJO看报新版 Web 体验的 Electron 客户端。Renderer 直接复用 Web 的
-`AppLayout`、`AppHeader`、首页、资料库、搜索、报刊/书籍阅读器、AI 和 Account；
-旧版 Archive 首页不进入桌面导航或 renderer 构建。
+`@jojo/desktop` 是 JOJO看报的 Electron 客户端。Renderer 直接复用 Web 的
+`AppLayout`、`AppHeader`、首页、资料库、搜索、报刊/书籍阅读器、AI 和 Account。
 
 当前目录边界：
 
