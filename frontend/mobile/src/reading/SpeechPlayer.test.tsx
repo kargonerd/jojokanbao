@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   eInk: false, focused: true, user: { id: "reader" } as { id: string } | null,
   enabled: true, flagUserId: "reader", playbackUnmount: vi.fn(),
   setBrightness: vi.fn(async (_value: number) => undefined),
+  materializeArtwork: vi.fn(), playbackProps: vi.fn(),
   annotationThreads: vi.fn(async () => [] as AnnotationThread[]),
   personalNotes: vi.fn(async () => [] as AnnotationThread[]),
   createAnnotation: vi.fn(),
@@ -74,11 +75,13 @@ vi.mock("./featureFlag", () => ({ useSpeechFlagStore: (select?: (state: unknown)
 } }));
 vi.mock("./useSpeechPlayback", async () => {
   const { useEffect } = await import("react");
-  return { useSpeechPlayback: () => {
+  return { useSpeechPlayback: (props: object) => {
+    mocks.playbackProps(props);
     useEffect(() => () => mocks.playbackUnmount(), []);
     return mocks.playback;
   } };
 });
+vi.mock("./speechArtwork", () => ({ materializeSpeechArtwork: mocks.materializeArtwork }));
 vi.mock("./SpeechLoading", async () => {
   const { createElement } = await import("react");
   return { SpeechLoading: () => createElement("span", { "data-testid": "speech-loading-bars" }) };
@@ -160,11 +163,72 @@ beforeEach(() => {
   mocks.state.bookPaperColor = "white";
   mocks.playback.part = 0; mocks.playback.playing = true; mocks.playback.elapsed = 12; mocks.playback.busy = false;
   mocks.playback.chapter = { id: "c1", title: "第一章", segments: ["第一段。这里还有一句。", "第二段。接着朗读。"] };
+  mocks.materializeArtwork.mockReset().mockImplementation(async (uri: string) => ({ uri, release: vi.fn() }));
   mocks.shelfContains.mockResolvedValue(false); mocks.setShelf.mockResolvedValue(undefined);
   mocks.loadChapter.mockReset().mockImplementation(async (_loaded, id: string) => ({ assetUrls: { portrait: "data:image/png;base64,test" },
     fragment: { fragmentId: id, title: id === "c1" ? "第一章" : "第二章", body: { format: "html", value: "<p>正文</p>" } } }));
 });
 afterEach(async () => { if (view) await act(async () => view.unmount()); vi.useRealTimers(); });
+
+describe("lock-screen artwork integration", () => {
+  const props = { documentId: "book:cover", title: "测试书", chapterId: "c1",
+    chapters: [{ id: "c1", title: "第一章" }], loadChapter: vi.fn(), onRead: vi.fn() };
+  const latestArtwork = () => mocks.playbackProps.mock.lastCall?.[0].artworkUrl;
+
+  it("starts listening immediately and passes the prepared image to the existing session later", async () => {
+    let finish!: (value: { uri: string; release: () => void }) => void;
+    mocks.materializeArtwork.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    await act(async () => { view = create(<NativeSpeechPlayer {...props} cover={{ uri: "data:image/png;base64,YWJj" }} />); });
+    expect(mocks.materializeArtwork).not.toHaveBeenCalled();
+    await press("打开听读播放器");
+    expect(mocks.playback.open).toHaveBeenCalledWith(true);
+    expect(latestArtwork()).toBeUndefined();
+    const release = vi.fn();
+    await act(async () => finish({ uri: "file:///cache/cover.png", release }));
+    expect(latestArtwork()).toBe("file:///cache/cover.png");
+    expect(mocks.playback.open).toHaveBeenCalledOnce();
+    await press("收起播放器"); await press("关闭听读");
+    expect(release).toHaveBeenCalledOnce();
+    expect(latestArtwork()).toBeUndefined();
+  });
+
+  it("ignores a late cover from the previous document after the next book has started", async () => {
+    let finishFirst!: (value: { uri: string; release: () => void }) => void;
+    mocks.materializeArtwork.mockImplementationOnce(() => new Promise((resolve) => { finishFirst = resolve; }))
+      .mockResolvedValueOnce({ uri: "file:///cache/second.png", release: vi.fn() });
+    await act(async () => { view = create(<NativeSpeechPlayer {...props} cover={{ uri: "data:image/png;base64,YWJj" }} />); });
+    await press("打开听读播放器");
+    await act(async () => view.update(<NativeSpeechPlayer {...props} documentId="book:next" cover={{ uri: "data:image/png;base64,ZGVm" }} />));
+    await press("打开听读播放器");
+    expect(latestArtwork()).toBe("file:///cache/second.png");
+    const release = vi.fn();
+    await act(async () => finishFirst({ uri: "file:///cache/first.png", release }));
+    expect(release).toHaveBeenCalledOnce();
+    expect(latestArtwork()).toBe("file:///cache/second.png");
+  });
+
+  it("discards a prepared image when the user leaves before it finishes", async () => {
+    let finish!: (value: { uri: string; release: () => void }) => void;
+    mocks.materializeArtwork.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    await act(async () => { view = create(<NativeSpeechPlayer {...props} cover={{ uri: "data:image/png;base64,YWJj" }} />); });
+    await press("打开听读播放器");
+    const signal = mocks.materializeArtwork.mock.lastCall![2] as AbortSignal;
+    mocks.user = null;
+    await act(async () => view.update(<NativeSpeechPlayer {...props} />));
+    expect(signal.aborted).toBe(true);
+    const release = vi.fn();
+    await act(async () => finish({ uri: "file:///cache/old-user.png", release }));
+    expect(release).toHaveBeenCalledOnce();
+  });
+
+  it("follows the visible news cover fallback after a failed primary image", async () => {
+    await act(async () => { view = create(<NativeSpeechPlayer {...props} news cover={{ uri: "https://example.test/photo.jpg" }} coverFallback={{ uri: "https://example.test/logo.png" }} />); });
+    await press("打开听读播放器");
+    expect(latestArtwork()).toBe("https://example.test/photo.jpg");
+    await act(async () => view.root.findAllByType("img").find((image) => !image.props.blurRadius)!.props.onError());
+    expect(latestArtwork()).toBe("https://example.test/logo.png");
+  });
+});
 
 describe("listening appearance", () => {
   const flattened = (style: unknown) => Object.assign({}, ...[style].flat(Infinity).filter(Boolean));

@@ -66,5 +66,15 @@
     "typescript": "~5.9.2",
     "vitest": "^4.1.11"
   },
+  "expo": {
+    "autolinking": {
+      "android": {
+        "buildFromSource": ["expo-audio"]
+      },
+      "ios": {
+        "buildFromSource": ["expo-audio"]
+      }
+    }
+  },
   "private": true
 }

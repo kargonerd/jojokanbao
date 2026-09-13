@@ -3,6 +3,7 @@ import { speechFromReadingPosition, type SpeechReadingPosition } from "@jojo/con
 import type { SpeechCapabilities, SpeechSource } from "@jojo/content/speech";
 import { logicalSpeechVoice } from "@jojo/content/speech";
 import { setAudioModeAsync, useAudioPlayer } from "expo-audio";
+import { chapterMediaPlayer, type LockScreenPlaybackRequest, type LockScreenPlaybackState } from "./nativeSpeechSession";
 import * as Crypto from "expo-crypto";
 import { useEffect, useRef, useState } from "react";
 import { mobileSpeechClient } from "./speech";
@@ -15,6 +16,7 @@ export interface SpeechPlaybackProps {
   chapters: Array<{ id: string; title: string }>;
   loadChapter: (id: string) => Promise<SpeechChapter>;
   getReadingPosition?: () => Promise<SpeechReadingPosition | null>;
+  artworkUrl?: string;
 }
 
 export function useSpeechPlayback(props: SpeechPlaybackProps) {
@@ -47,9 +49,22 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
   const pending = useRef<{ seconds: number; operation: number; url: string } | undefined>(undefined);
   const activePart = useRef<number | undefined>(undefined);
   const activeStreaming = useRef(false);
+  const lockScreenActive = useRef(false);
+  const lockScreenState = useRef<LockScreenPlaybackState | null>(null);
   const finishHandled = useRef(false);
   const mediaDeadline = useRef(0);
-  const functions = useRef({ next: () => {}, persist: () => {} });
+  const functions = useRef({ next: () => {}, persist: () => {}, remote: (_request: LockScreenPlaybackRequest) => {} });
+
+  function lockScreenMetadata() {
+    const current = latest.current;
+    return { title: current.chapter?.title || current.props.title, artist: current.props.title,
+      albumTitle: current.props.title, artworkUrl: current.props.artworkUrl };
+  }
+
+  useEffect(() => {
+    if (!lockScreenActive.current || !latest.current.chapter) return;
+    try { player.updateLockScreenMetadata(lockScreenMetadata()); } catch { /* Artwork never blocks listening. */ }
+  }, [player, props.artworkUrl, props.title, chapter?.title]);
 
   function persist() {
     if (bookmark.current) void AsyncStorage.setItem(storageKey, JSON.stringify(bookmark.current)).catch(() => undefined);
@@ -73,6 +88,9 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
     prefetch.current.retain();
     prefetchedUrls.current.clear();
     ready.current = false; mediaDeadline.current = 0;
+    lockScreenActive.current = false;
+    lockScreenState.current = null;
+    try { chapterMediaPlayer(player)?.updateLockScreenPlayback(null); } catch { /* released */ }
     // Android's Expo Audio replace() requires a non-null source. Keep the
     // paused player for reopening; useAudioPlayer owns release on unmount.
     try { player.pause(); } catch { /* navigation may already have released it */ }
@@ -84,6 +102,9 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
 
   useEffect(() => {
     mounted.current = true;
+    const remoteListener = chapterMediaPlayer(player)?.addListener("lockScreenPlaybackRequest", (request) => {
+      if (mounted.current && lockScreenActive.current) functions.current.remote(request);
+    });
     const listener = player.addListener("playbackStatusUpdate", (status) => {
       if (!mounted.current || activePart.current === undefined) return;
       if (status.isLoaded && pending.current) {
@@ -127,7 +148,8 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
       }
       const deadline = latest.current.timer;
       if (typeof deadline === "number" && Date.now() >= deadline) {
-        wanted.current = false; player.pause(); setPlaying(false); setTimer(null);
+        wanted.current = false; mediaDeadline.current = 0;
+        player.pause(); setPlaying(false); setBusy(false); setTimer(null);
       }
     }, 1000);
     return () => {
@@ -135,7 +157,10 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
       epoch.current++; operation.current++;
       session.current.abort();
       prefetch.current.retain();
-      clearInterval(interval); listener.remove();
+      clearInterval(interval); listener.remove(); remoteListener?.remove();
+      lockScreenActive.current = false;
+      lockScreenState.current = null;
+      try { chapterMediaPlayer(player)?.updateLockScreenPlayback(null); } catch { /* released */ }
       functions.current.persist();
       // useAudioPlayer owns native release; do not release the same player twice.
       try { player.pause(); player.setActiveForLockScreen(false); } catch { /* hook may already have released */ }
@@ -261,7 +286,13 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
       setPart(index); setSeconds(time);
       if (audio.duration > 0) setDurations((known) => ({ ...known, [index]: audio.duration }));
       if (bookmark.current) { bookmark.current.part = index; bookmark.current.seconds = time; }
-      player.setActiveForLockScreen(true, { title: latest.current.chapter?.title, artist: props.title });
+      // Metadata and system controls must not turn successfully loaded audio
+      // into an error, e.g. if artwork is missing or the service is reconnecting.
+      try {
+        const enhanced = Boolean(chapterMediaPlayer(player));
+        player.setActiveForLockScreen(true, lockScreenMetadata(), { showSeekBackward: !enhanced, showSeekForward: !enhanced });
+        lockScreenActive.current = true;
+      } catch { /* The player can still continue in the foreground. */ }
       for (const key of sources.current.keys()) if (key < index || key > index + 2) sources.current.delete(key);
       for (const key of prefetchedUrls.current.keys()) if (key < index || key > index + 2) prefetchedUrls.current.delete(key);
       const nextUrls = [...prefetchedUrls.current].filter(([key]) => key > index).map(([, url]) => url);
@@ -289,6 +320,8 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
   }
 
   functions.current.next = () => {
+    // A queued EOF event can arrive after a system pause or sleep timer.
+    if (!wanted.current) return;
     const current = latest.current;
     if (current.chapter?.segments[(activePart.current ?? 0) + 1]) { void startPart((activePart.current ?? 0) + 1); return; }
     if (current.timer === "chapter") { setTimer(null); halt(); return; }
@@ -301,7 +334,24 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
   const lengths = chapter?.segments.map((text, index) => durations[index] ?? Math.max(1, text.length / 4.3)) ?? [];
   const elapsed = lengths.slice(0, part).reduce((sum, value) => sum + value, 0) + seconds;
   const duration = lengths.reduce((sum, value) => sum + value, 0);
-  function seek(value: number) {
+  useEffect(() => {
+    if (!lockScreenActive.current) return;
+    const controls = chapterMediaPlayer(player);
+    if (!controls) return;
+    const index = props.chapters.findIndex((item) => item.id === chapter?.id);
+    try {
+      const state = chapter ? {
+        chapterId: chapter.id, position: Math.max(0, Math.min(duration, elapsed)), duration,
+        playing, buffering: busy && wanted.current,
+        canGoPrevious: index > 0, canGoNext: index >= 0 && index < props.chapters.length - 1,
+      } : lockScreenState.current && { ...lockScreenState.current, playing: false,
+        buffering: busy && wanted.current, canGoPrevious: false, canGoNext: false };
+      // Loading another chapter must not expose the underlying audio fragment
+      // or remove the system pause control while its request is pending.
+      if (state) { controls.updateLockScreenPlayback(state); lockScreenState.current = state; }
+    } catch { /* Closing or native teardown can race the last status update. */ }
+  }, [player, chapter, props.chapters, elapsed, duration, playing, busy]);
+  function seek(value: number, autoplay = playing || wanted.current) {
     let remaining = Math.max(0, Math.min(duration - 0.1, value));
     let index = 0;
     while (index < lengths.length - 1 && remaining >= lengths[index]!) { remaining -= lengths[index]!; index++; }
@@ -309,7 +359,7 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
       finishHandled.current = false;
       void player.seekTo(remaining).catch(() => setError("定位失败，请重试"));
     }
-    else void startPart(index, remaining, playing || wanted.current, true);
+    else void startPart(index, remaining, autoplay, true);
   }
   function toggle() {
     if (playing || (busy && wanted.current)) { halt(); return; }
@@ -324,6 +374,28 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
     if (bookmark.current) bookmark.current.rate = value;
     persist();
   }
+  functions.current.remote = (request) => {
+    const current = latest.current;
+    if (!current.chapter && request.action === "pause" && request.chapterId === lockScreenState.current?.chapterId) { halt(); return; }
+    if (!current.chapter || current.chapter.id !== request.chapterId) return;
+    if (request.action === "pause") { halt(); return; }
+    if (request.action === "play") {
+      if (busy && wanted.current) return;
+      wanted.current = true;
+      if (ready.current && !finishHandled.current) player.play();
+      else void startPart(finishHandled.current ? 0 : current.part, finishHandled.current ? 0 : current.seconds);
+      return;
+    }
+    if (request.action === "seek") {
+      if (typeof request.position === "number" && Number.isFinite(request.position)) seek(request.position, wanted.current);
+      return;
+    }
+    if (request.action === "previous" || request.action === "next") {
+      const index = current.props.chapters.findIndex((item) => item.id === current.chapter?.id);
+      const next = index >= 0 ? current.props.chapters[index + (request.action === "next" ? 1 : -1)] : undefined;
+      if (next) void selectChapter(next.id, wanted.current);
+    }
+  };
   return { chapter, capabilities, voice, part, rate, playing, busy, error, timer, elapsed, duration,
     open, toggle, halt, close, seek, setTimer, changeRate, selectChapter,
     changeVoice: (provider: string, value: string) => chapter && selectChapter(chapter.id, playing || wanted.current, bookmark.current, { provider, voice: value }, capabilities, undefined, chapter),

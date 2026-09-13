@@ -14,6 +14,7 @@ import { useSpeechFlagStore } from "./featureFlag";
 import { speechTime } from "./speech";
 import { useSpeechPlayback, type SpeechPlaybackProps } from "./useSpeechPlayback";
 import { SpeechLoading } from "./SpeechLoading";
+import { materializeSpeechArtwork } from "./speechArtwork";
 
 type Props = Omit<SpeechPlaybackProps, "userId"> & {
   hidden?: boolean; bottom?: number; cover?: ImageSourcePropType; news?: boolean;
@@ -36,12 +37,26 @@ function ActiveSpeechPlayer(props: Props & { userId: string }) {
   const theme = props.theme ?? mobileTheme;
   const appearance = useMemo(() => ({ theme, styles: createSpeechStyles(theme) }), [theme]);
   const { styles } = appearance;
-  const playback = useSpeechPlayback(props);
   const [opened, setOpened] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [sheet, setSheet] = useState<"timer" | "voice" | "rate" | "chapters" | null>(null);
   const [failedCovers, setFailedCovers] = useState<string[]>([]);
   const cover = [props.cover, props.coverFallback].find((image) => image && !failedCovers.includes(JSON.stringify(image)));
+  const coverUri = resolveArtworkUri(cover);
+  const artworkKey = JSON.stringify([props.userId, props.documentId, coverUri]);
+  const [artwork, setArtwork] = useState<{ key: string; uri: string }>();
+  useEffect(() => {
+    if (!opened || !coverUri) return;
+    const controller = new AbortController();
+    let release: (() => void) | undefined;
+    void materializeSpeechArtwork(coverUri, `${props.userId}:${props.documentId}`, controller.signal).then((result) => {
+      if (controller.signal.aborted) { result?.release(); return; }
+      release = result?.release;
+      setArtwork(result ? { key: artworkKey, uri: result.uri } : undefined);
+    }).catch(() => undefined);
+    return () => { controller.abort(); release?.(); };
+  }, [opened, coverUri, artworkKey, props.userId, props.documentId]);
+  const playback = useSpeechPlayback({ ...props, artworkUrl: opened && artwork?.key === artworkKey ? artwork.uri : undefined });
   const publisherCover = Boolean(props.news && (!cover || cover === props.coverFallback));
   const rejectCover = () => cover && setFailedCovers((failed) => [...failed, JSON.stringify(cover)]);
   useEffect(() => { if (props.hidden) { setExpanded(false); setSheet(null); } }, [props.hidden]);
@@ -73,7 +88,7 @@ function ActiveSpeechPlayer(props: Props & { userId: string }) {
           <View style={styles.flex}><Text numberOfLines={1} style={styles.miniHeading}>{playback.chapter?.title || props.title}</Text><Text style={styles.subtle}>{playback.error || (playback.busy ? "加载中" : `${voiceLabel} · ${speechTime(playback.elapsed)}`)}</Text></View>
         </Pressable>
         {playback.busy ? <Pressable accessibilityRole="button" accessibilityLabel="取消加载" onPress={playback.halt} style={styles.icon}><SpeechLoading color={theme.red} /></Pressable> : <IconButton icon={playback.playing ? "pause" : "play"} label={playback.playing ? "暂停听读" : "继续听读"} onPress={playback.toggle} />}
-        <IconButton icon="close" label="关闭听读" onPress={() => { playback.close(); setOpened(false); }} />
+        <IconButton icon="close" label="关闭听读" onPress={() => { playback.close(); setOpened(false); setArtwork(undefined); }} />
       </View>
     ) : <Pressable accessibilityRole="button" accessibilityLabel="打开听读播放器" onPress={open} style={[styles.launcher, { bottom: (props.bottom ?? 0) + 16, backgroundColor: theme.red }]}><Text style={styles.listen}>听</Text></Pressable> : null}
     <Modal visible={expanded && !props.hidden} animationType={theme.eInk ? "none" : "slide"} onRequestClose={() => sheet ? setSheet(null) : setExpanded(false)}>
@@ -128,6 +143,14 @@ function ActiveSpeechPlayer(props: Props & { userId: string }) {
       </SafeAreaView>
     </Modal>
   </SpeechAppearanceContext.Provider>;
+}
+
+function resolveArtworkUri(source: ImageSourcePropType | undefined): string | undefined {
+  if (!source) return undefined;
+  try {
+    if (typeof source === "number") return Image.resolveAssetSource(source)?.uri;
+    return Array.isArray(source) ? source.find((image) => image.uri)?.uri : source.uri;
+  } catch { return undefined; }
 }
 
 type IconProps = { icon: ComponentProps<typeof Ionicons>["name"]; label: string; onPress: () => void; disabled?: boolean };
