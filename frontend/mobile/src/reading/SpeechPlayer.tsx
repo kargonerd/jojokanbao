@@ -103,7 +103,7 @@ function ActiveSpeechPlayer(props: Props & { userId: string }) {
           <View style={styles.options}>
             <Option icon="timer-outline" label={playback.timer ? "已设定时" : "定时关闭"} onPress={() => setSheet("timer")} />
             <Option icon="person-outline" label={voiceLabel} onPress={() => setSheet("voice")} />
-            <Option icon="speedometer-outline" label={`语速 ${playback.rate.toFixed(1)}×`} onPress={() => setSheet("rate")} />
+            <Option icon="speedometer-outline" label={`语速 ${Number.isInteger(playback.rate) ? playback.rate.toFixed(1) : playback.rate}×`} onPress={() => setSheet("rate")} />
             {props.onBookshelf ? <Option icon={props.onShelf ? "book" : "book-outline"} label={props.onShelf ? "已加入" : "加入书架"} disabled={props.bookshelfBusy} onPress={props.onBookshelf} /> : null}
           </View>
           <View style={styles.progress}>
