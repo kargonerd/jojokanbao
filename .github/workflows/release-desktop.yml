@@ -151,7 +151,7 @@ jobs:
           find release -type f \( -name '*.exe' -o -name '*.dmg' -o -name '*.AppImage' -o -name '*.deb' \) \
             -exec cp {} github-release/ \;
           cd github-release
-          find . -maxdepth 1 -type f -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt
+          find . -maxdepth 1 -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt
 
           node ../tools/release/create-release-catalog.mjs \
             --product desktop \
@@ -201,7 +201,7 @@ jobs:
             feed="${mapping#*:}"
             source="release/$artifact"
             target="jojo-b2:$B2_BUCKET/releases/desktop/stable/$feed"
-            rclone copy "$source" "$target" --immutable --exclude '*.yml'
+            rclone copy "$source" "$target" --immutable --checksum --exclude '*.yml'
             rclone check "$source" "$target" --one-way --exclude '*.yml'
           done
 
@@ -216,7 +216,7 @@ jobs:
             url="$(jq -r '.url' <<< "$artifact")"
             expected="$(jq -r '.sha256' <<< "$artifact")"
             target="$RUNNER_TEMP/cdn-verify/$(jq -r '.id' <<< "$artifact")"
-            curl --fail --location --retry 5 --output "$target" "$url?release=$GITHUB_SHA"
+            curl --http1.1 --fail --location --retry 5 --retry-all-errors --connect-timeout 30 --max-time 900 --output "$target" "$url?release=$GITHUB_SHA"
             actual="$(sha256sum "$target" | cut -d' ' -f1)"
             test "$actual" = "$expected"
           done
