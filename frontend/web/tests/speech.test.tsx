@@ -47,6 +47,39 @@ const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) =>
 }));
 
 describe("reader speech", () => {
+  it.each(["white", "ivory", "dark"] as const)("keeps the %s reader theme in portaled player and settings", async (paperColor) => {
+    render(<ReadingBookshelfContext.Provider value={{ available: true, added: false, busy: false, toggle: vi.fn(), paperColor }}>
+      <SpeechPlayer segments={["正文。"]} label="听本章" title="测试书" artworkUrl="https://example.test/cover.jpg" />
+    </ReadingBookshelfContext.Provider>);
+    fireEvent.click(screen.getByRole("button", { name: "打开听本章播放器" }));
+    await waitFor(() => expect(AudioMock.instances[0]?.play).toHaveBeenCalledOnce());
+    const player = screen.getByRole("dialog", { name: "听本章播放器" });
+    expect(player.closest("[data-speech-theme]")?.getAttribute("data-speech-theme")).toBe(paperColor);
+    expect(player.querySelector(".speech-player__ambience")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "选择听读声音" }));
+    expect(screen.getByRole("dialog", { name: "选择声音设置" }).closest("[data-speech-theme]")?.getAttribute("data-speech-theme")).toBe(paperColor);
+    fireEvent.click(within(screen.getByRole("dialog", { name: "选择声音设置" })).getByRole("button", { name: "关闭设置" }));
+    fireEvent.click(screen.getByRole("button", { name: "收起听读播放器" }));
+    const mini = screen.getByRole("region", { name: "迷你听读播放器" });
+    expect(mini.getAttribute("data-speech-theme")).toBe(paperColor);
+    expect(mini.querySelector(".speech-player__ambience")).toBeNull();
+  });
+
+  it("changes the mini player theme without recreating the active audio", async () => {
+    const content = (paperColor: "white" | "dark") => <ReadingBookshelfContext.Provider value={{ available: true, added: false, busy: false, toggle: vi.fn(), paperColor }}>
+      <SpeechPlayer segments={["正文。"]} label="听本章" title="测试书" />
+    </ReadingBookshelfContext.Provider>;
+    const { rerender } = render(content("white"));
+    fireEvent.click(screen.getByRole("button", { name: "打开听本章播放器" }));
+    await waitFor(() => expect(AudioMock.instances[0]?.play).toHaveBeenCalledOnce());
+    fireEvent.click(screen.getByRole("button", { name: "收起听读播放器" }));
+    const audio = AudioMock.instances[0]!;
+    rerender(content("dark"));
+    expect(screen.getByRole("region", { name: "迷你听读播放器" }).getAttribute("data-speech-theme")).toBe("dark");
+    expect(AudioMock.instances).toHaveLength(1);
+    expect(audio.pause).not.toHaveBeenCalled();
+  });
+
   it.each(["play", "voice"])("retries failed voice loading from the %s control and automatically plays", async (control) => {
     const providerResponses = vi.fn().mockResolvedValueOnce(new Response(null, { status: 503 }))
       .mockImplementation(async () => Response.json(capabilities));

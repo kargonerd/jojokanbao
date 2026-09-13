@@ -40,7 +40,11 @@ it("copies the displayed shared group without nesting support in about", async (
   expect(shown).toBeDefined();
   await act(async () => button("复制群号").props.onPress());
   expect(mocks.copy).toHaveBeenLastCalledWith(FEEDBACK_QQ_GROUP);
-  expect(button("支持 JOJO 看报")).toBeUndefined();
+  const copyNotice = "群号已复制，可在 QQ 中搜索并申请加入。";
+  expect(button("复制群号").parent!.parent!.findAllByType("span").some((node) => node.props.children === copyNotice)).toBe(true);
+  expect(button("在 B 站留言或私信").parent!.findAllByType("span").some((node) => node.props.children === copyNotice)).toBe(false);
+  expect(button("支持我们")).toBeUndefined();
+  expect(button("在浏览器打开 JOJO 看报")).toBeUndefined();
 });
 
 it("keeps manual copy and Bilibili feedback available if clipboard copying fails", async () => {
@@ -50,4 +54,26 @@ it("keeps manual copy and Bilibili feedback available if clipboard copying fails
   await act(async () => button("在 B 站留言或私信").props.onPress());
   expect(mocks.openURL).toHaveBeenCalledExactlyOnceWith("https://space.bilibili.com/571556400");
   expect(view.root.findAllByType("span").some((node) => String(node.props.children).includes("未经原权利人许可"))).toBe(true);
+});
+
+it("keeps copy and Bilibili results beside their own actions when both finish asynchronously", async () => {
+  let finishCopy!: () => void;
+  mocks.copy.mockImplementationOnce(() => new Promise<void>((resolve) => { finishCopy = resolve; }));
+  mocks.openURL.mockRejectedValueOnce(new Error("Bilibili unavailable"));
+  await act(async () => button("复制群号").props.onPress());
+  await act(async () => button("在 B 站留言或私信").props.onPress());
+  await act(async () => finishCopy());
+
+  const groupSection = button("复制群号").parent!.parent!;
+  const bilibiliSection = button("在 B 站留言或私信").parent!;
+  const copyNotice = "群号已复制，可在 QQ 中搜索并申请加入。";
+  const linkNotice = "无法打开 B 站，请稍后重试，或在 B 站搜索 JOJO看报。";
+  expect(groupSection.findAllByType("span").some((node) => node.props.children === copyNotice)).toBe(true);
+  expect(groupSection.findAllByType("span").some((node) => node.props.children === linkNotice)).toBe(false);
+  expect(bilibiliSection.findAllByType("span").some((node) => node.props.children === linkNotice)).toBe(true);
+  expect(bilibiliSection.findAllByType("span").some((node) => node.props.children === copyNotice)).toBe(false);
+
+  await act(async () => button("在 B 站留言或私信").props.onPress());
+  expect(bilibiliSection.findAllByType("span").some((node) => node.props.children === linkNotice)).toBe(false);
+  expect(groupSection.findAllByType("span").some((node) => node.props.children === copyNotice)).toBe(true);
 });

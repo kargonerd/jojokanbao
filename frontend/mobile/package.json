@@ -16,6 +16,7 @@
     "build:eink:android": "cross-env APP_VARIANT=eink EXPO_PUBLIC_APP_VARIANT=eink expo export --platform android --output-dir dist/eink-android",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
+    "generate:book-scroll": "node scripts/generate-book-scroll.mjs",
     "doctor": "expo-doctor",
     "validate:ios": "node scripts/validate-ios.mjs"
   },
@@ -64,6 +65,16 @@
     "expo-doctor": "^1.20.2",
     "typescript": "~5.9.2",
     "vitest": "^4.1.11"
+  },
+  "expo": {
+    "autolinking": {
+      "android": {
+        "buildFromSource": ["expo-audio"]
+      },
+      "ios": {
+        "buildFromSource": ["expo-audio"]
+      }
+    }
   },
   "private": true
 }

@@ -1,6 +1,6 @@
 import { LIBRARY_SOURCES, DEFAULT_LIBRARY_SOURCES, isLibrarySourceEnabled } from "@jojo/content";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { ARCHIVE_WEB_ORIGIN, FEEDBACK_BILIBILI_URL, FEEDBACK_QQ_GROUP, PROJECT_COPYRIGHT_NOTICES, type TimesSourceRef } from "@jojo/content";
+import { FEEDBACK_BILIBILI_URL, FEEDBACK_QQ_GROUP, PROJECT_COPYRIGHT_NOTICES, type TimesSourceRef } from "@jojo/content";
 import { useNavigation, useRoute, type NavigationProp, type RouteProp } from "@react-navigation/native";
 import * as Clipboard from "expo-clipboard";
 import { useEffect, useMemo, useState } from "react";
@@ -86,7 +86,8 @@ export function SettingsScreen() {
   const clearRecentReading = useMobileStore((state) => state.clearRecentReading);
   const [updateBusy, setUpdateBusy] = useState(false);
   const [updateMessage, setUpdateMessage] = useState<string>();
-  const [feedbackNotice, setFeedbackNotice] = useState("");
+  const [groupNotice, setGroupNotice] = useState("");
+  const [feedbackPageNotice, setFeedbackPageNotice] = useState("");
   const timesLanguage = useMobileStore((state) => state.timesLanguage);
   const setTimesLanguage = useMobileStore((state) => state.setTimesLanguage);
   const timesDisabledSourceIds = useMobileStore((state) => state.timesDisabledSourceIds);
@@ -131,21 +132,21 @@ export function SettingsScreen() {
   };
 
   async function copyFeedbackGroup() {
-    setFeedbackNotice("");
+    setGroupNotice("");
     try {
       await Clipboard.setStringAsync(FEEDBACK_QQ_GROUP);
-      setFeedbackNotice("群号已复制，可在 QQ 中搜索并申请加入。");
+      setGroupNotice("群号已复制，可在 QQ 中搜索并申请加入。");
     } catch {
-      setFeedbackNotice("复制失败，可长按群号手动复制。");
+      setGroupNotice("复制失败，可长按群号手动复制。");
     }
   }
 
   async function openFeedbackPage() {
-    setFeedbackNotice("");
+    setFeedbackPageNotice("");
     try {
       await Linking.openURL(FEEDBACK_BILIBILI_URL);
     } catch {
-      setFeedbackNotice("无法打开 B 站，请稍后重试，或在 B 站搜索 JOJO看报。");
+      setFeedbackPageNotice("无法打开 B 站，请稍后重试，或在 B 站搜索 JOJO看报。");
     }
   }
 
@@ -429,10 +430,6 @@ export function SettingsScreen() {
                 {updateMessage}
               </Text>
             ) : null}
-            <Pressable onPress={() => void Linking.openURL(ARCHIVE_WEB_ORIGIN)} style={styles.actionRow}>
-              <Text style={[styles.actionText, { color: theme.ink, fontFamily: theme.serif }]}>在浏览器打开 JOJO 看报</Text>
-              <Ionicons name="open-outline" size={17} color={theme.muted} />
-            </Pressable>
           </View>
 
           <View style={styles.sectionGap}>
@@ -441,17 +438,22 @@ export function SettingsScreen() {
               <Text style={[styles.aboutParagraph, { color: theme.ink, fontFamily: theme.serif }]}>
                 使用中遇到问题，或有功能建议，可以加入 QQ 群反馈，也可以在 B 站 JOJO看报账号下留言或私信。
               </Text>
-              <View style={[styles.feedbackGroup, { borderTopColor: theme.rule }]}>
-                <Text selectable style={[styles.actionText, { color: theme.ink, fontFamily: theme.sans }]}>QQ群：{FEEDBACK_QQ_GROUP}</Text>
-                <Pressable accessibilityRole="button" accessibilityLabel="复制反馈群号" onPress={() => void copyFeedbackGroup()} style={styles.copyGroupButton}>
-                  <Text style={[styles.copyGroupText, { color: theme.red, fontFamily: theme.sans }]}>复制群号</Text>
-                </Pressable>
+              <View>
+                <View style={[styles.feedbackGroup, { borderTopColor: theme.rule }]}>
+                  <Text selectable style={[styles.actionText, { color: theme.ink, fontFamily: theme.sans }]}>QQ群：{FEEDBACK_QQ_GROUP}</Text>
+                  <Pressable accessibilityRole="button" accessibilityLabel="复制反馈群号" onPress={() => void copyFeedbackGroup()} style={styles.copyGroupButton}>
+                    <Text style={[styles.copyGroupText, { color: theme.red, fontFamily: theme.sans }]}>复制群号</Text>
+                  </Pressable>
+                </View>
+                {groupNotice ? <Text accessibilityLiveRegion="polite" style={[styles.feedbackNotice, { color: theme.muted, fontFamily: theme.sans }]}>{groupNotice}</Text> : null}
               </View>
-              <Pressable accessibilityRole="link" onPress={() => void openFeedbackPage()} style={[styles.actionRow, styles.actionRowTopDivider, { borderTopColor: theme.rule }]}>
-                <Text style={[styles.actionText, { color: theme.ink, fontFamily: theme.serif }]}>在 B 站留言或私信</Text>
-                <Ionicons name="open-outline" size={17} color={theme.muted} />
-              </Pressable>
-              {feedbackNotice ? <Text accessibilityLiveRegion="polite" style={[styles.feedbackNotice, { color: theme.muted, fontFamily: theme.sans }]}>{feedbackNotice}</Text> : null}
+              <View>
+                <Pressable accessibilityRole="link" onPress={() => void openFeedbackPage()} style={[styles.actionRow, styles.actionRowTopDivider, { borderTopColor: theme.rule }]}>
+                  <Text style={[styles.actionText, { color: theme.ink, fontFamily: theme.serif }]}>在 B 站留言或私信</Text>
+                  <Ionicons name="open-outline" size={17} color={theme.muted} />
+                </Pressable>
+                {feedbackPageNotice ? <Text accessibilityLiveRegion="polite" style={[styles.feedbackNotice, { color: theme.muted, fontFamily: theme.sans }]}>{feedbackPageNotice}</Text> : null}
+              </View>
             </View>
           </View>
 

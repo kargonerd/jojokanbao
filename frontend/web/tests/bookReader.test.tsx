@@ -235,6 +235,7 @@ describe("BookReader", () => {
   });
 
   it("restores a synced chapter position before saving the new reading session", async () => {
+    window.innerWidth = 390;
     window.localStorage.setItem("jojo-reader-mode", "scroll");
     const view = renderReader(vi.fn(), vi.fn(), undefined, false, "chapter-2", 0.75);
     const surface = view.container.querySelector("[data-book-reading-surface]")!;
@@ -242,6 +243,9 @@ describe("BookReader", () => {
     Object.defineProperty(surface, "clientHeight", { configurable: true, value: 400 });
     await waitFor(() => expect(useRecentReadingStore.getState().items[0]?.chapterProgress).toBe(0.75));
     expect(surface.scrollTo).toHaveBeenCalledWith({ top: 750 });
+    fireEvent.scroll(surface);
+    expect(screen.getByRole("navigation", { name: "阅读工具" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "返回上一页" })).toBeTruthy();
   });
 
   it("switches to scrolling mode and remembers the choice", async () => {
@@ -399,7 +403,7 @@ describe("BookReader", () => {
     expect(removeEventListener).toHaveBeenCalledWith("resize", expect.any(Function));
   });
 
-  it.each(["scroll", "paged"])("toggles mobile tools but keeps the title visible in %s mode without remounting the text", (mode) => {
+  it.each(["scroll", "paged"])("toggles both mobile toolbars in %s mode without remounting the text", (mode) => {
     window.innerWidth = 390;
     window.localStorage.setItem("jojo-reader-mode", mode);
     const { container } = renderReader();
@@ -409,10 +413,9 @@ describe("BookReader", () => {
 
     fireEvent.click(paragraph, { clientX: 195, detail: 1 });
     expect(screen.queryByRole("navigation", { name: "阅读工具" })).toBeNull();
-    expect(screen.queryByRole("navigation", { name: "阅读工具" })).toBeNull();
-    expect(screen.getByRole("link", { name: "返回上一页" })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "返回上一页" })).toBeNull();
     expect(within(container.querySelector("header")!).getByText("测试书")).toBeTruthy();
-    expect(container.querySelector("header")?.hasAttribute("data-reader-chrome")).toBe(false);
+    expect(container.querySelector("header")?.hasAttribute("inert")).toBe(true);
     expect(container.querySelector("[data-reader-mobile-toolbar]")?.hasAttribute("inert")).toBe(true);
     expect(container.querySelector("[data-book-reading-surface]")).toBe(surface);
     expect(screen.getByText("这是正文。")).toBe(paragraph);
@@ -420,8 +423,8 @@ describe("BookReader", () => {
 
     fireEvent.click(paragraph, { clientX: 195, detail: 1 });
     expect(screen.getByRole("navigation", { name: "阅读工具" })).toBeTruthy();
-    expect(screen.getByRole("navigation", { name: "阅读工具" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "返回上一页" })).toBeTruthy();
+    expect(container.querySelector("header")?.hasAttribute("inert")).toBe(false);
     expect(container.querySelector("[data-reader-mobile-toolbar]")?.hasAttribute("inert")).toBe(false);
   });
 
@@ -459,13 +462,12 @@ describe("BookReader", () => {
     expect(screen.queryByRole("navigation", { name: "阅读工具" })).toBeNull();
   });
 
-  it.each(["move", "cancel", "scroll", "longpress"])("does not confuse a mobile %s gesture with a reader tap", (gesture) => {
+  it.each(["cancel", "scroll", "longpress"])("does not confuse a mobile %s gesture with a reader tap", (gesture) => {
     window.innerWidth = 390;
     const { container } = renderReader();
     const paragraph = screen.getByText("这是正文。");
     const clock = vi.spyOn(Date, "now").mockReturnValue(1000);
     fireEvent.pointerDown(paragraph, { clientX: 120, clientY: 160 });
-    if (gesture === "move") fireEvent.pointerMove(paragraph, { clientX: 121, clientY: 210 });
     if (gesture === "cancel") fireEvent.pointerCancel(paragraph);
     if (gesture === "scroll") fireEvent.scroll(container.querySelector("[data-book-reading-surface]")!);
     if (gesture === "longpress") clock.mockReturnValue(1700);
@@ -477,6 +479,42 @@ describe("BookReader", () => {
     fireEvent.pointerUp(paragraph);
     fireEvent.click(paragraph);
     expect(screen.queryByRole("navigation", { name: "阅读工具" })).toBeNull();
+  });
+
+  it.each([-60, 60])("hides mobile toolbars during a vertical scroll of %spx and ignores its synthetic click", (distance) => {
+    window.innerWidth = 390;
+    window.localStorage.setItem("jojo-reader-mode", "scroll");
+    const { container } = renderReader();
+    const paragraph = screen.getByText("这是正文。");
+    const surface = container.querySelector("[data-book-reading-surface]")!;
+    fireEvent.pointerDown(paragraph, { clientX: 195, clientY: 200 });
+    fireEvent.pointerMove(paragraph, { clientX: 197, clientY: 200 + distance });
+    fireEvent.scroll(surface);
+    fireEvent.pointerUp(paragraph);
+    fireEvent.click(paragraph, { clientX: 197, detail: 1 });
+    expect(screen.queryByRole("navigation", { name: "阅读工具" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "返回上一页" })).toBeNull();
+    expect(container.querySelector("[data-book-reading-surface]")).toBe(surface);
+    expect(screen.getByText("这是正文。")).toBe(paragraph);
+
+    fireEvent.pointerDown(paragraph, { clientX: 195, clientY: 200 });
+    fireEvent.pointerUp(paragraph);
+    fireEvent.click(paragraph, { clientX: 195, detail: 1 });
+    expect(screen.getByRole("navigation", { name: "阅读工具" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "返回上一页" })).toBeTruthy();
+  });
+
+  it("continues tracking a native touch scroll after the browser cancels pointer events", () => {
+    window.innerWidth = 390;
+    const { container } = renderReader();
+    const paragraph = screen.getByText("这是正文。");
+    fireEvent.pointerDown(paragraph, { clientX: 195, clientY: 200 });
+    fireEvent.pointerCancel(paragraph);
+    fireEvent.touchMove(paragraph, { touches: [{ clientX: 195, clientY: 140 }] });
+    fireEvent.scroll(container.querySelector("[data-book-reading-surface]")!);
+    fireEvent.click(paragraph, { detail: 1 });
+    expect(screen.queryByRole("navigation", { name: "阅读工具" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "返回上一页" })).toBeNull();
   });
 
   it("does not hide mobile chrome when selecting text or dismissing a selection", () => {
@@ -493,6 +531,7 @@ describe("BookReader", () => {
     fireEvent.pointerDown(paragraph);
     window.getSelection()?.removeAllRanges();
     fireEvent(document, new Event("selectionchange"));
+    fireEvent.pointerMove(paragraph, { clientX: 195, clientY: 220 });
     fireEvent.pointerUp(paragraph);
     fireEvent.click(paragraph);
     expect(screen.getByRole("navigation", { name: "阅读工具" })).toBeTruthy();

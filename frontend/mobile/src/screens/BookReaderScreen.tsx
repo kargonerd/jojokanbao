@@ -2,7 +2,8 @@ import { libraryBookPolicy, isLibrarySourceEnabled } from "@jojo/content";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { bookProgressPercent, bookProgressLocation, estimatedReadingMinutes, formatReadingTime, type SpeechLocation, type SpeechReadingPosition } from "@jojo/content";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import * as Brightness from "expo-brightness";
+import { useIsFocused } from "@react-navigation/native";
+import { StatusBar } from "expo-status-bar";
 import * as Clipboard from "expo-clipboard";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ActivityIndicator, FlatList, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
@@ -26,6 +27,7 @@ import { NativeSpeechPlayer } from "../reading/SpeechPlayer";
 import { mobileSpeechSegments } from "../reading/speech";
 import { useSpeechFlagStore } from "../reading/featureFlag";
 import { useBookReadingTime } from "../reading/useBookReadingTime";
+import { useReaderBrightness } from "../reading/useReaderBrightness";
 import { bookTocEntries, type BookTocEntry } from "../lib/bookToc";
 import { IS_EINK_RELEASE } from "../config/appVariant";
 import {
@@ -99,6 +101,7 @@ function readerTheme(color: BookPaperColor): MobileTheme {
 export function BookReaderScreen({ route, navigation }: Props) {
   const { datasetId, itemKey, title, bookTitle, initialChapterId, initialAnchorId, initialText, returnToReference } = route.params;
   const insets = useSafeAreaInsets();
+  const focused = useIsFocused();
   const webViewRef = useRef<WebView>(null);
   const pendingLocateRef = useRef<PendingLocate | undefined>(undefined);
   const cancelAgentRef = useRef<(() => void) | undefined>(undefined);
@@ -176,7 +179,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
   const noteContextRef = useRef(noteContext);
   noteContextRef.current = noteContext;
   const [activeAnnotationId, setActiveAnnotationId] = useState<string>();
-  const [brightness, setBrightness] = useState(0.65);
+  const [textContentHeight, setTextContentHeight] = useState<number>();
   const [searchQuery, setSearchQuery] = useState("");
   const [tocQuery, setTocQuery] = useState("");
   const [searchResults, setSearchResults] = useState<MobileBookSearchResult[]>([]);
@@ -192,6 +195,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
   const [referenceHistory, setReferenceHistory] = useState<Array<{ chapterId: string; spreadIndex?: number; scrollProgress?: number }>>([]);
   const [expandedImageUri, setExpandedImageUri] = useState<string>();
   const [readerNotice, setReaderNotice] = useState("");
+  const { brightness, changeBrightness } = useReaderBrightness(setReaderNotice);
   const [onBookshelf, setOnBookshelf] = useState<boolean>();
   const [bookshelfBusy, setBookshelfBusy] = useState(false);
   const [legacyResume, setLegacyResume] = useState<{ chapterId: string; chapterProgress: number }>();
@@ -265,12 +269,6 @@ export function BookReaderScreen({ route, navigation }: Props) {
     setActiveAnnotationId(undefined); setSelection(undefined); noteRequestRef.current = null;
     return () => { if (noteContextRef.current === noteContext) noteContextRef.current = ""; };
   }, [noteContext]);
-
-  useEffect(() => {
-    let active = true;
-    void Brightness.getBrightnessAsync().then((value) => { if (active) setBrightness(value); }).catch(() => undefined);
-    return () => { active = false; };
-  }, []);
 
   useEffect(() => () => cancelAgentRef.current?.(), []);
 
@@ -597,6 +595,10 @@ export function BookReaderScreen({ route, navigation }: Props) {
     if (message.type === "reader-tap") {
       setActiveTool(null);
       setChromeVisible((visible) => !visible);
+      return;
+    }
+    if (message.type === "reader-scroll-gesture") {
+      if (bookReadingMode === "scroll" && !activeTool && !noteComposer && !activeAnnotationId) setChromeVisible(false);
       return;
     }
     if (message.type === "reader-page") {
@@ -940,6 +942,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
   if (loaded && !isLibrarySourceEnabled(libraryBookPolicy(loaded.book, loaded.volume, loaded.manifest).librarySource, librarySources)) return <SafeAreaView><Text>这本书的书源已关闭</Text><Pressable onPress={() => navigation.navigate("Settings", { section: "library" })}><Text>前往资料库设置 →</Text></Pressable></SafeAreaView>;
   return (
     <SafeAreaView edges={["top", "bottom"]} style={[styles.safe, { backgroundColor: theme.paper }]}>
+      {focused ? <StatusBar style={!IS_EINK_RELEASE && bookPaperColor === "dark" ? "light" : "dark"} /> : null}
       <ReaderEnvironment />
       <View onTouchStart={readingTime.recordActivity} onLayout={(event) => setReaderFrame(event.nativeEvent.layout)} style={[styles.reader, { backgroundColor: theme.paper }]}>
         {chapter && (bookReadingMode === "scroll" || chapter.fragment.fragmentId === activeChapterId) ? (
@@ -1049,8 +1052,8 @@ export function BookReaderScreen({ route, navigation }: Props) {
           </View>} />
         </ReaderNavigationSheet> : null}
 
-        {activeTool === "text" ? <ReaderNavigationSheet onClose={() => setActiveTool(null)} top={insets.top + 64} bottom={sheetBottom} theme={theme}><ScrollView contentContainerStyle={styles.displayContent}>
-          <SettingGroup label="亮度" theme={theme}><Ionicons name="sunny-outline" size={17} color={theme.muted} /><ReaderSlider label="屏幕亮度" minimumValue={0.05} maximumValue={1} value={brightness} onValueChange={setBrightness} onSlidingComplete={(value) => { void Brightness.setBrightnessAsync(value); setActiveTool(null); }} color={theme.red} trackColor={theme.rule} style={styles.brightnessSlider} /><Ionicons name="sunny" size={19} color={theme.ink} /></SettingGroup>
+        {activeTool === "text" ? <ReaderNavigationSheet onClose={() => setActiveTool(null)} top={insets.top + 64} bottom={sheetBottom} theme={theme} compact contentHeight={textContentHeight}><ScrollView onContentSizeChange={(_width, height) => setTextContentHeight(height)} contentContainerStyle={styles.displayContent}>
+          <SettingGroup label="亮度" theme={theme}><Ionicons name="sunny-outline" size={17} color={theme.muted} /><ReaderSlider label="屏幕亮度" minimumValue={0.05} maximumValue={1} value={brightness} onValueChange={changeBrightness} onSlidingComplete={(value) => { changeBrightness(value); setActiveTool(null); }} color={theme.red} trackColor={theme.rule} style={styles.brightnessSlider} /><Ionicons name="sunny" size={19} color={theme.ink} /></SettingGroup>
           {!IS_EINK_RELEASE ? <SettingGroup label="颜色" theme={theme}>{(["ivory", "white", "dark"] as const).map((value) => <ColorOption key={value} value={value} selected={bookPaperColor === value} onPress={() => choosePaperColor(value)} theme={theme} />)}</SettingGroup> : null}
           <SettingGroup label="字号" theme={theme}>{([{ value: 0.9 as const, label: "小" }, { value: 1 as const, label: "标准" }, { value: 1.12 as const, label: "大" }]).map((option) => <ReaderOption key={option.value} label={option.label} selected={option.value === textScale} onPress={() => chooseTextScale(option.value)} theme={theme} />)}</SettingGroup>
           <SettingGroup label="行距" theme={theme}>{([1.75, 1.95, 2.15] as const).map((value, index) => <ReaderOption key={value} label={["紧凑", "标准", "宽松"][index]!} selected={value === bookLineHeight} onPress={() => chooseLineHeight(value)} theme={theme} />)}</SettingGroup>
@@ -1073,7 +1076,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
         onClose={() => setActiveAnnotationId(undefined)}
         onComment={(body, parentId, visibility) => cloudAnnotations.comment(activeCloudThread, body, parentId, visibility)}
         onReport={(commentId, reason, details) => cloudAnnotations.report(activeCloudThread, commentId, reason, details)} /> : null}
-      {loaded && activeChapterId ? <NativeSpeechPlayer documentId={`book:${datasetId}:${itemKey}`} title={loaded.manifest.title} chapterId={activeChapterId} chapters={loaded.manifest.content.chapters ?? []} loadChapter={loadSpeechChapter} getReadingPosition={getSpeechPosition} onSpeechLocation={showSpeechLocation} cover={speechCover ? { uri: speechCover } : undefined} hidden={!chromeVisible || Boolean(activeTool || selection || noteComposer || activeAnnotationId || expandedImageUri)} bottom={insets.bottom + 64} onRead={(id, location) => location ? showSpeechLocation(location, true) : chooseChapter(id)} onBookshelf={() => void toggleBookshelf()} onShelf={onBookshelf} bookshelfBusy={bookshelfBusy} /> : null}
+      {loaded && activeChapterId ? <NativeSpeechPlayer documentId={`book:${datasetId}:${itemKey}`} title={loaded.manifest.title} chapterId={activeChapterId} chapters={loaded.manifest.content.chapters ?? []} loadChapter={loadSpeechChapter} getReadingPosition={getSpeechPosition} onSpeechLocation={showSpeechLocation} theme={theme} colorScheme={!IS_EINK_RELEASE && bookPaperColor === "dark" ? "dark" : "light"} cover={speechCover ? { uri: speechCover } : undefined} hidden={!chromeVisible || Boolean(activeTool || selection || noteComposer || activeAnnotationId || expandedImageUri)} bottom={insets.bottom + 64} onRead={(id, location) => location ? showSpeechLocation(location, true) : chooseChapter(id)} onBookshelf={() => void toggleBookshelf()} onShelf={onBookshelf} bookshelfBusy={bookshelfBusy} /> : null}
       {readerNotice ? <Pressable onPress={() => setReaderNotice("")} style={[styles.readerNotice, { top: insets.top + 72, borderColor: theme.red, backgroundColor: theme.paper }]}><Text style={[styles.readerNoticeText, { color: theme.red, fontFamily: theme.sans }]}>{readerNotice}</Text></Pressable> : null}
       <Modal visible={Boolean(expandedImageUri)} transparent={false} animationType={IS_EINK_RELEASE ? "none" : "fade"} onRequestClose={() => setExpandedImageUri(undefined)}>
         <SafeAreaView edges={["top", "bottom"]} style={[styles.imageModal, { backgroundColor: theme.paper }]}>
