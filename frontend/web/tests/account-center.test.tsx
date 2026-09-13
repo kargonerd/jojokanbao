@@ -137,6 +137,7 @@ describe("account center", () => {
     expect(screen.getByRole("link", { name: /关于 JOJO 看报/ }).getAttribute("href")).toBe("/support");
     expect(screen.getByRole("heading", { name: "阅读偏好" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "时事外文内容默认语言：中文译文" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: /资料库设置/ }).getAttribute("href")).toBe("/account/library");
     expect(screen.getByRole("link", { name: /时事媒体源/ }).getAttribute("href")).toBe("/account/times-sources");
     expect(screen.queryByText(/Account dossier/i)).toBeNull();
     expect(screen.queryByText("你的统一账号")).toBeNull();
