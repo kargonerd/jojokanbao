@@ -404,7 +404,7 @@ describe("native cloud book annotations", () => {
     await mount();
     await act(async () => { await state.removeMark(own); });
     expect(api.deleteMyAnnotationMark).toHaveBeenCalledExactlyOnceWith("own", "reader:a");
-    expect(state.notes).toEqual([{ ...own, underlinedByMe: false, comments: [mine] }]);
+    expect(state.notes).toEqual([{ ...own, underlinedByMe: false, publiclyVisible: false, comments: [mine] }]);
     expect(state.threads[0]?.underlinedByMe).toBe(false);
   });
 
@@ -439,6 +439,121 @@ describe("native cloud book annotations", () => {
     await act(async () => { await state.removeMark(own); });
     expect(state.notes).toEqual([]);
     expect(api.deleteMyAnnotationMark).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([false, true])("queues a new thought behind deletion without restoring the mark (public discussion: %s)", async (publiclyVisible) => {
+    const own = thread("own", { underlinedByMe: true, publiclyVisible: true });
+    const pending = deferred<AnnotationThread | null>();
+    const saved = comment("new-private", "reader:a", { annotationId: own.id, visibility: "private" });
+    api.loadAnnotationThreads.mockResolvedValue([own]);
+    api.deleteMyAnnotationMark.mockReturnValueOnce(pending.promise);
+    api.addAnnotationComment.mockResolvedValue(saved);
+    await mount();
+    let deleting!: Promise<AnnotationThread | null>, commenting!: Promise<AnnotationComment>;
+    await act(async () => {
+      deleting = state.removeMark(own);
+      commenting = state.comment(own, saved.body, undefined, "private");
+    });
+    expect(api.deleteMyAnnotationMark).toHaveBeenCalledOnce();
+    expect(api.addAnnotationComment).not.toHaveBeenCalled();
+
+    await act(async () => {
+      pending.resolve(publiclyVisible ? { ...own, underlinedByMe: false } : null);
+      await deleting;
+      await commenting;
+    });
+
+    expect(api.addAnnotationComment).toHaveBeenCalledExactlyOnceWith("own", saved.body, undefined, "private", "reader:a");
+    expect(state.notes).toEqual([{ ...own, underlinedByMe: false, publiclyVisible, comments: [saved] }]);
+    expect(state.threads).toEqual(state.notes);
+    expect(api.loadAnnotationThreads).toHaveBeenCalledOnce();
+  });
+
+  it("queues recreating a mark behind deletion and keeps the newly created mark", async () => {
+    const own = thread("own", { underlinedByMe: true });
+    const pending = deferred<AnnotationThread | null>();
+    const saved = { ...own, comments: [comment("new-thought")] };
+    api.loadAnnotationThreads.mockResolvedValue([own]);
+    api.deleteMyAnnotationMark.mockReturnValueOnce(pending.promise);
+    api.createAnnotation.mockResolvedValue(saved);
+    await mount();
+    let deleting!: Promise<AnnotationThread | null>, creating!: Promise<AnnotationThread>;
+    await act(async () => {
+      deleting = state.removeMark(own);
+      creating = state.create(subject, anchor, "new-thought");
+    });
+    expect(api.createAnnotation).not.toHaveBeenCalled();
+
+    await act(async () => { pending.resolve(null); await deleting; await creating; });
+
+    expect(state.notes).toEqual([saved]);
+    expect(state.threads).toEqual([saved]);
+    expect(api.createAnnotation).toHaveBeenCalledOnce();
+  });
+
+  it("finishes a pending thought before deleting the mark and preserves the thought", async () => {
+    const own = thread("own", { underlinedByMe: true, publiclyVisible: true });
+    const pending = deferred<AnnotationComment>();
+    const saved = comment("kept-private", "reader:a", { annotationId: own.id, visibility: "private" });
+    api.loadAnnotationThreads.mockResolvedValue([own]);
+    api.addAnnotationComment.mockReturnValueOnce(pending.promise);
+    await mount();
+    let deleting!: Promise<AnnotationThread | null>, commenting!: Promise<AnnotationComment>;
+    await act(async () => {
+      commenting = state.comment(own, saved.body, undefined, "private");
+      deleting = state.removeMark(own);
+    });
+    expect(api.addAnnotationComment).toHaveBeenCalledOnce();
+    expect(api.deleteMyAnnotationMark).not.toHaveBeenCalled();
+
+    await act(async () => { pending.resolve(saved); await commenting; await deleting; });
+
+    expect(state.notes).toEqual([{ ...own, underlinedByMe: false, publiclyVisible: false, comments: [saved] }]);
+    expect(state.threads).toEqual(state.notes);
+    expect(api.deleteMyAnnotationMark).toHaveBeenCalledOnce();
+  });
+
+  it("runs the queued thought after a failed deletion while retaining the mark", async () => {
+    const own = thread("own", { underlinedByMe: true });
+    const pending = deferred<AnnotationThread | null>();
+    api.loadAnnotationThreads.mockResolvedValue([own]);
+    api.deleteMyAnnotationMark.mockReturnValueOnce(pending.promise);
+    await mount();
+    let deleting!: Promise<AnnotationThread | null>, commenting!: Promise<AnnotationComment>;
+    await act(async () => {
+      deleting = state.removeMark(own);
+      commenting = state.comment(own, "kept-thought");
+    });
+    const rejected = expect(deleting).rejects.toThrow("network");
+    expect(api.addAnnotationComment).not.toHaveBeenCalled();
+
+    await act(async () => { pending.reject(new Error("network")); await rejected; await commenting; });
+
+    expect(state.notes[0]).toMatchObject({ id: "own", underlinedByMe: true, comments: [comment("created-comment")] });
+    expect(api.addAnnotationComment).toHaveBeenCalledOnce();
+  });
+
+  it.each(["reader:b", "reader:a"])("never submits queued old-account actions after switching readers (current: %s)", async (nextReader) => {
+    const own = thread("own", { underlinedByMe: true });
+    const pending = deferred<AnnotationThread | null>();
+    api.deleteMyAnnotationMark.mockReturnValueOnce(pending.promise);
+    await mount();
+    let deleting!: Promise<AnnotationThread | null>, commenting!: Promise<AnnotationComment>, creating!: Promise<AnnotationThread>;
+    await act(async () => {
+      deleting = state.removeMark(own);
+      commenting = state.comment(own, "old-account-thought");
+      creating = state.create(subject, anchor);
+    });
+    const rejected = [deleting, commenting, creating].map((request) => expect(request).rejects.toThrow("登录状态已变化"));
+    await rerender({ userId: "reader:b" });
+    if (nextReader === "reader:a") await rerender({ userId: "reader:a" });
+    // The current reader can write without waiting for the obsolete queue.
+    await act(async () => { await state.create(subject, anchor, "current-account-thought"); });
+    await act(async () => { pending.resolve(null); await Promise.all(rejected); });
+
+    expect(api.addAnnotationComment).not.toHaveBeenCalled();
+    expect(api.createAnnotation).toHaveBeenCalledExactlyOnceWith(subject, anchor, "current-account-thought", "public", nextReader);
+    expect(state.notes.map((entry) => entry.id)).toEqual(["created"]);
   });
 
   it("ignores a deletion finishing after an account change", async () => {

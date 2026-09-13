@@ -864,6 +864,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
     const changed = await cloudAnnotations.removeMark(thread);
     if (noteContextRef.current !== context) return;
     if (!changed?.underlinedByMe && !changed?.publiclyVisible) webViewRef.current?.injectJavaScript(createBookReaderRemoveAnnotationScript(thread.id));
+    setActiveAnnotationId((id) => id === thread.id ? undefined : id);
     setReaderNotice("已删除自己的划线");
     void selectionHaptic(hapticsEnabled);
   }

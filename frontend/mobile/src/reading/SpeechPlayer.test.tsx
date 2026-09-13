@@ -325,11 +325,15 @@ describe("book thought integration", () => {
     mocks.annotationThreads.mockResolvedValue([thread]);
     await renderReader();
     await message({ type: "reader-annotation", id: thread.id });
+    mocks.personalNotes.mockResolvedValue([{ ...thread, underlinedByMe: false, publiclyVisible: false }]);
     await act(async () => view.root.findByProps({ testID: "annotation-discussion" }).props.onRemoveMark());
     expect(mocks.deleteMyAnnotationMark).toHaveBeenCalledExactlyOnceWith(thread.id, "reader");
-    const detail = view.root.findByProps({ testID: "annotation-discussion" });
-    expect(detail.props.thread.underlinedByMe).toBe(false);
-    expect(detail.props.thread.comments[0].body).toBe("保留私密想法");
+    expect(view.root.findAllByProps({ testID: "annotation-discussion" })).toHaveLength(0);
+    expect(view.root.findAllByProps({ accessibilityLabel: "打开听读播放器" })).toHaveLength(1);
+    await act(async () => tool("笔记").props.onPress());
+    const notes = view.root.findAllByType("section").find((node) => node.props.data?.some((item: { id: string }) => item.id === thread.id));
+    expect(notes?.props.data[0].thread.underlinedByMe).toBe(false);
+    expect(notes?.props.data[0].thread.comments[0].body).toBe("保留私密想法");
     expect(mocks.injectJavaScript.mock.calls.some(([script]) => script.includes("__jojoReaderRemoveAnnotation") && script.includes(thread.id))).toBe(true);
     expect(mocks.state.removeBookAnnotation).not.toHaveBeenCalled();
   });
