@@ -1,5 +1,5 @@
 // Explicit hosted quota smoke test. Calls Reader, PostHog and Supabase; never requests a model.
-// Run after migration 202609130002 are applied:
+// Run after the reviewed migrations through 202609130005 are applied:
 //   node tools/beta-smoke/ai-usage.mjs [env-directory]
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
@@ -7,12 +7,13 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { getAdminKey, literal, loadEnvironment, query, request, readPostHogConfig, signupAuthorization } from './lib.mjs';
 
 const env = loadEnvironment(process.argv[2]);
-for (const key of ['SUPABASE_ACCESS_TOKEN', 'SUPABASE_PROJECT_REF', 'VITE_SUPABASE_URL', 'VITE_SUPABASE_PUBLISHABLE_KEY', 'JOJO_OPERATOR_TOKEN']) {
+for (const key of ['SUPABASE_ACCESS_TOKEN', 'SUPABASE_PROJECT_REF', 'VITE_SUPABASE_URL', 'VITE_SUPABASE_PUBLISHABLE_KEY']) {
   assert.ok(env[key], `Missing ${key}`);
 }
 const run = `ai-usage-smoke-${randomUUID()}`;
 const passed = [];
 const userIds = new Set();
+let adminKey;
 let userId;
 let userToken;
 let fixturesStarted = false;
@@ -45,8 +46,14 @@ async function setFixtureState(assignments) {
     where ${markedUser()} returning user_id`, false);
   assert.equal(rows.length, 1, 'Only the marked fixture state may be changed');
 }
-const rpc = (name, requestId, operatorToken = env.JOJO_OPERATOR_TOKEN, token) => request(env, `rest/v1/rpc/${name}`, {
-  token, body: { p_operator_token: operatorToken, p_user_id: userId, p_request_id: requestId, ...(name === 'acquire_agent_usage' ? { p_requests_per_minute: policy.requestsPerMinute, p_requests_per_day: policy.requestsPerDay, p_max_run_seconds: policy.maxRunSeconds } : {}) },
+// 202609130005 dropped p_operator_token and granted these RPCs to service_role
+// only, so the smoke calls them with the service role key and keeps a
+// reader-scoped variant for the negative checks.
+const serviceAuth = () => ({ token: adminKey, key: adminKey });
+const readerAuth = () => ({ token: userToken });
+const rpc = (name, requestId, auth = serviceAuth()) => request(env, `rest/v1/rpc/${name}`, {
+  ...auth,
+  body: { p_user_id: userId, p_request_id: requestId, ...(name === 'acquire_agent_usage' ? { p_requests_per_minute: policy.requestsPerMinute, p_requests_per_day: policy.requestsPerDay, p_max_run_seconds: policy.maxRunSeconds } : {}) },
 });
 async function acquire(requestId) {
   const result = await rpc('acquire_agent_usage', requestId);
@@ -57,16 +64,17 @@ async function release(requestId) {
   const result = await rpc('release_agent_usage', requestId);
   assert.ok(result.ok, `release_agent_usage: HTTP ${result.status}, code ${result.data?.code ?? ''}`);
 }
-const deniedOperator = result => [401, 403].includes(result.status) && result.data?.code === '42501';
+const deniedServiceRole = result => [401, 403].includes(result.status) && result.data?.code === '42501';
 
 try {
   const [schema] = await query(env, `select
     exists(select 1 from supabase_migrations.schema_migrations where version = '202609080003') as migration_recorded,
     exists(select 1 from supabase_migrations.schema_migrations where version = '202609130002') as runtime_migration_recorded,
+    exists(select 1 from supabase_migrations.schema_migrations where version = '202609130005') as service_role_migration_recorded,
     to_regclass('private.agent_usage_policy') is null as old_policy_removed,
     to_regclass('private.agent_usage_state') is not null as usage_state_retained,
-    to_regprocedure('public.acquire_agent_usage(text,uuid,uuid,integer,integer,integer)') is not null as acquire_rpc,
-    to_regprocedure('public.release_agent_usage(text,uuid,uuid)') is not null as release_rpc`);
+    to_regprocedure('public.acquire_agent_usage(uuid,uuid,integer,integer,integer)') is not null as acquire_rpc,
+    to_regprocedure('public.release_agent_usage(uuid,uuid)') is not null as release_rpc`);
   check('usage migrations and RPCs are present, with state retained and the old policy table removed', Object.values(schema).every(value => value === true));
   policy = await readPostHogConfig(env, 'ai_usage_limits_config');
   check('PostHog returns valid usage limits',
@@ -75,7 +83,7 @@ try {
     && Number.isInteger(policy.maxRunSeconds) && policy.maxRunSeconds >= 30 && policy.maxRunSeconds <= 600);
   assert.ok(policy.requestsPerDay > policy.requestsPerMinute && policy.requestsPerDay >= 3,
     'The daily policy must allow the minute-limit and expired-lease scenarios');
-  const adminKey = await getAdminKey(env);
+  adminKey = await getAdminKey(env);
   fixturesStarted = true;
   const [invitation] = await query(env, `select * from private.create_signup_invitation(null, interval '1 hour', 1, ${literal(run)})`, false);
   const email = `${run}@example.invalid`;
@@ -97,10 +105,10 @@ try {
   userToken = signedIn.data.access_token;
   check('one isolated confirmed account authenticated without email', Boolean(userToken));
 
-  const deniedAcquire = await rpc('acquire_agent_usage', randomUUID(), null, userToken);
-  check('a signed-in reader cannot acquire without the operator token', deniedOperator(deniedAcquire));
-  const deniedRelease = await rpc('release_agent_usage', randomUUID(), null, userToken);
-  check('a signed-in reader cannot release without the operator token', deniedOperator(deniedRelease));
+  const deniedAcquire = await rpc('acquire_agent_usage', randomUUID(), readerAuth());
+  check('a signed-in reader cannot acquire without the service role key', deniedServiceRole(deniedAcquire));
+  const deniedRelease = await rpc('release_agent_usage', randomUUID(), readerAuth());
+  check('a signed-in reader cannot release without the service role key', deniedServiceRole(deniedRelease));
   check('unauthorized calls create no usage state', await state() === undefined);
 
   const requestIds = [randomUUID(), randomUUID()];
@@ -164,8 +172,8 @@ try {
   await release(expiredId);
   assert.deepEqual(await state(), replacement, 'An old request must not release a newer lease');
   passed.push('a late release from the old request preserves the replacement lease');
-  const unauthorizedLateRelease = await rpc('release_agent_usage', replacementId, null, userToken);
-  check('a reader cannot clear the active replacement lease', deniedOperator(unauthorizedLateRelease) && (await state()).active_request_id === replacementId);
+  const unauthorizedLateRelease = await rpc('release_agent_usage', replacementId, readerAuth());
+  check('a reader cannot clear the active replacement lease', deniedServiceRole(unauthorizedLateRelease) && (await state()).active_request_id === replacementId);
   await release(replacementId);
   const finished = await state();
   check('the matching release clears the lease and keeps charged usage', finished.active_request_id === null && finished.active_until === null && finished.day_count === 3);

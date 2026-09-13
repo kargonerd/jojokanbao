@@ -10,6 +10,8 @@ const run = `beta-smoke-${randomUUID()}`;
 const content = { p_content_type: 'book', p_content_id: run, p_section_id: 'smoke' };
 const passed = [];
 const users = [];
+const moderatedCommentIds = [];
+let adminKey;
 let invitation;
 let failure;
 mkdirSync('.runtime/beta-smoke', { recursive: true });
@@ -26,12 +28,19 @@ async function rpc(user, name, body = {}, expected = true) {
   if (expected) assert.ok(result.ok, `${name}: HTTP ${result.status}, code ${result.data?.code ?? ''}`);
   return expected ? result.data : result;
 }
+// 202609130005 renamed these RPCs to admin_* and granted them to service_role
+// only, so the moderation fixtures call them with the service role key.
+async function serviceRpc(name, body = {}, expected = true) {
+  const result = await request(env, `rest/v1/rpc/${name}`, { token: adminKey, key: adminKey, body });
+  if (expected) assert.ok(result.ok, `${name}: HTTP ${result.status}, code ${result.data?.code ?? ''}`);
+  return expected ? result.data : result;
+}
 const threads = user => rpc(user, 'get_annotation_threads', content);
 const count = user => rpc(user, 'get_my_unread_notification_count');
 const notifications = user => rpc(user, 'get_my_notifications', { p_limit: 50, p_before: null, p_before_id: null });
 
 try {
-  const adminKey = await getAdminKey(env);
+  adminKey = await getAdminKey(env);
   [invitation] = await query(env, `select * from private.create_signup_invitation(null, interval '1 hour', 3, ${literal(run)})`, false);
   for (let i = 0; i < 3; i++) {
     const email = `${run}-${i}@example.invalid`;
@@ -96,16 +105,17 @@ try {
   check('empty batch never marks all unread notifications', await batch(author, []) === 0 && await count(author) === 1);
   check('null batch is rejected without marking unseen notifications', !(await batch(author, null, false)).ok && await count(author) === 1);
   const report = await rpc(reporter, 'report_annotation_comment', { p_comment_id: publicComment.id, p_reason: 'other', p_details: '自动化测试，随后清理' });
-  const pending = await rpc(null, 'operator_list_annotation_reports', { p_operator_token: env.JOJO_OPERATOR_TOKEN, p_status: 'pending' });
-  check('operator queue contains the submitted report', pending.some(item => item.commentId === publicComment.id && item.reports.some(entry => entry.id === report.id)));
+  moderatedCommentIds.push(publicComment.id);
+  const pending = await serviceRpc('admin_list_annotation_reports', { p_status: 'pending' });
+  check('moderation queue contains the submitted report', pending.some(item => item.commentId === publicComment.id && item.reports.some(entry => entry.id === report.id)));
   const ownReport = await rpc(author, 'report_annotation_comment', { p_comment_id: publicComment.id, p_reason: 'spam' }, false);
   check('self reporting denied', !ownReport.ok);
-  const denied = await rpc(null, 'operator_moderate_annotation_comment', {
-    p_operator_token: 'invalid-test-token', p_comment_id: publicComment.id, p_action: 'hide', p_reason: '自动测试',
+  const denied = await rpc(reporter, 'admin_moderate_annotation_comment', {
+    p_actor_id: reporter.id, p_comment_id: publicComment.id, p_action: 'hide', p_reason: '自动测试',
   }, false);
-  check('moderation requires the operator token', !denied.ok);
-  const moderate = action => rpc(null, 'operator_moderate_annotation_comment', {
-    p_operator_token: env.JOJO_OPERATOR_TOKEN, p_comment_id: publicComment.id, p_action: action, p_reason: '自动化测试，随后清理',
+  check('moderation requires the service role key', !denied.ok);
+  const moderate = action => serviceRpc('admin_moderate_annotation_comment', {
+    p_actor_id: author.id, p_comment_id: publicComment.id, p_action: action, p_reason: '自动化测试，随后清理',
   });
   await moderate('hide');
   check('moderation hides public text', !(await threads(commenter)).flatMap(t => t.comments).some(c => c.id === publicComment.id && c.body === '公开测试评论'));
@@ -121,7 +131,15 @@ try {
   failure = error;
 } finally {
   // Reconcile by the exact unique run marker even after an uncertain Auth response.
+  // The moderation fixtures also insert audit rows into private.admin_actions.
+  // target_id has no foreign key, so those rows survive the cascade below and
+  // must be removed explicitly. Empty filter matches nothing when the run failed
+  // before any moderation call.
+  const auditFilter = moderatedCommentIds.length
+    ? `target_id = any(array[${moderatedCommentIds.map(literal).join(',')}]::uuid[])`
+    : 'false';
   await query(env, `begin;
+    delete from private.admin_actions where ${auditFilter};
     delete from public.content_annotations where content_id = ${literal(run)};
     delete from auth.users where raw_user_meta_data ->> 'beta_smoke_run' = ${literal(run)};
     delete from private.signup_invitations where note = ${literal(run)};
@@ -133,7 +151,8 @@ try {
     (select count(*) from public.annotation_comments where user_id = any(array[${users.map(u => literal(u.id)).join(',')}]::uuid[])) as comments,
     (select count(*) from public.user_notifications where recipient_id = any(array[${users.map(u => literal(u.id)).join(',')}]::uuid[])) as notifications,
     (select count(*) from public.content_annotation_marks where user_id = any(array[${users.map(u => literal(u.id)).join(',')}]::uuid[])) as marks,
-    (select count(*) from public.annotation_comment_reports where reporter_id = any(array[${users.map(u => literal(u.id)).join(',')}]::uuid[])) as reports`);
+    (select count(*) from public.annotation_comment_reports where reporter_id = any(array[${users.map(u => literal(u.id)).join(',')}]::uuid[])) as reports,
+    (select count(*) from private.admin_actions where ${auditFilter}) as admin_actions`);
   const clean = Object.values(remaining).every(value => Number(value) === 0);
   check('all synthetic records cleaned up', clean);
   save({ status: failure ? 'failed' : 'passed', error: failure?.message, cleanup: remaining });
