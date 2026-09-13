@@ -1,6 +1,7 @@
 import { libraryBookPolicy, isLibrarySourceEnabled } from "@jojo/content";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { bookProgressPercent, bookProgressLocation, estimatedReadingMinutes, formatReadingTime, type SpeechLocation, type SpeechReadingPosition } from "@jojo/content";
+import { createReadingAttempt } from "@jojo/analytics";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useIsFocused } from "@react-navigation/native";
 import { StatusBar } from "expo-status-bar";
@@ -27,7 +28,6 @@ import { useMobileOfflineBooksStore } from "../offline/books";
 import { useReadingProgress } from "../reading/useReadingProgress";
 import { NativeSpeechPlayer } from "../reading/SpeechPlayer";
 import { mobileSpeechSegments } from "../reading/speech";
-import { useSpeechFlagStore } from "../reading/featureFlag";
 import { useBookReadingTime } from "../reading/useBookReadingTime";
 import { useReaderBrightness } from "../reading/useReaderBrightness";
 import { bookTocEntries, type BookTocEntry } from "../lib/bookToc";
@@ -152,6 +152,8 @@ export function BookReaderScreen({ route, navigation }: Props) {
   const [chapterLoading, setChapterLoading] = useState(false);
   const loading = itemLoading || chapterLoading;
   const [error, setError] = useState("");
+  const readingAttempt = useMemo(() => createReadingAttempt("book", `${datasetId}:${itemKey}`), [datasetId, itemKey]);
+  useEffect(() => { if (error) readingAttempt.failed(); }, [error, readingAttempt]);
   const [chromeVisible, setChromeVisible] = useState(true);
   const [activeTool, setActiveTool] = useState<ReaderTool | null>(null);
   const [notesView, setNotesView] = useState<"mine" | "public">("mine");
@@ -208,7 +210,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
   const readerReadyChapterRef = useRef("");
   const readingChapterRef = useRef(activeChapterId);
   readingChapterRef.current = activeChapterId;
-  const speechEnabled = useSpeechFlagStore((state) => state.enabled && state.userId === user?.id);
+  const speechAvailable = Boolean(user);
   const [speechCover, setSpeechCover] = useState<string>();
   const speechPositionSequence = useRef(0);
   const pendingSpeechPosition = useRef<{ id: number; resolve: (value: SpeechReadingPosition) => void; reject: () => void } | null>(null);
@@ -260,9 +262,9 @@ export function BookReaderScreen({ route, navigation }: Props) {
   useEffect(() => {
     let active = true;
     setSpeechCover(undefined);
-    if (loaded && speechEnabled) void loadMobileBookCover(loaded.book, itemKey).then((uri) => { if (active) setSpeechCover(uri); }).catch(() => undefined);
+    if (loaded && speechAvailable) void loadMobileBookCover(loaded.book, itemKey).then((uri) => { if (active) setSpeechCover(uri); }).catch(() => undefined);
     return () => { active = false; };
-  }, [loaded, itemKey, speechEnabled]);
+  }, [loaded, itemKey, speechAvailable]);
   const loadSpeechChapter = useCallback(async (id: string) => {
     if (!loaded) throw new Error("书籍尚未加载");
     const { fragment } = scrollChaptersRef.current.get(id) ?? await loadMobileBookChapter(loaded, id, false);
@@ -1001,6 +1003,9 @@ export function BookReaderScreen({ route, navigation }: Props) {
             cacheEnabled={false}
             onLoadStart={() => { readerReadyChapterRef.current = ""; pendingSpeechPosition.current?.reject(); }}
             onInitializationError={() => { setChapterLoading(false); setError("阅读页面未能就绪，请重新加载"); }}
+            onLoad={() => {
+              if (readingChapterRef.current === activeChapterId && chapter?.fragment.fragmentId === activeChapterId) readingAttempt.loaded();
+            }}
             onError={() => { setChapterLoading(false); setError("章节显示失败，请重新加载"); }}
             onRenderProcessGone={() => { setChapterLoading(false); setError("阅读页面已被系统回收，请重新加载"); }}
             onContentProcessDidTerminate={() => { setChapterLoading(false); setError("阅读页面已被系统回收，请重新加载"); }}

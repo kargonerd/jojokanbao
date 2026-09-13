@@ -22,12 +22,15 @@ const api = createAnnotationApi({
     const { data, error } = await mobileAuthClient.auth.getSession();
     const session = data.session;
     if (error || session?.user.id !== expectedUserId || !session.access_token) throw new Error("登录状态已变化，请重新打开笔记");
-    // Supabase preserves explicit Authorization when its live session changes.
     const authorization = `Bearer ${session.access_token}`;
-    // These deployed RPCs are shared with Web while generated schemas roll out.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const request = (mobileAuthClient as any).rpc(name, params).setHeader("Authorization", authorization);
-    return signal ? request.abortSignal(signal) : request;
+    const base = process.env.EXPO_PUBLIC_READER_API_BASE?.replace(/\/$/, "") || "https://beta.jojokanbao.cn";
+    const response = await fetch(`${base}/api/v1/annotations`, {
+      method: "POST", headers: { "Authorization": authorization, "Content-Type": "application/json" },
+      body: JSON.stringify({ operation: name, params }), signal,
+    });
+    const result = await response.json();
+    return response.ok ? { data: result, error: null }
+      : { data: null, error: { message: result.error?.message || "阅读笔记服务暂时不可用" } };
   },
   getCurrentUserId: async () => {
     const { mobileAuthClient } = await loadAuth();

@@ -30,7 +30,7 @@ def test_library_two_voices_retries_failed_jobs_and_resumes_without_repeating(mo
     args = SimpleNamespace(plan=plan, output=tmp_path / "run", rpm=60, max_concurrency=8)
     settings = Settings(environment="test", allowed_origins=(), supabase_url=None,
                         supabase_publishable_key=None, auth_timeout_seconds=1,
-                        speech_storage="b2", mimo_api_key="test", tts_enabled=True)
+                        speech_storage="b2", mimo_api_key="test")
     client = Mock()
     client.meta.config = Config()
     store = SimpleNamespace(client=client)
@@ -167,7 +167,7 @@ def test_cross_chapter_pool_deduplicates_and_publishes_in_original_order(monkeyp
     expected_tasks = 22 if accounts >= 7 else 6
     settings = Settings(environment="test", allowed_origins=(), supabase_url=None,
                         supabase_publishable_key=None, auth_timeout_seconds=1,
-                        speech_storage="b2", mimo_api_key="test", tts_enabled=True)
+                        speech_storage="b2", mimo_api_key="test")
     client = Mock()
     client.meta.config = Config()
     manifests = []
@@ -260,7 +260,7 @@ def test_third_account_rejects_missing_or_duplicate_key(monkeypatch, third_key):
     import library_pool
     monkeypatch.setenv("MIMO_API_KEY_2", "second-test")
     monkeypatch.setenv("MIMO_API_KEY_3", third_key)
-    settings = SimpleNamespace(speech_storage="b2", mimo_api_key="primary-test", tts_enabled=True)
+    settings = SimpleNamespace(speech_storage="b2", mimo_api_key="primary-test")
     with pytest.raises(ValueError, match="MIMO_API_KEY_3 must be configured and distinct"):
         asyncio.run(library_pool.run_pool(SimpleNamespace(accounts=3), settings))
 

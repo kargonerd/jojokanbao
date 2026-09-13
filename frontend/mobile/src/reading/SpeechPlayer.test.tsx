@@ -8,7 +8,7 @@ import type { AnnotationSubject, TextAnchor, AnnotationThread, AnnotationVisibil
 
 const mocks = vi.hoisted(() => ({
   eInk: false, focused: true, user: { id: "reader" } as { id: string } | null,
-  enabled: true, flagUserId: "reader", playbackUnmount: vi.fn(),
+  playbackUnmount: vi.fn(),
   setBrightness: vi.fn(async (_value: number) => undefined),
   materializeArtwork: vi.fn(), playbackProps: vi.fn(),
   annotationThreads: vi.fn(async () => [] as AnnotationThread[]),
@@ -71,9 +71,6 @@ vi.mock("../theme/tokens", async (importOriginal) => {
   return { ...themes, get mobileTheme() { return mocks.eInk ? themes.eInkTheme : themes.editorialTheme; } };
 });
 vi.mock("../account/auth", () => ({ useMobileAuthStore: (select: (state: { user: typeof mocks.user }) => unknown) => select({ user: mocks.user }) }));
-vi.mock("./featureFlag", () => ({ useSpeechFlagStore: (select?: (state: unknown) => unknown) => {
-  const state = { enabled: mocks.enabled, userId: mocks.flagUserId }; return select ? select(state) : state;
-} }));
 vi.mock("./useSpeechPlayback", async () => {
   const { useEffect } = await import("react");
   return { useSpeechPlayback: (props: object) => {
@@ -154,7 +151,7 @@ async function renderReader(initialized = true) {
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   vi.useFakeTimers(); vi.clearAllMocks();
-  mocks.eInk = false; mocks.focused = true; mocks.enabled = true; mocks.flagUserId = "reader"; mocks.user = { id: "reader" };
+  mocks.eInk = false; mocks.focused = true; mocks.user = { id: "reader" };
   mocks.state.bookAnnotations = [];
   mocks.annotationThreads.mockReset().mockResolvedValue([]); mocks.personalNotes.mockReset().mockResolvedValue([]);
   mocks.publicNotes.mockReset().mockResolvedValue({ notes: [], nextCursor: null });
@@ -752,8 +749,7 @@ describe.each([false, true])("reader listening visibility (eInk=%s)", (eInk) => 
     expect(view.root.findAllByProps({ accessibilityRole: "alert" })).toHaveLength(0);
     expect(view.root.findAllByProps({ testID: "reader-webview" })).toHaveLength(1);
   });
-  it("offers a labelled bookshelf action without enabling listening, including login and retry", async () => {
-    mocks.enabled = false;
+  it("offers a labelled bookshelf action with login and retry", async () => {
     mocks.shelfContains.mockRejectedValueOnce(new Error("offline"));
     await renderReader();
     const add = view.root.findByProps({ accessibilityLabel: "加入书架" });
@@ -898,18 +894,16 @@ describe.each([false, true])("reader listening visibility (eInk=%s)", (eInk) => 
     expect(view.root.findAllByProps({ accessibilityLabel: "打开听读播放器" })).toHaveLength(1);
   });
 
-  it.each(["logout", "flag disabled", "flag belongs to another account", "reader loses focus"])("unmounts the active listening session when %s", async (reason) => {
+  it.each(["logout", "reader loses focus"])("unmounts the active listening session when %s", async (reason) => {
     await renderReader(); await press("打开听读播放器");
     if (reason === "logout") mocks.user = null;
-    else if (reason === "flag disabled") mocks.enabled = false;
-    else if (reason === "flag belongs to another account") mocks.flagUserId = "another-reader";
     else mocks.focused = false;
     await act(async () => view.update(<BookReaderScreen {...readerProps} />));
     expect(view.root.findAllByType("dialog")).toHaveLength(0);
     expect(view.root.findAllByProps({ accessibilityLabel: "打开听读播放器" })).toHaveLength(0);
     expect(view.root.findAllByProps({ accessibilityLabel: "展开听读播放器" })).toHaveLength(0);
     expect(mocks.playbackUnmount).toHaveBeenCalledOnce();
-    mocks.user = { id: "reader" }; mocks.enabled = true; mocks.flagUserId = "reader"; mocks.focused = true;
+    mocks.user = { id: "reader" }; mocks.focused = true;
     await act(async () => view.update(<BookReaderScreen {...readerProps} />));
     expect(view.root.findAllByProps({ accessibilityLabel: "打开听读播放器" })).toHaveLength(1);
     expect(view.root.findAllByType("dialog")).toHaveLength(0);

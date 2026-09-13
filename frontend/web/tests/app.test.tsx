@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App, AppRoutes } from "../src/App";
 import { useAccountSessionStore } from "../src/account/session";
 import { AppLayout, buildAppNavigationItems } from "../src/shell/AppLayout";
+import { useSupportConfigStore } from "../src/supportConfig";
+import { DEFAULT_SUPPORT_CONFIG } from "@jojo/content";
 
 const appPdfMocks = vi.hoisted(() => ({
   usePdfDocument: vi.fn(),
@@ -31,6 +33,7 @@ function renderAt(path: string) {
 }
 
 beforeEach(() => {
+  useSupportConfigStore.setState(DEFAULT_SUPPORT_CONFIG);
   useAccountSessionStore.setState({ initialized: true, userId: null, displayName: null });
   appPdfMocks.usePdfDocument.mockReset();
   appPdfMocks.usePdfDocument.mockReturnValue({ document: null, numPages: 0, loading: false, error: null });
@@ -42,27 +45,6 @@ afterEach(() => {
 });
 
 describe("JOJO Web routes and Archive homepage", () => {
-  it("keeps the complete previous site active when the redesign build flag is off", async () => {
-    const home = render(
-      <MemoryRouter initialEntries={["/"]}>
-        <AppRoutes platformRedesign={false} />
-      </MemoryRouter>,
-    );
-
-    expect(await screen.findByRole("heading", { name: "人民日报", level: 2 })).toBeTruthy();
-    expect(screen.queryByRole("heading", { name: "今天读什么？" })).toBeNull();
-    expect(screen.queryByRole("link", { name: "登录" })).toBeNull();
-    home.unmount();
-
-    render(
-      <MemoryRouter initialEntries={["/archive/support"]}>
-        <AppRoutes platformRedesign={false} />
-      </MemoryRouter>,
-    );
-    expect(screen.getByRole("heading", { name: "反馈" })).toBeTruthy();
-    expect(screen.queryByRole("heading", { name: "关于 JOJO 看报" })).toBeNull();
-    expect(screen.queryByRole("heading", { name: "返回旧版" })).toBeNull();
-  });
 
   it("renders the new reading-first homepage at the site root", async () => {
     renderAt("/");
@@ -257,10 +239,10 @@ describe("JOJO Web navigation", () => {
     expect(window.location.pathname).toBe("/download");
   });
 
-  it.each([false, true])("opens the iPhone guide directly with platformRedesign=%s", async (platformRedesign) => {
+  it("opens the iPhone guide directly", async () => {
     render(
       <MemoryRouter initialEntries={["/download/iphone"]}>
-        <AppRoutes platformRedesign={platformRedesign} />
+        <AppRoutes />
       </MemoryRouter>,
     );
     await act(async () => { await import("../src/download/IphoneInstallPage"); });
@@ -379,11 +361,16 @@ describe("JOJO Web navigation", () => {
 
   it("uses the same About entry instead of the old feedback menu", async () => {
     renderAt("/archive");
+    // Finish the Archive redirect before exercising the next navigation.
+    await waitFor(() => expect(window.location.pathname).toBe("/library"));
     expect(screen.queryByRole("button", { name: "菜单" })).toBeNull();
-    fireEvent.click(screen.getByRole("link", { name: "关于" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("link", { name: "关于" }));
+      await vi.dynamicImportSettled();
+    });
 
     await waitFor(() => expect(window.location.pathname).toBe("/support"));
-    expect(screen.getByRole("heading", { name: "关于 JOJO 看报" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "关于 JOJO 看报" })).toBeTruthy();
   });
 
   it("returns home through the mobile brand link", async () => {
@@ -396,6 +383,13 @@ describe("JOJO Web navigation", () => {
 });
 
 describe("Support page", () => {
+  it("updates the displayed QQ group when remote configuration is refreshed", async () => {
+    renderAt("/archive/support");
+    expect(await screen.findByText("974380749")).toBeTruthy();
+    act(() => { useSupportConfigStore.setState({qqGroup: "123456789"}); });
+    expect(screen.getByText("123456789")).toBeTruthy();
+    expect(screen.queryByText("974380749")).toBeNull();
+  });
   it("exposes Support above About when login services are unavailable", () => {
     renderAt("/account");
     const support = screen.getByRole("link", { name: /支持我们/ });
@@ -403,9 +397,10 @@ describe("Support page", () => {
     expect(support.nextElementSibling).toBe(screen.getByRole("link", { name: /关于 JOJO 看报/ }));
   });
 
-  it("keeps feedback, memorial, copyright, and cloud downloads in About without donation content", () => {
+  it("keeps feedback, memorial, copyright, and cloud downloads in About without donation content", async () => {
     renderAt("/archive/support");
 
+    await screen.findByRole("heading", { name: "关于 JOJO 看报" });
     expect(screen.getAllByRole("heading").map((heading) => heading.textContent)).toEqual([
       "关于 JOJO 看报", "纪念缅怀", "版权说明", "数据下载",
     ]);

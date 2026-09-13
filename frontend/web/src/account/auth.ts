@@ -2,14 +2,20 @@ import {
   createJojoAuthClient,
   createJojoAuthStore,
   createPersonalInvitationRepository,
+  authorizeSignup,
 } from "@jojo/auth";
+import { startSignupPolicy } from "./signupPolicy";
+import { agentGatewayUrl } from "../api/agentGateway";
 
 export const authClient = createJojoAuthClient({
   supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
   publishableKey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
 });
 
-export const { useAuthStore, startAuthSync } = createJojoAuthStore(authClient);
+export const { useAuthStore, startAuthSync } = createJojoAuthStore(authClient, {
+  startSignupPolicy,
+  authorizeSignup: (email, code) => authorizeSignup(agentGatewayUrl("/api/v1/account/signup-authorization"), email, code),
+});
 export const personalInvitationRepository =
   createPersonalInvitationRepository(authClient);
 

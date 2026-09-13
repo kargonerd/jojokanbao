@@ -68,6 +68,8 @@ export interface MobileAiConversation {
 interface RememberIssueInput extends Omit<RecentIssue, "progress" | "updatedAt"> {}
 
 interface MobileState {
+  analyticsEnabled: boolean;
+  setAnalyticsEnabled: (enabled: boolean) => void;
   hapticsEnabled: boolean;
   textScale: 0.9 | 1 | 1.12;
   bookLineHeight: 1.75 | 1.95 | 2.15;
@@ -121,6 +123,8 @@ interface MobileState {
 export const useMobileStore = create<MobileState>()(
   persist(
     (set) => ({
+      analyticsEnabled: true,
+      setAnalyticsEnabled: (analyticsEnabled) => set({ analyticsEnabled }),
       hapticsEnabled: true,
       textScale: 1,
       bookLineHeight: 1.95,
@@ -273,7 +277,8 @@ export const useMobileStore = create<MobileState>()(
         const persisted = saved as Partial<MobileState> | undefined;
         return { ...current, ...persisted, librarySources: normalizeLibrarySources(persisted?.librarySources ?? current.librarySources) };
       },
-      partialize: ({ hapticsEnabled, textScale, bookLineHeight, bookReadingMode, bookPaperColor, bookFirstLineIndent, keepScreenAwake, allowLandscape, leftTapNext, recentIssues, recentBooks, historyOwnerId, historyClearedAt, historyAccounts, bookReadingSeconds, bookAnnotations, aiConversations, timesLanguage, timesReadArticleIds, timesDisabledSourceIds, librarySources }) => ({
+      partialize: ({ analyticsEnabled, hapticsEnabled, textScale, bookLineHeight, bookReadingMode, bookPaperColor, bookFirstLineIndent, keepScreenAwake, allowLandscape, leftTapNext, recentIssues, recentBooks, historyOwnerId, historyClearedAt, historyAccounts, bookReadingSeconds, bookAnnotations, aiConversations, timesLanguage, timesReadArticleIds, timesDisabledSourceIds, librarySources }) => ({
+        analyticsEnabled,
         historyOwnerId, historyClearedAt, historyAccounts,
         hapticsEnabled,
         textScale,

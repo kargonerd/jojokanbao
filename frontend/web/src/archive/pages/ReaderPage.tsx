@@ -1,5 +1,6 @@
 import { useParams, useNavigate, useSearchParams, useLocation } from "react-router-dom";
 import { type CSSProperties, useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useReadingAnalytics } from "../../analytics/useReadingAnalytics";
 import { fetchPdfDownloadBytes, findPdfOutlineLocation, resolvePdfOutlineDestination, PdfViewer, usePdfDocument, type PdfOutlineItem, type PdfOutlineLocation, type PdfSearchResult } from "@jojo/pdf-viewer";
 import { formatArchiveIssueLabel } from "@jojo/content";
 import { EmptyState, DatePicker, Toolbar, YearPicker } from "@jojo/ui";
@@ -391,6 +392,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   const initialPageKey = pdfUrl ? `${pdfUrl}#${initialPage}` : "";
   const waitingForInitialPage = Boolean(pdfDoc && renderedInitialPageKey !== initialPageKey);
   const showInitialLoading = loading || waitingForInitialPage;
+  useReadingAnalytics("periodical", `${name}:${routeId}`, Boolean(routeId && pdfDoc && !showInitialLoading), Boolean(error));
   const initialLoadingText = loading ? "正在加载 PDF 文档" : `正在加载第 ${initialPage} 页`;
 
   // Every page has a stable slot, so deep links can scroll before the canvas renders.

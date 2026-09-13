@@ -8,7 +8,6 @@ import { DEFAULT_SPEECH_PROVIDERS, loadCachedSpeechDurations, loadSpeechProvider
 import "./SpeechPlayer.css";
 import { readSpeechProgress, saveSpeechProgress, speechFingerprint } from "./speechProgress";
 import { useAccountSessionStore } from "../account/session";
-import { useFeatureFlag } from "../featureFlags";
 
 type PlayerState = "idle" | "loading" | "playing" | "paused" | "complete" | "error";
 type SettingPanel = "sleep" | "voice" | "speed";
@@ -87,8 +86,8 @@ function formatTime(seconds: number): string {
 }
 
 export function SpeechPlayer(props: Parameters<typeof ActiveSpeechPlayer>[0]) {
-  const enabled = useFeatureFlag("reader.speech");
-  return enabled ? <ActiveSpeechPlayer {...props} /> : null;
+  const userId = useAccountSessionStore((state) => state.userId);
+  return <ActiveSpeechPlayer key={userId ?? "signed-out"} {...props} />;
 }
 
 function ActiveSpeechPlayer({

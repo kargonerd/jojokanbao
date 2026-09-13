@@ -21,13 +21,7 @@ select extensions.hasnt_table(
   'the annotation threshold does not need a one-row settings table'
 );
 
-select extensions.is(
-  private.feature_flag_config_integer(
-    'reader.annotations', array['publicMarkThreshold'], 9, 1, 100
-  ),
-  2,
-  'the annotation threshold is read through the generic feature config accessor'
-);
+select extensions.hasnt_table('private','feature_flags','annotation parameters come from the application server');
 
 select extensions.has_column(
   'public',
@@ -74,7 +68,7 @@ select reporter_id, '测试丙-GHJ' from annotation_test_state
 union all
 select pager_id, '测试丁-KLM' from annotation_test_state;
 
-insert into private.feature_flag_operator_secret(singleton, token_digest)
+insert into private.operator_credentials(singleton, token_digest)
 values (true, extensions.digest(repeat('o', 32), 'sha256'))
 on conflict (singleton) do update set token_digest = excluded.token_digest;
 
@@ -89,7 +83,7 @@ end;
 $$;
 
 select extensions.throws_ok(
-  $$select public.create_content_annotation(
+  $$select private.create_content_annotation(2,
     'book', 'book-1', 'chapter-unsafe', '测试书', E'/\\evil.example',
     '不安全路径', '', '', 0, 5, null
   )$$,
@@ -100,7 +94,7 @@ select extensions.throws_ok(
 
 update annotation_test_state
 set annotation_id = (
-  public.create_content_annotation(
+  private.create_content_annotation(2,
     'book', 'book-1', 'chapter-1', '测试书 · 第一章', '/book/book-1?chapter=chapter-1',
     '被划线的原文', '', '', 0, 7, null
   )->>'id'
@@ -108,11 +102,11 @@ set annotation_id = (
 
 do $$
 begin
-  perform public.create_content_annotation(
+  perform private.create_content_annotation(2,
     'book', 'book-1', 'chapter-public-comment', '测试书 · 公开想法', '/book/book-1?chapter=chapter-public-comment',
     '只有一人划线但有公开想法', '', '', 0, 13, '公开想法', 'public'
   );
-  perform public.create_content_annotation(
+  perform private.create_content_annotation(2,
     'book', 'book-1', 'chapter-private-comment', '测试书 · 私密想法', '/book/book-1?chapter=chapter-private-comment',
     '只有一人划线且仅有私密想法', '', '', 0, 15, '私密想法', 'private'
   );
@@ -130,30 +124,30 @@ end;
 $$;
 
 select extensions.is(
-  jsonb_array_length(public.get_annotation_threads('book', 'book-1', 'chapter-1')),
+  jsonb_array_length(private.get_annotation_threads(2, 'book', 'book-1', 'chapter-1')),
   0,
   'a below-threshold underline is hidden from readers who did not create it'
 );
 
 select extensions.is(
   jsonb_build_object(
-    'threads', jsonb_array_length(public.get_annotation_threads('book', 'book-1', 'chapter-public-comment')),
-    'count', public.get_annotation_threads('book', 'book-1', 'chapter-public-comment')->0->'underlineCount',
-    'public', public.get_annotation_threads('book', 'book-1', 'chapter-public-comment')->0->'publiclyVisible'
+    'threads', jsonb_array_length(private.get_annotation_threads(2, 'book', 'book-1', 'chapter-public-comment')),
+    'count', private.get_annotation_threads(2, 'book', 'book-1', 'chapter-public-comment')->0->'underlineCount',
+    'public', private.get_annotation_threads(2, 'book', 'book-1', 'chapter-public-comment')->0->'publiclyVisible'
   ),
   '{"threads": 1, "count": 1, "public": true}'::jsonb,
   'one visible public comment makes a single-reader underline public'
 );
 
 select extensions.is(
-  jsonb_array_length(public.get_annotation_threads('book', 'book-1', 'chapter-private-comment')),
+  jsonb_array_length(private.get_annotation_threads(2, 'book', 'book-1', 'chapter-private-comment')),
   0,
   'a private thought does not make a single-reader underline public'
 );
 
 select extensions.is(
   (
-    public.create_content_annotation(
+    private.create_content_annotation(2,
       'book', 'book-1', 'chapter-1', '测试书 · 第一章', '/book/book-1?chapter=chapter-1',
       '被划线的原文', '', '', 0, 7, null
     )->>'underlineCount'
@@ -174,8 +168,8 @@ $$;
 
 select extensions.is(
   jsonb_build_object(
-    'count', public.get_annotation_threads('book', 'book-1', 'chapter-1')->0->'underlineCount',
-    'mine', public.get_annotation_threads('book', 'book-1', 'chapter-1')->0->'underlinedByMe'
+    'count', private.get_annotation_threads(2, 'book', 'book-1', 'chapter-1')->0->'underlineCount',
+    'mine', private.get_annotation_threads(2, 'book', 'book-1', 'chapter-1')->0->'underlinedByMe'
   ),
   '{"count": 2, "mine": false}'::jsonb,
   'two distinct readers reach the configured public threshold'
@@ -258,7 +252,7 @@ select extensions.is(
 select extensions.is(
   (
     select count(*)::integer
-    from jsonb_array_elements(public.get_annotation_threads('book', 'book-1', 'chapter-1')) thread,
+    from jsonb_array_elements(private.get_annotation_threads(2, 'book', 'book-1', 'chapter-1')) thread,
       jsonb_array_elements(thread->'comments') comment,
       annotation_test_state state
     where comment->>'id' = state.private_comment_id::text
@@ -279,7 +273,7 @@ end;
 $$;
 
 select extensions.is(
-  jsonb_array_length(public.get_annotation_threads('book', 'book-1', 'chapter-1')),
+  jsonb_array_length(private.get_annotation_threads(2, 'book', 'book-1', 'chapter-1')),
   1,
   'a threshold underline remains visible to another reader'
 );
@@ -287,7 +281,7 @@ select extensions.is(
 select extensions.is(
   (
     select count(*)::integer
-    from jsonb_array_elements(public.get_annotation_threads('book', 'book-1', 'chapter-1')) thread,
+    from jsonb_array_elements(private.get_annotation_threads(2, 'book', 'book-1', 'chapter-1')) thread,
       jsonb_array_elements(thread->'comments') comment,
       annotation_test_state state
     where comment->>'id' = state.private_comment_id::text
@@ -309,7 +303,7 @@ select extensions.throws_ok(
 
 select extensions.is(
   (
-    public.create_content_annotation(
+    private.create_content_annotation(2,
       'book', 'book-1', 'chapter-1', '测试书 · 第一章', '/book/book-1?chapter=chapter-1',
       '被划线的原文', '', '', 0, 7, null
     )->>'underlineCount'
@@ -330,8 +324,8 @@ $$;
 
 select extensions.is(
   jsonb_build_object(
-    'count', public.get_annotation_threads('book', 'book-1', 'chapter-1')->0->'underlineCount',
-    'mine', public.get_annotation_threads('book', 'book-1', 'chapter-1')->0->'underlinedByMe'
+    'count', private.get_annotation_threads(2, 'book', 'book-1', 'chapter-1')->0->'underlineCount',
+    'mine', private.get_annotation_threads(2, 'book', 'book-1', 'chapter-1')->0->'underlinedByMe'
   ),
   '{"count": 3, "mine": false}'::jsonb,
   'a threshold underline is public without exposing reader identities'

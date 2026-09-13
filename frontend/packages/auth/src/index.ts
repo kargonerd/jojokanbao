@@ -4,6 +4,8 @@ export { getAuthErrorMessage } from "./errors";
 export { createPersonalInvitationRepository } from "./invitations";
 export type { PersonalInvitationRepository } from "./invitations";
 export { createJojoAuthStore } from "./store";
+export { SIGNUP_CONFIG_KEY, parseSignupConfig, authorizeSignup } from "./signup";
+export type { SignupConfig, SignupPolicySync } from "./signup";
 export type { AuthActions, AuthStore, JojoAuthController, JojoAuthStore } from "./store";
 export type { PersonalInvitation, PersonalInvitationStatus } from "./types";
 export type { AuthState, Database, Json, Profile, SignUpInput } from "./types";

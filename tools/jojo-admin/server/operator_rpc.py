@@ -67,7 +67,7 @@ class SupabaseOperatorRpcClient:
             error_body = None
         message = error_body.get("message") if isinstance(error_body, dict) else None
         code = error_body.get("code") if isinstance(error_body, dict) else None
-        if message == "Feature flag operator token is invalid":
+        if message == "Operator token is invalid":
             raise OperatorRpcError("JOJO_OPERATOR_TOKEN 与数据库配置不一致")
         raise OperatorRpcError(message or f"Workbench 数据服务返回 HTTP {response.status_code}",
                                status_code=response.status_code,

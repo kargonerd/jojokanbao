@@ -48,14 +48,6 @@ export type Database = {
     };
     Views: { [_ in never]: never };
     Functions: {
-      signup_invitation_required: {
-        Args: Record<PropertyKey, never>;
-        Returns: boolean;
-      };
-      get_my_feature_flags: {
-        Args: { p_keys: string[]; p_visitor_id: string | null };
-        Returns: Array<{ flag_key: string; enabled: boolean; revision: number }>;
-      };
       generate_personal_signup_invitation: {
         Args: Record<PropertyKey, never>;
         Returns: PersonalInvitation[];

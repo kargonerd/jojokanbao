@@ -11,6 +11,7 @@ import {
 } from 'react-router-dom';
 import {
   ArchiveLayout,
+  AnalyticsRuntime,
   ArchiveReaderPage,
   AccountEntry,
   BookshelfPage,
@@ -31,7 +32,6 @@ import {
   TimesRoutes,
   TimesSourceSettingsPage,
   defaultArchiveIssuePath,
-  refreshFeatureFlags,
   startAccountSessionSync,
   useAccountSessionStore,
 } from '@jojo/web/desktop';
@@ -46,9 +46,6 @@ function DesktopRuntime() {
 
   useEffect(() => { startOfflineAccountSync(); return startAccountSessionSync(); }, []);
   useEffect(() => {
-    if (accountInitialized) void refreshFeatureFlags();
-  }, [accountInitialized, userId]);
-  useEffect(() => {
     if (accountInitialized) {
       const authenticated = Boolean(userId);
       window.jojoDesktop?.setFeatureAvailability?.({ rag: authenticated, times: authenticated });
@@ -58,7 +55,7 @@ function DesktopRuntime() {
 }
 
 function DesktopRuntimeLayout() {
-  return <><DesktopRuntime /><Outlet /></>;
+  return <><DesktopRuntime /><AnalyticsRuntime /><Outlet /></>;
 }
 
 function useDesktopNavigation() {
@@ -114,7 +111,6 @@ function DesktopArchiveLayout() {
       className="desktop-shell"
       headerActions={<DesktopSettingsAction />}
       navigationItems={useDesktopNavigation()}
-      platformRedesign
     />
   );
 }
@@ -178,9 +174,9 @@ export function createDesktopRoutes(): RouteObject[] {
             { path: 'library/:datasetId', element: <LibraryPage periodicals={PERIODICALS} /> },
             {
               path: 'search',
-              element: <div className="h-[calc(100vh-64px)] overflow-hidden"><SearchPage openResultsInNewTab={false} platformRedesign /></div>,
+              element: <div className="h-[calc(100vh-64px)] overflow-hidden"><SearchPage openResultsInNewTab={false} /></div>,
             },
-            { path: 'support', element: <SupportPage platformRedesign /> },
+            { path: 'support', element: <SupportPage /> },
             { path: 'donate', element: <DonationPage /> },
             {
               path: 'support/licenses',

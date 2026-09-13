@@ -4,6 +4,7 @@ import { acquireAgentUsage } from "../src/edgeone/usage";
 import { createEdgeOneAgentHandler } from "../src/edgeone/handler";
 import type { EdgeOneAgentContext } from "../src/edgeone/types";
 import * as agentRuntime from "../src/runtime";
+vi.mock("../src/edgeone/posthog", () => ({ getAgentUsageLimits: async () => ({ requestsPerMinute: 3, requestsPerDay: 100, maxRunSeconds: 300 }) }));
 
 const context: EdgeOneAgentContext = {
   env: { VITE_SUPABASE_URL: "https://test.supabase.co", VITE_SUPABASE_PUBLISHABLE_KEY: "public", JOJO_OPERATOR_TOKEN: "test-operator" },
@@ -31,7 +32,9 @@ describe("distributed AI usage", () => {
     vi.stubGlobal("fetch", fetcher);
     await expect(acquireAgentUsage(context, user)).rejects.toMatchObject({ status: 503 });
     expect(fetcher).toHaveBeenCalledTimes(2);
-    expect(fetcher.mock.calls[0]![1].body).toBe(fetcher.mock.calls[1]![1].body);
+    const acquired = JSON.parse(fetcher.mock.calls[0]![1].body);
+    const released = JSON.parse(fetcher.mock.calls[1]![1].body);
+    expect(acquired).toMatchObject({ ...released, p_requests_per_minute: 3, p_requests_per_day: 100, p_max_run_seconds: 300 });
     expect(fetcher.mock.calls[1]![0]).toContain("release_agent_usage");
   });
 

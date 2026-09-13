@@ -50,7 +50,7 @@ export async function main(action) {
   if (action === 'provision') return provision();
   if (action === 'create') {
     const variables = { RESEND_QUOTA_API_KEY: process.env.RESEND_QUOTA_API_KEY, HEALTHCHECKS_API_KEY: key(),
-      SUPABASE_URL: process.env.VITE_SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY: process.env.VITE_SUPABASE_PUBLISHABLE_KEY };
+      POSTHOG_PROJECT_TOKEN: process.env.POSTHOG_PROJECT_TOKEN, POSTHOG_API_HOST: process.env.POSTHOG_API_HOST || 'https://us.i.posthog.com' };
     for (const [name, value] of Object.entries(variables)) if (!value) throw new Error(`Missing ${name}`);
     await call('CreateFunction', { Runtime: 'Nodejs20.19', Type: 'Event', Handler: 'index.main_handler',
       Description: 'JOJO Resend quota alerts, direct read-only HTTP every 30 minutes',

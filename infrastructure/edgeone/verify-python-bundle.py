@@ -42,7 +42,7 @@ def offline_environment() -> dict[str, str]:
     if sys.platform == "linux":
         # actions/setup-python may need libpython from its own installation.
         environment["LD_LIBRARY_PATH"] = str(Path(sys.base_prefix) / "lib")
-    return {**environment, "JOJO_ENV": "test", "JOJO_TTS_ENABLED": "false", "JOJO_SPEECH_STORAGE": "local"}
+    return {**environment, "JOJO_ENV": "test", "JOJO_SPEECH_STORAGE": "local"}
 
 
 def deny_external_network(event, args) -> None:
@@ -72,7 +72,7 @@ def verify(bundle: Path) -> None:
 
     # Import explicitly: deleted docs must fail even if the scanner swallows an
     # application import error and silently falls back to its Flask 404 handler.
-    for name in ("botocore.docs", "boto3.docs", "lameenc", "mutagen", "uvicorn"):
+    for name in ("botocore.docs", "boto3.docs", "lameenc", "mutagen", "uvicorn", "posthog", "httpx"):
         module = importlib.import_module(name)
         require(Path(module.__file__).resolve().is_relative_to(bundle), f"{name} was imported outside the bundle")
 
@@ -101,12 +101,19 @@ def verify(bundle: Path) -> None:
                 elif path.endswith("?v=2"):
                     require({item["id"] for item in body["providers"]} == {"auto"}, "Logical voice catalog is incomplete")
                     require({voice["id"] for voice in body["providers"][0]["voices"]} == {"male", "female"}, "Expected two logical voices")
-                    require(all(not item["canGenerate"] for item in body["providers"]), "Offline synthesis must be disabled")
+                    # This only checks configured capabilities. No synthesis is
+                    # requested; the audit hook still rejects external network.
+                    require(body["providers"][0]["canGenerate"] is True, "Edge fallback must be available without credentials")
+                    require(body["providers"][0]["streaming"] is False, "MiMo streaming requires server credentials")
                 else:
                     require(body["defaultProvider"] in {"mimo", "edge"}, "Installed-client voice catalog is incompatible")
                     require(len(body["providers"][0]["voices"]) == 2, "Expected two compatible physical voices")
             response = await client.get("/api/v1/times")
             require(response.status_code == 404, "JOJO Times must not be exposed by the production bundle")
+            response = await client.post("/api/v1/account/signup-authorization", json={"email": "reader@example.invalid"})
+            require(response.status_code == 503, "Signup must reject missing server credentials")
+            response = await client.post("/api/v1/annotations", json={"operation": "get_annotation_threads", "params": {}})
+            require(response.status_code == 401, "Annotations must require a reader session")
 
     async def check_streaming_runtime():
         require(any(getattr(route, "path", None) == "/v1/speech/stream/" for route in application.routes),

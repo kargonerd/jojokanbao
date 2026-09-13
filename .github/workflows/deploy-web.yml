@@ -56,10 +56,12 @@ jobs:
       EDGEONE_PROJECT_NAME: ${{ vars.EDGEONE_PROJECT_NAME || 'jojo-reader' }}
       EDGEONE_DEPLOY_ENV: ${{ github.event_name == 'pull_request' && 'preview' || github.event_name == 'workflow_dispatch' && inputs.environment || github.ref == 'refs/heads/master' && 'preview' || 'production' }}
       # Relevant master changes automatically publish the public Beta channel.
-      # Production tags remain stable until its redesign flag is enabled.
-      VITE_ENABLE_PLATFORM_REDESIGN: ${{ (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'preview') || (github.event_name == 'push' && github.ref == 'refs/heads/master')) && 'true' || vars.VITE_ENABLE_PLATFORM_REDESIGN || 'false' }}
+      # Production tags publish the stable release channel using the same interface.
       VITE_RELEASE_CHANNEL: ${{ (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'preview') || (github.event_name == 'push' && github.ref == 'refs/heads/master')) && 'beta' || 'stable' }}
       VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+      VITE_POSTHOG_TOKEN: ${{ vars.POSTHOG_PROJECT_TOKEN }}
+      VITE_POSTHOG_HOST: ${{ vars.POSTHOG_API_HOST }}
+      VITE_APP_VERSION: ${{ github.sha }}
       VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
       VITE_CONTENT_CDN_BASE: ${{ vars.VITE_CONTENT_CDN_BASE || 'https://blacknews.jojokanbao.cn/' }}
       VITE_RELEASE_CDN_BASE: ${{ vars.DOWNLOAD_CDN_BASE || 'https://blacknews.jojokanbao.cn' }}/releases
@@ -108,8 +110,16 @@ jobs:
         run: |
           find .edgeone/web-deploy/.edgeone -name "*.map" -delete
 
-      - name: Deploy to EdgeOne Makers
+      - name: Test reader runtime deployment check
+        run: node --test infrastructure/edgeone/check-reader-runtime.test.mjs
+
+      - name: Check deployed reader database contract
         if: github.event_name != 'pull_request'
+        id: runtime_contract
+        run: node infrastructure/edgeone/check-reader-runtime.mjs
+
+      - name: Deploy to EdgeOne Makers
+        if: github.event_name != 'pull_request' && steps.runtime_contract.outputs.ready == 'true'
         working-directory: .edgeone/web-deploy
         env:
           EDGEONE_API_TOKEN: ${{ secrets.EDGEONE_API_TOKEN }}
@@ -119,12 +129,12 @@ jobs:
           pnpm dlx edgeone@1.6.14 makers deploy ./.edgeone/ --name "$EDGEONE_PROJECT_NAME" --token "$EDGEONE_API_TOKEN" --env "$EDGEONE_DEPLOY_ENV"
 
       - name: Verify deployed web assets
-        if: ${{ github.event_name != 'pull_request' && (inputs.verify_base_url != '' || (env.EDGEONE_DEPLOY_ENV == 'preview' && vars.EDGEONE_BETA_BASE_URL != '') || (env.EDGEONE_DEPLOY_ENV == 'production' && vars.EDGEONE_READER_BASE_URL != '')) }}
+        if: ${{ github.event_name != 'pull_request' && steps.runtime_contract.outputs.ready == 'true' && (inputs.verify_base_url != '' || (env.EDGEONE_DEPLOY_ENV == 'preview' && vars.EDGEONE_BETA_BASE_URL != '') || (env.EDGEONE_DEPLOY_ENV == 'production' && vars.EDGEONE_READER_BASE_URL != '')) }}
         env:
           READER_BASE_URL: ${{ inputs.verify_base_url || (env.EDGEONE_DEPLOY_ENV == 'preview' && vars.EDGEONE_BETA_BASE_URL) || vars.EDGEONE_READER_BASE_URL }}
           READER_DEPLOY_REVISION: ${{ github.sha }}
         run: node frontend/web/scripts/verify-deployment.mjs
 
       - name: Report deferred deployment verification
-        if: ${{ github.event_name != 'pull_request' && inputs.verify_base_url == '' && ((env.EDGEONE_DEPLOY_ENV == 'preview' && vars.EDGEONE_BETA_BASE_URL == '') || (env.EDGEONE_DEPLOY_ENV == 'production' && vars.EDGEONE_READER_BASE_URL == '')) }}
+        if: ${{ github.event_name != 'pull_request' && steps.runtime_contract.outputs.ready == 'true' && inputs.verify_base_url == '' && ((env.EDGEONE_DEPLOY_ENV == 'preview' && vars.EDGEONE_BETA_BASE_URL == '') || (env.EDGEONE_DEPLOY_ENV == 'production' && vars.EDGEONE_READER_BASE_URL == '')) }}
         run: echo "::notice::Deployment uploaded. Set the matching EDGEONE_BETA_BASE_URL or EDGEONE_READER_BASE_URL variable for automatic verification."

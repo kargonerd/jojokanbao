@@ -1,5 +1,6 @@
 import { AgentHttpError } from "./auth";
 import type { AgentUsageLease, AuthorizedAgentUser, EdgeOneAgentContext } from "./types";
+import { getAgentUsageLimits, type AgentUsageLimits } from "./posthog";
 
 type UsageDecision = {
   allowed?: boolean;
@@ -21,13 +22,18 @@ export async function acquireAgentUsage(
     throw new AgentHttpError(503, "AI 使用限额服务暂时不可用，请稍后重试。");
   }
   const requestId = crypto.randomUUID();
+  let limits: AgentUsageLimits;
+  try { limits = await getAgentUsageLimits(environment); }
+  catch { throw new AgentHttpError(503, "AI 使用限额服务暂时不可用，请稍后重试。"); }
   const body = JSON.stringify({ p_operator_token: operatorToken, p_user_id: user.id, p_request_id: requestId });
+  const acquireBody = JSON.stringify({ ...JSON.parse(body), p_requests_per_minute: limits.requestsPerMinute,
+    p_requests_per_day: limits.requestsPerDay, p_max_run_seconds: limits.maxRunSeconds });
   const rpc = async (name: string, signal?: AbortSignal): Promise<Response> => {
     const timeout = AbortSignal.timeout(5_000);
     return fetch(`${baseUrl}/rest/v1/rpc/${name}`, {
       method: "POST",
       headers: { apikey: key, "Content-Type": "application/json" },
-      body,
+      body: name === "acquire_agent_usage" ? acquireBody : body,
       signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
     });
   };

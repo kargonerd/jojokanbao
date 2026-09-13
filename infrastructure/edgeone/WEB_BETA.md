@@ -4,16 +4,15 @@
 可以直接访问，功能和界面可能持续调整。它绑定到 EdgeOne Makers 项目的 Preview 环境。
 
 相关 Web、共享前端、Backend 或 EdgeOne 部署文件合入 `master` 后，GitHub Actions 会
-自动以 `VITE_ENABLE_PLATFORM_REDESIGN=true` 和 `VITE_RELEASE_CHANNEL=beta` 构建并
+自动以 `VITE_RELEASE_CHANNEL=beta` 构建并
 发布到 Preview。也可以从 Actions 手动重发 Preview。
 
-Production 标签与手动 Production 发布仍由 `VITE_ENABLE_PLATFORM_REDESIGN` 控制，
-并使用 `VITE_RELEASE_CHANNEL=stable`，默认继续提供当前旧版。Beta 自动发布不会切换
-普通用户访问的正式站点。
+Production 标签与手动 Production 发布使用 `VITE_RELEASE_CHANNEL=stable`。
+Beta 与正式站使用同一套应用界面，分别跟随各自的部署版本和发布渠道。
 
 ## 访问与索引
 
-Beta 不使用通行码、登录白名单或访问 Cookie。用户打开域名后会直接进入新版。
+Beta 无需通行码、登录白名单或访问 Cookie。用户打开域名即可进入站点。
 
 Web 部署包包含一个轻量 EdgeOne Middleware，只在 `beta.jojokanbao.cn` 的响应上增加：
 

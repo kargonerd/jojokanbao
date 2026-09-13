@@ -1,18 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AnnotationSubject, AnnotationThread, TextAnchor } from "@jojo/content/annotations";
 
 const { rpc, getSession, authLoaded, setHeader, abortSignal } = vi.hoisted(() => ({ rpc: vi.fn(), getSession: vi.fn(), authLoaded: vi.fn(), setHeader: vi.fn(), abortSignal: vi.fn() }));
 vi.mock("../account/auth", () => {
   authLoaded();
   return { mobileAuthClient: {
-    rpc: (name: string, params: Record<string, unknown>) => {
-      const request = {
-        setHeader: (header: string, value: string) => { setHeader(header, value); return request; },
-        abortSignal: (signal: AbortSignal) => { abortSignal(signal); return request; },
-        then: (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) => Promise.resolve(rpc(name, params)).then(resolve, reject),
-      };
-      return request;
-    },
     auth: { getSession },
   } };
 });
@@ -35,6 +27,13 @@ describe("native annotation RPC binding", () => {
     getSession.mockReset().mockResolvedValue({ data: { session: { user: { id: "reader:a" }, access_token: "token-a" } }, error: null });
     setHeader.mockReset();
     abortSignal.mockReset();
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => {
+      setHeader("Authorization", (init.headers as Record<string,string>).Authorization);
+      if (init.signal) abortSignal(init.signal);
+      const { operation, params } = JSON.parse(init.body as string);
+      const result = await rpc(operation, params);
+      return Response.json(result.error ? {error:result.error} : result.data, {status:result.error ? 400 : 200});
+    }));
     authLoaded.mockClear();
     api = await import("./api");
   });
@@ -162,3 +161,5 @@ describe("native annotation RPC binding", () => {
     expect(setHeader).not.toHaveBeenCalled();
   });
 });
+
+afterEach(() => vi.unstubAllGlobals());

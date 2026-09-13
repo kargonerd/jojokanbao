@@ -26,9 +26,9 @@ select extensions.is(public.set_annotation_comment_like('00000000-0000-4000-9000
 select extensions.is(public.set_annotation_comment_like('00000000-0000-4000-9000-000000009112', true)->>'likeCount', '1', 'retrying a like is idempotent');
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-9000-000000009002', true);
 select extensions.is(public.set_annotation_comment_like('00000000-0000-4000-9000-000000009112', true)->>'likeCount', '2', 'different accounts contribute one like each');
-select extensions.is(public.get_annotation_threads('book', 'likes-book', 'chapter') #>> '{0,comments,0,id}', '00000000-0000-4000-9000-000000009112', 'popular replies sort before older unliked thoughts');
-select extensions.is(public.get_annotation_threads('book', 'likes-book', 'chapter') #>> '{0,comments,0,likedByMe}', 'true', 'snapshots include the current reader reaction');
-select extensions.is(jsonb_array_length(public.get_annotation_threads('book', 'likes-book', 'chapter') #> '{0,comments}'), 2, 'ranking does not expose private or moderated comments');
+select extensions.is(private.get_annotation_threads(2, 'book', 'likes-book', 'chapter') #>> '{0,comments,0,id}', '00000000-0000-4000-9000-000000009112', 'popular replies sort before older unliked thoughts');
+select extensions.is(private.get_annotation_threads(2, 'book', 'likes-book', 'chapter') #>> '{0,comments,0,likedByMe}', 'true', 'snapshots include the current reader reaction');
+select extensions.is(jsonb_array_length(private.get_annotation_threads(2, 'book', 'likes-book', 'chapter') #> '{0,comments}'), 2, 'ranking does not expose private or moderated comments');
 select extensions.is(public.set_annotation_comment_like('00000000-0000-4000-9000-000000009112', false)->>'likeCount', '1', 'unlike removes only the current reader reaction');
 select extensions.is(public.set_annotation_comment_like('00000000-0000-4000-9000-000000009112', false)->>'likeCount', '1', 'retrying unlike does not decrement another account');
 select extensions.throws_ok($$select public.set_annotation_comment_like('00000000-0000-4000-9000-000000009113', true)$$,
@@ -43,7 +43,7 @@ select extensions.throws_ok($$select public.set_annotation_comment_like('0000000
  '22023', 'Like state is required', 'null does not silently unlike');
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-9000-000000009001', true);
 select public.set_annotation_comment_like('00000000-0000-4000-9000-000000009112', false);
-select extensions.is(public.get_annotation_threads('book', 'likes-book', 'chapter') #>> '{0,comments,0,id}', '00000000-0000-4000-9000-000000009111', 'equal counts retain chronological order');
+select extensions.is(private.get_annotation_threads(2, 'book', 'likes-book', 'chapter') #>> '{0,comments,0,id}', '00000000-0000-4000-9000-000000009111', 'equal counts retain chronological order');
 select public.set_annotation_comment_like('00000000-0000-4000-9000-000000009112', true);
 delete from public.annotation_comments where id = '00000000-0000-4000-9000-000000009112';
 select extensions.is((select count(*)::integer from public.annotation_comment_likes where comment_id = '00000000-0000-4000-9000-000000009112'), 0, 'deleting a comment cascades its reactions');

@@ -55,7 +55,7 @@ class EdgeProvider:
     )
 
     def available(self, settings: Settings) -> bool:
-        return settings.tts_enabled
+        return True
 
     async def synthesize(self, text: str, voice: str, settings: Settings) -> AudioResult:
         return AudioResult(await synthesize_audio(text, voice), "audio/mpeg", "mp3")
@@ -91,7 +91,7 @@ class MimoProvider:
         self.max_response_bytes = max_response_bytes
 
     def available(self, settings: Settings) -> bool:
-        return bool(settings.tts_enabled and settings.mimo_api_key)
+        return bool(settings.mimo_api_key)
 
     async def synthesize(self, text: str, voice: str, settings: Settings) -> AudioResult:
         async with httpx.AsyncClient(timeout=httpx.Timeout(90, connect=10), transport=self.transport) as client:
@@ -197,7 +197,7 @@ class PooledMimoProvider(MimoProvider):
     """Online only. Offline tools retain the single-key adapter and their own budgets."""
 
     def available(self, settings: Settings) -> bool:
-        return bool(settings.tts_enabled and settings.mimo_keys)
+        return bool(settings.mimo_keys)
 
     async def synthesize(self, text: str, voice: str, settings: Settings) -> AudioResult:
         async def generate(selected: Settings) -> AsyncIterator[AudioResult]:

@@ -28,7 +28,7 @@ def publication(monkeypatch, tmp_path):
                            publish_workers=8, publish_only=True)
     settings = Settings(environment="test", allowed_origins=(), supabase_url=None,
                         supabase_publishable_key=None, auth_timeout_seconds=1,
-                        speech_storage="b2", mimo_api_key="test", tts_enabled=True)
+                        speech_storage="b2", mimo_api_key="test")
     client = Mock()
     client.meta.config = Config()
     store = SimpleNamespace(client=client, put=Mock(side_effect=AssertionError("No MP3 upload")),

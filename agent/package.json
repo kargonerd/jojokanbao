@@ -28,6 +28,7 @@
     "@earendil-works/pi-agent-core": "0.84.4",
     "@earendil-works/pi-ai": "0.84.4",
     "@jojo/content": "workspace:*",
+    "posthog-node": "5.52.1",
     "pi-antigravity": "0.7.2"
   },
   "devDependencies": {

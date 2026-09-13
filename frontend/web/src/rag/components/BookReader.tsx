@@ -28,7 +28,6 @@ import {
 } from "../../annotations/domAnchors";
 import type { AnnotationVisibility, TextAnchor } from "../../annotations/types";
 import { useAnnotationThreads } from "../../annotations/useAnnotationThreads";
-import { useFeatureFlag } from "../../featureFlags";
 import { useAccountSessionStore } from "../../account/session";
 import { useRecentReadingStore } from "../../library/recentReadingStore";
 import { ReadingBookshelfContext } from "../../reading/ReadingBookshelfContext";
@@ -197,11 +196,8 @@ export function BookReader({
 }: BookReaderProps) {
   const location = useLocation();
   const navigate = useNavigate();
-  const annotationsEnabled = useFeatureFlag("reader.annotations");
-  const speechEnabled = useFeatureFlag("reader.speech");
   const rememberRecentReading = useRecentReadingStore((state) => state.remember);
   const currentUserId = useAccountSessionStore((state) => state.userId);
-  const bookshelfEnabled = useFeatureFlag("library.bookshelf");
   const agentAccess = Boolean(currentUserId);
   const activeChapterTitle = chapters.find((chapter) => chapter.id === activeChapterId)?.title;
   const [fontSize, setFontSize] = useState(storedFontSize);
@@ -312,7 +308,7 @@ export function BookReader({
     continuousRef.current?.seek(activeChapterId, pending?.chapterId === activeChapterId ? pending.progress : 0);
     pendingProgressRef.current = undefined;
   }, [activeChapterId, continuous]);
-  const annotationAccess = annotationsEnabled && Boolean(currentUserId);
+  const annotationAccess = Boolean(currentUserId);
   const annotations = useAnnotationThreads(annotationSubject, annotationAccess, currentUserId);
   const loadPublicPage = useCallback(async (cursor: string | null, signal: AbortSignal) => {
     const page = await loadPublicBookAnnotations(datasetId + ":" + itemId, currentUserId ?? null, { afterId: cursor, signal });
@@ -534,8 +530,8 @@ export function BookReader({
   }, [activeChapterId, agentAccess, datasetId, itemId]);
 
   useEffect(() => {
-    if (!bookshelfEnabled) {
-      setOnBookshelf(false);
+    setOnBookshelf(false);
+    if (!currentUserId) {
       return;
     }
     let cancelled = false;
@@ -543,7 +539,7 @@ export function BookReader({
       .then((value) => { if (!cancelled) setOnBookshelf(value); })
       .catch(() => { if (!cancelled) setOnBookshelf(false); });
     return () => { cancelled = true; };
-  }, [bookshelfEnabled, datasetId, itemId]);
+  }, [currentUserId, datasetId, itemId]);
 
   useEffect(() => {
     const root = chapterRoot(annotationChapterId);
@@ -1037,7 +1033,7 @@ export function BookReader({
   }
 
   async function underlineSelection(): Promise<void> {
-    if (!annotationsEnabled || annotationSaving) return;
+    if (!currentUserId || annotationSaving) return;
     const anchor = selectionAnchor();
     if (!anchor) return;
     setAnnotationSaving(true);
@@ -1119,7 +1115,7 @@ export function BookReader({
   }
 
   async function toggleBookshelf(): Promise<void> {
-    if (!bookshelfEnabled || bookshelfBusy) return;
+    if (!currentUserId || bookshelfBusy) return;
     const nextValue = !onBookshelf;
     setBookshelfBusy(true);
     try {
@@ -1229,7 +1225,7 @@ export function BookReader({
   </div>;
 
   return <ReadingBookshelfContext.Provider value={{
-    available: bookshelfEnabled,
+    available: Boolean(currentUserId),
     added: onBookshelf,
     busy: bookshelfBusy,
     toggle: () => void toggleBookshelf(),
@@ -1245,10 +1241,10 @@ export function BookReader({
       <button type="button" onClick={() => openTool("progress")} className="book-mobile-tool" aria-label="阅读进度" aria-pressed={toolPopover === "progress"}><ReaderToolIcon name="progress" /><span>进度</span></button>
       <button type="button" onClick={() => openTool("notes")} className="book-mobile-tool" aria-label="阅读笔记" aria-pressed={toolPopover === "notes"}><IoCreateOutline aria-hidden="true" /><span>笔记</span></button>
       <button type="button" onClick={() => openTool("display")} className="book-mobile-tool" aria-label="文字设置" aria-pressed={toolPopover === "display"}><ReaderToolIcon name="display" /><span>文字</span></button>
-      {!mobileViewport && speechEnabled && speechControl && <div ref={setSpeechLauncherTarget} className="book-desktop-speech shrink-0" />}
+      {!mobileViewport && speechControl && <div ref={setSpeechLauncherTarget} className="book-desktop-speech shrink-0" />}
       {!mobileViewport && onDownload && <button type="button" onClick={onDownload} className="book-mobile-tool" aria-label="下载整本 EPUB"><IoDownloadOutline aria-hidden="true" /><span>下载</span></button>}
     </nav>
-    {speechEnabled && speechControl}
+    {speechControl}
 
     {(tocOpen || searchOpen) && <BookNavigationSheet mobile={mobileViewport} tab={tocOpen ? "toc" : "search"} onTabChange={openPanel} onClose={() => { setTocOpen(false); setSearchOpen(false); }} panelClass={panelClass}>
       {tocOpen ? <><div className="book-toc-book-title"><strong>{bookTitle}</strong><span>{logicalChapterCount ? `${logicalChapterCount} 章 · ` : ""}{characterCount.toLocaleString()} 字</span></div><label className="book-toc-filter"><input value={tocQuery} onChange={(event) => setTocQuery(event.target.value)} placeholder="筛选目录" aria-label="搜索目录" className="book-toc-search" /></label>{tocList}</> : <BookSearchPanel embedded bookTitle={bookTitle} panelClass={panelClass} onClose={() => setSearchOpen(false)} onJump={locateSearchResult} onSearch={onSearch} />}
@@ -1345,7 +1341,7 @@ export function BookReader({
           </svg>
         </Link>
         <span className="max-w-[52vw] shrink truncate text-muted md:max-w-[min(34vw,28rem)]">{bookTitle}</span>
-        {bookshelfEnabled && <button
+        {currentUserId && <button
           type="button"
           aria-pressed={onBookshelf}
           disabled={bookshelfBusy}

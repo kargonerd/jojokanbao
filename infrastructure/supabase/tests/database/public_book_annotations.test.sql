@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(23);
+select extensions.plan(21);
 select extensions.has_function('public', 'get_public_book_annotations', array['text','uuid','integer'], 'public book notes expose a bounded page RPC');
 select extensions.ok(has_function_privilege('authenticated','public.get_public_book_annotations(text,uuid,integer)','execute'), 'authenticated access');
 select extensions.ok(not has_function_privilege('anon','public.get_public_book_annotations(text,uuid,integer)','execute'), 'anonymous access is denied');
@@ -16,16 +16,10 @@ insert into auth.users(id, email) values
  ('00000000-0000-4000-9000-000000009303', 'book-notes-empty@example.invalid');
 set local session_replication_role = origin;
 
-update private.feature_flags set rules = '[{"id":"00000000-0000-4000-9000-000000009399","conditionType":"authenticated","enabled":true,"serve":true}]'::jsonb
-where key = 'reader.annotations';
-
 select set_config('request.jwt.claim.sub','',true);
 select set_config('request.jwt.claims','{}',true);
 select extensions.throws_ok($$select public.get_public_book_annotations('notes-book')$$,'42501','Authentication is required','auth required');
 select set_config('request.jwt.claim.sub','00000000-0000-4000-9000-000000009301',true);
-update private.feature_flags set rules='[]'::jsonb where key='reader.annotations';
-select extensions.throws_ok($$select public.get_public_book_annotations('notes-book')$$,'42501','Reader annotations are not enabled','feature gate retained');
-update private.feature_flags set rules='[{"id":"00000000-0000-4000-9000-000000009399","conditionType":"authenticated","enabled":true,"serve":true}]'::jsonb, config=jsonb_set(coalesce(config,'{}'),'{publicMarkThreshold}','2') where key='reader.annotations';
 select extensions.throws_ok($$select public.get_public_book_annotations('notes-book',null,101)$$,'22023','Book annotation limit must be between 1 and 100','limit bounded');
 insert into public.content_annotations(id, content_type, content_id, section_id, content_title, user_id, quote, anchor_key, moderation_status, created_at)
 select ('00000000-0000-4000-9000-' || lpad(number::text, 12, '0'))::uuid,
@@ -92,8 +86,6 @@ select extensions.is(public.get_public_book_annotations('notes-book',null,2)||pu
 select set_config('request.jwt.claim.sub','00000000-0000-4000-9000-000000009303',true);
 select extensions.is(jsonb_array_length(public.get_public_book_annotations('notes-book')),4,'a reader with no own notes still sees all public notes');
 select extensions.is(public.get_my_book_annotations('notes-book'),'[]'::jsonb,'personal view stays empty and isolated');
-update private.feature_flags set config=jsonb_set(config,'{publicMarkThreshold}','3') where key='reader.annotations';
-select extensions.is(jsonb_array_length(public.get_public_book_annotations('notes-book')),3,'public visibility follows the configured mark threshold');
 set local role authenticated;
 select extensions.is(jsonb_array_length(public.get_public_book_annotations('notes-book',null,1)),1,'definer RPC works without table access');
 reset role;
@@ -107,7 +99,6 @@ select id, '00000000-0000-4000-9000-000000009301'::uuid
 from public.content_annotations where content_id = 'many-notes-book';
 
 insert into public.content_annotation_marks(annotation_id,user_id) select id,'00000000-0000-4000-9000-000000009302'::uuid from public.content_annotations where content_id='many-notes-book';
-update private.feature_flags set config=jsonb_set(config,'{publicMarkThreshold}','2') where key='reader.annotations';
 select extensions.is(jsonb_array_length(public.get_public_book_annotations('many-notes-book')),100,'public default page is capped at 100');
 select extensions.is(jsonb_array_length(public.get_public_book_annotations('many-notes-book','00000000-0000-4000-9000-000000010100')),3,'public next page returns the remainder');
 select extensions.is(public.get_public_book_annotations('many-notes-book','00000000-0000-4000-9000-000000010103'),'[]'::jsonb,'public pagination terminates');

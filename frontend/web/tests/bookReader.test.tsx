@@ -4,7 +4,6 @@ import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BookReader } from "../src/rag/components/BookReader";
 import { SpeechPlayer } from "../src/reading/SpeechPlayer";
-import { useFeatureFlagStore } from "../src/featureFlags";
 import { useAccountSessionStore } from "../src/account/session";
 import { useRecentReadingStore } from "../src/library/recentReadingStore";
 import type { AnnotationThread } from "../src/annotations/types";
@@ -54,15 +53,7 @@ describe("BookReader", () => {
   beforeEach(() => {
     window.localStorage.clear();
     useRecentReadingStore.setState({ items: [] });
-    useFeatureFlagStore.setState({
-      initialized: true,
-      revision: "reader-test",
-      flags: {
-        "reader.speech": true,
-        "library.bookshelf": true,
-        "reader.annotations": true,
-      },
-    });
+
     useAccountSessionStore.setState({ initialized: true, userId: "11111111-1111-4111-8111-111111111111", displayName: "测试读者-ABC" });
     annotationApi.loadAnnotationThreads.mockResolvedValue([]);
     annotationApi.loadMyBookAnnotations.mockResolvedValue([]);
@@ -322,13 +313,6 @@ describe("BookReader", () => {
     fireEvent.click(screen.getByRole("button", { name: "暂不登录" }));
     expect(screen.queryByRole("dialog", { name: "登录后听读" })).toBeNull();
     expect(screen.getByRole("button", { name: "打开听本章播放器" })).toBeTruthy();
-  });
-
-  it.each([390, 1200])("respects the listening feature flag at %spx", (width) => {
-    window.innerWidth = width;
-    useFeatureFlagStore.setState({ flags: { ...useFeatureFlagStore.getState().flags, "reader.speech": false } });
-    renderReader();
-    expect(screen.queryByRole("button", { name: "打开听本章播放器" })).toBeNull();
   });
 
   it.each([390, 1200])("keeps tool panels draggable only on mobile at %spx", (width) => {
@@ -1250,13 +1234,9 @@ describe("BookReader", () => {
     expect(container.querySelector("h1[data-book-jump-target]")).toBeNull();
   });
 
-  it("keeps AI available while hiding bookshelf and annotation writes when their flags are off", async () => {
-    useFeatureFlagStore.setState((state) => ({
-      ...state,
-      flags: { ...state.flags, "library.bookshelf": false, "reader.annotations": false },
-    }));
+  it("offers bookshelf, annotations and AI to a signed-in reader without rollout flags", async () => {
     const { container } = renderReader();
-    expect(screen.queryByRole("button", { name: "加入书架" })).toBeNull();
+    expect(screen.getByRole("button", { name: "加入书架" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "打开书内 AI" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "打开书内 AI" }));
     expect(screen.getByRole("note", { name: "AI 实验功能说明" }).textContent).toContain("回答可能不准确、遗漏或误解原文");

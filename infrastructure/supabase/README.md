@@ -41,63 +41,41 @@ pnpm dlx supabase functions deploy delete-account
 The database migration must be pushed before the Auth config because the config
 enables a hook backed by `public.hook_require_signup_invitation`.
 
-### Configure the local feature-flag operator
+### Configure the Operator credential
 
-Feature-flag administration reuses the existing `JOJO_OPERATOR_TOKEN`; it does
-not use `SUPABASE_ACCESS_TOKEN` and does not require a browser login. After the
-feature-flag migration has been reviewed and pushed, register the SHA-256 digest
-of that same token once in the target project:
+Registration authorization, trusted policy operations and local administration use `JOJO_OPERATOR_TOKEN`.
+After applying the reviewed database migrations, register the SHA-256 digest of
+the token in the target project:
 
 ```sql
-insert into private.feature_flag_operator_secret (singleton, token_digest)
+insert into private.operator_credentials (singleton, token_digest)
 values (true, extensions.digest('<same JOJO_OPERATOR_TOKEN>', 'sha256'))
 on conflict (singleton) do update
 set token_digest = excluded.token_digest,
     updated_at = timezone('utc', now());
 ```
 
-The JOJO Console Flask server reads the plaintext token from the repository
-`.env` and sends it only to the protected operator RPC. The Vite client receives
-neither the token nor its digest. Keep the console bound to `127.0.0.1`.
+The Python API, Agent and JOJO 管理台 Flask server keep the same token in their
+server environment. The raw credential must never enter a client build.
 
-The config-aware operator console requires migration
-`202608290002_annotation_threshold_feature_config.sql` as well as the original
-feature-flag migration. It moves the existing annotation public threshold into
-`private.feature_flags.config`, preserves the effective value in historical
-revisions, and replaces the publish RPC with the config-aware signature.
-Apply the whole migration and record its version in the same transaction;
-adding only the column leaves publishing and rollback incomplete. Check pending
-migrations before applying a missing older version to an existing project, and
-do not reapply a migration already recorded as complete. The migration preserves
-all current rollout rules and revisions. After application, run the
-[feature configuration smoke test](../../tools/beta-smoke/README.md#feature-configuration).
+Apply complete migrations and record their versions in the same transaction.
+Check pending migrations and coordinate API/client releases with the
+[PostHog deployment guide](../../docs/posthog.md#部署与初始化).
 
-The database also enforces the signup policy with a trigger. When invitations
-are required, new user creation fails closed if somebody disables or bypasses
-the hosted hook. Existing users are unaffected.
+### Registration policy
 
-### Temporarily open registration
+Edit `auth_signup_config.invitationRequired` in PostHog Remote config. Web/Desktop,
+Mobile and the Python API each read that same global configuration with their SDK.
+The UI refreshes when registration opens or fails; the API independently issues a
+120-second authorization bound to the email, invitation code and policy decision.
+The Supabase hook and trigger verify its signature. The trigger atomically redeems
+an invitation when required and removes the transient signup metadata.
 
-Migration `202609090001_optional_signup_invitations.sql` temporarily opens email
-registration using `auth.signup.config.invitationRequired = false`. The Auth
-hook and redemption trigger remain installed and read the same setting for
-each new account. Open registration ignores submitted invitation codes and
-does not consume allocations or change existing redemption history. Email
-confirmation and password requirements remain enabled.
-
-To restore invitations, open JOJO 管理台 → 功能开关 → `auth.signup` → 注册设置,
-enable **注册需要邀请码**, enter a reason, and publish. This reuses Operator
-authorization, revision conflict checks, history, and rollback. The setting
-applies to all new accounts independently of rollout rules. The migration
-records the former required state as revision 1 and the open state as revision 2.
-
-`public.signup_invitation_required()` exposes only this boolean to clients.
-Web/Desktop and Mobile refresh it when the account page or registration form
-opens, and after a failed registration. Backend checks always read the current
-setting. Missing/invalid configuration or an unavailable policy RPC retains
-the invitation requirement. Writes require a boolean. Apply the database
-migration before releasing the updated clients; already installed Mobile or
-Desktop versions retain their old form until updated.
+When the value is false, registration consumes no invitation allocation. When true,
+a valid invitation is required. Email confirmation and password requirements apply
+in both modes. Server operations need a valid configuration snapshot; network or
+validation failures preserve an existing process cache, and a cold process without
+valid configuration temporarily rejects registration.
 
 The Auth config explicitly preserves the hosted one-minute email request
 interval, 100-email-per-hour project allowance, six-digit OTP setting, TOTP
@@ -125,74 +103,64 @@ The `delete-account` Edge Function validates the caller's access token before
 using the server-only service role. It removes the reader's avatar objects and
 Auth user. Never expose `SUPABASE_SERVICE_ROLE_KEY` to any frontend environment.
 
-The trigger applies to every new Auth user, including users created from the
-Supabase dashboard and OAuth identities. Keep those signup paths disabled
-while invitations are required unless they supply an invitation. An invitation is redeemed
-when the Auth user is created, before the reader confirms their email.
+The trigger applies to every new Auth user, including dashboard and OAuth-created
+accounts. Enabled signup/provisioning paths must obtain the API authorization
+before creating a user. An invitation is redeemed when the Auth user is created,
+before email confirmation.
+
+## Product access
+
+Bookshelf, shared annotations and listening are regular authenticated features.
+SQL entry points require login; ownership, content visibility, moderation and
+quotas are enforced by their respective service rules.
+
+Bookshelf entries, annotations, user counters and active leases belong to their
+own business tables. Policy parameters are supplied by the trusted application
+server; the database enforces identity, ownership, privacy and atomic updates.
 
 ## Runtime configuration reuse
 
-少量、由管理员调整的运行参数优先复用 `private.feature_flags.config` 和现有
-JOJO 管理台。新增配置前先查已有 key、读取函数和编辑界面；同一功能的参数放在
-同一份配置中，独立功能可以新增 key，不必为每组参数新建一张表。
+小型运行参数在 PostHog Remote config 管理，前后端直接通过 SDK 读取同一份公开配置。
+服务端使用进程内有效快照，客户端持久保存按项目隔离的已验证值。
+参数修改和回滚在 PostHog 完成，生效时机见 [PostHog 接入](../../docs/posthog.md)。
 
 ### 存储边界
 
 | 内容 | 存放位置 | 例子 |
 | --- | --- | --- |
-| 功能启用范围、灰度规则 | `private.feature_flags.rules` | `reader.annotations` 的开放范围 |
-| 限额、阈值、执行时限等运行参数 | 对应 flag 的 `config` | `ai.usage_limits`、`reader.annotations.publicMarkThreshold` |
-| 用户用量、并发租约、任务状态和业务记录 | 各自的业务或状态表 | `private.agent_usage_state` |
-| 部署地址、环境相关设置、密钥 | 现有部署配置及服务端凭据存储 | 环境变量、Agent 凭据存储 |
+| 限额、阈值、执行时限 | PostHog Remote config、服务端进程缓存 | AI 使用限额、批注公开阈值 |
+| 客户端公开配置 | PostHog Remote config、客户端持久缓存 | 注册界面策略、QQ群号 |
+| 用户计数、租约、任务状态和业务记录 | 各自的业务表或状态存储 | `private.agent_usage_state` |
+| 部署地址和密钥 | 环境变量及服务端凭据存储 | Operator Token、Agent 凭据 |
 
-`config` 必须是 JSON 对象，现有写入校验限制其序列化文本最多 16,384 字节。
-它适合小型参数文档；需要关联查询、独立行级权限或大量独立记录的模型，应使用
-适合该数据的结构，并在 PR 中说明现有配置机制不足的原因。
-普通客户端 RPC 返回开关结果与版本，原始配置及历史通过受保护的 Operator RPC
-读取并在管理台展示；`config` 不是密钥库，不存放密钥或凭据。
+需要关联查询、独立行级权限或大量独立记录的数据使用业务存储。
+PostHog payload 只存可公开的运行参数。数据库原子操作接受受信任后端传入的参数，
+并校验服务身份、用户权限和数值范围。用户用量与执行中的租约独立于参数变更。
 
-`rules` 与 `config` 是两个独立概念；同一 key 的配置是统一参数，不会自动按用户或
-灰度规则产生不同值。业务代码需要明确它们的关系。例如
-`ai.usage_limits` 始终对所有账号执行，读取 `config` 决定限额，不受规则开关控制；
-管理台因此只显示其参数编辑器。不要把必须执行的限额随灰度规则一起关闭。
+### 配置字段
 
-### 现有配置示例
-
-| Flag key | Config 字段 | 默认值与范围 |
+| PostHog Remote config | 字段 | 示例值与范围 |
 | --- | --- | --- |
-| `auth.signup` | `invitationRequired` | 布尔值；缺失时默认 true，本次迁移设为 false |
-| `reader.annotations` | `publicMarkThreshold` | 默认 2；整数 1–100 |
-| `ai.usage_limits` | `requestsPerMinute` | 默认 3；整数 1–60 |
-| `ai.usage_limits` | `requestsPerDay` | 默认 100；整数 1–10,000 |
-| `ai.usage_limits` | `maxRunSeconds` | 默认 300 秒；整数 30–600 |
+| `auth_signup_config` | `invitationRequired` | 布尔值；客户端无缓存时先显示邀请码 |
+| `reader_annotations_config` | `publicMarkThreshold` | 示例 2；整数 1–100 |
+| `ai_usage_limits_config` | `requestsPerMinute` | 示例 3；整数 1–60 |
+| `ai_usage_limits_config` | `requestsPerDay` | 示例 100；整数 1–10,000 |
+| `ai_usage_limits_config` | `maxRunSeconds` | 示例 300 秒；整数 30–600 |
+| `ops_email_quota_config` | `warningPercent` / `criticalPercent` | 示例 80 / 90；整数，1 ≤ warning < critical ≤ 99 |
+| `ops_email_quota_config` | `usageSource` | records 或 usage_api |
+| `ops_email_quota_config` | `dailyLimit` / `monthlyLimit` | 示例 100 / 3000；整数，分别为 1–1,000,000 / 1–100,000,000 |
+| `support_config` | `qqGroup` | 5–12 位数字字符串，首位非零；客户端默认 974380749 |
 
-这些是代码默认值，线上实际值以对应 flag 的当前版本为准。AI 限额从
-`202609080004_agent_usage_feature_config.sql` 起使用这一配置来源；旧
-`private.agent_usage_policy` 已移除，使用计数与租约保留在
-`private.agent_usage_state`。每次请求准入读取当前配置，已准入请求沿用当次取得的
-执行时限。配置发布或回滚不会清空已有用量，也不会释放正在使用的租约。
+示例值用于解释字段，部署时核对目标项目的实际值。服务端要求完整有效的配置快照，
+已有快照时后台刷新，首次读取失败暂时拒绝相关操作。AI 已准入请求沿用当次取得的执行时限。
 
 ### 接入与修改
 
-1. 确认参数归属，复用已有 flag 或创建明确的业务 key，约定字段名、单位、类型、
-   范围、默认值和生效时机。保持配置精简，不建立第二份配置来源。
-2. 用新迁移初始化配置及对应版本历史。整合旧配置时复制线上实际值，保留已有
-   规则、配置字段、历史和业务状态，切换全部读取路径后再删除冗余表；不要修改
-   已应用的迁移。线上应用仍遵循本文的合并后迁移流程。
-3. 复用 `private.feature_flag_config_integer` 等现有读取能力，并传入明确的默认值
-   和边界。写入端也要校验业务字段；通用 JSON 校验不代替参数类型与范围校验。
-   AI 限额的数据库校验会同时约束发布、回滚及直接更新。
-4. 在 JOJO 管理台现有功能开关页面补参数输入与提示，保留未修改的规则和配置字段。
-   通过 Flask 代理调用现有 Operator RPC，浏览器不接收 Operator Token。
-5. 日常调整通过 `operator_publish_feature_flag` 提交完整规则、配置、预期版本和
-   修改原因。沿用版本冲突检测、修改历史及 `operator_rollback_feature_flag`，
-   不另建配置 API 或绕过历史直接更新表。回滚恢复目标版本的规则和配置，并生成
-   一个新版本。`requestId` 用于审计，不保证幂等重试；遇到不确定的提交结果先
-   读取当前版本核对，不直接重复发布。
-6. 根据实际变更验证非法参数拒绝、发布后的业务取值、回滚效果，以及迁移时的状态
-   保留。线上验证使用隔离数据并清理，可复用 [已有配置及限额检查](../../tools/beta-smoke/README.md)。
-
-管理入口见 [JOJO 管理台](../../tools/jojo-admin/README.md)。
+1. 复用已有配置或定义明确的业务 key，定义字段、单位、类型、范围和生效时机。
+2. 在 PostHog 配置全局 payload，保持文档启用；布尔策略写入 payload 字段。
+3. 客户端与服务端 SDK 使用相同 key 和 `jojo-public-config` 身份，读取端验证完整字段。
+4. 涉及原子业务操作时，由后端传入可信参数，数据库保留身份、所有权与边界检查。
+5. 验证缓存刷新、断网、字段非法、业务权限和状态保留。参数修改与回滚在 PostHog 完成。
 
 ## Manage invitations
 

@@ -41,5 +41,14 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site);
       <slot />
     </main>
     <SiteFooter />
+    <script>
+      import { initializeBrowserAnalytics } from "@jojo/analytics/browser";
+      void initializeBrowserAnalytics({
+        token: import.meta.env.PUBLIC_POSTHOG_TOKEN,
+        host: import.meta.env.PUBLIC_POSTHOG_HOST,
+        production: import.meta.env.PROD && import.meta.env.PUBLIC_RELEASE_CHANNEL !== "preview",
+        context: { client: "homepage", platform: "web", app_version: import.meta.env.PUBLIC_APP_VERSION || "homepage", release_channel: "stable", app_variant: "standard" },
+      });
+    </script>
   </body>
 </html>

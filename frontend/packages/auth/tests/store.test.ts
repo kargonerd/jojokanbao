@@ -72,48 +72,37 @@ function createClient() {
 describe("createJojoAuthStore", () => {
   it.each([undefined, "", "   "])("registers without invitation metadata when no code is supplied: %s", async (invitationCode) => {
     const { client, signUp } = createClient();
-    const { useAuthStore } = createJojoAuthStore(client);
+    const { useAuthStore } = createJojoAuthStore(client, { authorizeSignup: async () => "server-authorization" });
     expect(await useAuthStore.getState().signUp({ email: "reader@example.com", password: "password", invitationCode })).toBe(true);
-    expect(signUp).toHaveBeenCalledWith({ email: "reader@example.com", password: "password" });
+    expect(signUp).toHaveBeenCalledWith({ email: "reader@example.com", password: "password", options: {data:{signup_authorization:"server-authorization"}} });
   });
 
-  it("reads open signup, restores invitations, and falls back safely for an older server", async () => {
+  it("subscribes to the shared PostHog policy without reading a database flag", async () => {
     const { client } = createClient();
-    const abortSignal = vi.fn()
-      .mockResolvedValueOnce({ data: false, error: null })
-      .mockResolvedValueOnce({ data: true, error: null })
-      .mockResolvedValueOnce({ data: null, error: { code: "PGRST202" } });
-    const rpc = vi.fn(() => ({ abortSignal }));
-    client.rpc = rpc as unknown as JojoAuthClient["rpc"];
-    const { useAuthStore } = createJojoAuthStore(client);
-    await useAuthStore.getState().refreshSignupPolicy();
-    expect(rpc).toHaveBeenCalledWith("signup_invitation_required");
+    let publish!: (config: {invitationRequired:boolean}) => void;
+    const refresh=vi.fn(), stop=vi.fn();
+    const {useAuthStore,startAuthSync}=createJojoAuthStore(client,{startSignupPolicy:callback=>{
+      publish=callback; return {refresh,stop};
+    }});
+    const unsubscribe=startAuthSync();
+    publish({invitationRequired:false});
     expect(useAuthStore.getState().signupInvitationRequired).toBe(false);
     await useAuthStore.getState().refreshSignupPolicy();
+    expect(refresh).toHaveBeenCalledOnce();
+    publish({invitationRequired:true});
     expect(useAuthStore.getState().signupInvitationRequired).toBe(true);
-    useAuthStore.setState({ signupInvitationRequired: false });
-    await useAuthStore.getState().refreshSignupPolicy();
-    expect(useAuthStore.getState().signupInvitationRequired).toBe(true);
+    unsubscribe(); expect(stop).toHaveBeenCalledOnce();
   });
-
-  it("ignores a stale open-signup response after invitations have been restored", async () => {
-    const { client } = createClient();
-    let resolveOld!: (value: unknown) => void;
-    const abortSignal = vi.fn()
-      .mockReturnValueOnce(new Promise((resolve) => { resolveOld = resolve; }))
-      .mockResolvedValueOnce({ data: true, error: null });
-    client.rpc = vi.fn(() => ({ abortSignal })) as unknown as JojoAuthClient["rpc"];
-    const { useAuthStore } = createJojoAuthStore(client);
-    const oldRequest = useAuthStore.getState().refreshSignupPolicy();
-    await useAuthStore.getState().refreshSignupPolicy();
-    resolveOld({ data: false, error: null });
-    await oldRequest;
-    expect(useAuthStore.getState().signupInvitationRequired).toBe(true);
+  it("does not call Supabase signup if server authorization fails", async () => {
+    const {client,signUp}=createClient();
+    const {useAuthStore}=createJojoAuthStore(client,{authorizeSignup:async()=>{throw new Error("Invitation code is required");}});
+    await expect(useAuthStore.getState().signUp({email:"reader@example.com",password:"password"})).rejects.toThrow("Invitation code");
+    expect(signUp).not.toHaveBeenCalled();
   });
   it.each(["qq.com@123456789", "mail.qq@9876543210", "reader@host.123", "reader@@qq.com"])(
     "rejects an incomplete or reversed signup email before requesting delivery: %s", async (email) => {
       const { client, signUp, resend } = createClient();
-      const { useAuthStore } = createJojoAuthStore(client);
+      const { useAuthStore } = createJojoAuthStore(client, { authorizeSignup: async () => "server-authorization" });
       await expect(useAuthStore.getState().signUp({ email, password: "password", invitationCode: "ABC123" })).rejects.toMatchObject({ code: "email_address_invalid" });
       expect(signUp).not.toHaveBeenCalled();
       expect(useAuthStore.getState()).toMatchObject({ busy: false, notice: null });
@@ -126,7 +115,7 @@ describe("createJojoAuthStore", () => {
   it.each(["reader@qq.com", "first.last+beta@custom.example.org", "reader@xn--fiqs8s.example"])(
     "allows complete email domains and trims whitespace: %s", async (email) => {
       const { client, signUp } = createClient();
-      const { useAuthStore } = createJojoAuthStore(client);
+      const { useAuthStore } = createJojoAuthStore(client, { authorizeSignup: async () => "server-authorization" });
       await useAuthStore.getState().signUp({ email: ` ${email} `, password: "password", invitationCode: "ABC123" });
       expect(signUp).toHaveBeenCalledWith(expect.objectContaining({ email }));
     },
@@ -136,7 +125,7 @@ describe("createJojoAuthStore", () => {
     const { client, signUp } = createClient();
     const failure = { status: 500, code: "unexpected_failure", message: "Error sending confirmation email" };
     signUp.mockResolvedValueOnce({ data: { user: null, session: null }, error: failure });
-    const { useAuthStore } = createJojoAuthStore(client);
+    const { useAuthStore } = createJojoAuthStore(client, { authorizeSignup: async () => "server-authorization" });
     await expect(useAuthStore.getState().signUp({ email: "reader@example.com", password: "password", invitationCode: "ABC123" })).rejects.toEqual(failure);
     expect(useAuthStore.getState()).toMatchObject({ busy: false, user: null, notice: null });
     expect(useAuthStore.getState().error).toContain("请先检查邮箱地址");
@@ -147,7 +136,7 @@ describe("createJojoAuthStore", () => {
       const { client, maybeSingle, user } = createClient();
       let resolveOld!: (value: { data: Profile; error: null }) => void;
       maybeSingle.mockReturnValueOnce(new Promise((resolve) => { resolveOld = resolve; }));
-      const { useAuthStore } = createJojoAuthStore(client);
+      const { useAuthStore } = createJojoAuthStore(client, { authorizeSignup: async () => "server-authorization" });
       useAuthStore.setState({ user: user as never, initialized: true });
       const firstRead = useAuthStore.getState().refreshProfile();
       expect(useAuthStore.getState().profileStatus).toBe("loading");
@@ -169,7 +158,7 @@ describe("createJojoAuthStore", () => {
     const { client, maybeSingle, user } = createClient();
     let resolveRead!: (value: { data: Profile; error: null }) => void;
     maybeSingle.mockReturnValueOnce(new Promise((resolve) => { resolveRead = resolve; }));
-    const { useAuthStore } = createJojoAuthStore(client);
+    const { useAuthStore } = createJojoAuthStore(client, { authorizeSignup: async () => "server-authorization" });
     useAuthStore.setState({ user: user as never, initialized: true });
     const reading = useAuthStore.getState().refreshProfile();
     useAuthStore.setState({ user: { ...user, id: "user-2" } as never, profileStatus: "idle" });
@@ -181,7 +170,7 @@ describe("createJojoAuthStore", () => {
   it("keeps a previously loaded profile when a refresh fails", async () => {
     const { client, maybeSingle, user } = createClient();
     maybeSingle.mockResolvedValueOnce({ data: null, error: new Error("offline") });
-    const { useAuthStore } = createJojoAuthStore(client);
+    const { useAuthStore } = createJojoAuthStore(client, { authorizeSignup: async () => "server-authorization" });
     useAuthStore.setState({ user: user as never, profile });
     await useAuthStore.getState().refreshProfile();
     expect(useAuthStore.getState()).toMatchObject({ profile, profileStatus: "error" });
@@ -194,7 +183,7 @@ describe("createJojoAuthStore", () => {
     });
     const { client, getSession, onAuthStateChange, maybeSingle, session, unsubscribe, user } = createClient();
     maybeSingle.mockReturnValueOnce(delayedProfile);
-    const controller = createJojoAuthStore(client);
+    const controller = createJojoAuthStore(client, { authorizeSignup: async () => "server-authorization" });
     const stop = controller.startAuthSync();
 
     await vi.waitFor(() => expect(controller.useAuthStore.getState().initialized).toBe(true));
@@ -213,7 +202,7 @@ describe("createJojoAuthStore", () => {
 
   it("shares one underlying auth subscription between multiple consumers", async () => {
     const { client, getSession, onAuthStateChange, unsubscribe } = createClient();
-    const controller = createJojoAuthStore(client);
+    const controller = createJojoAuthStore(client, { authorizeSignup: async () => "server-authorization" });
     const stopFirst = controller.startAuthSync();
     const stopSecond = controller.startAuthSync();
 
@@ -297,7 +286,7 @@ describe("createJojoAuthStore", () => {
 
   it("signs in and maps invalid credentials", async () => {
     const { client, signInWithPassword, user } = createClient();
-    const { useAuthStore } = createJojoAuthStore(client);
+    const { useAuthStore } = createJojoAuthStore(client, { authorizeSignup: async () => "server-authorization" });
     await useAuthStore.getState().signIn("reader@example.com", "password");
     expect(useAuthStore.getState()).toMatchObject({ user, profile, busy: false });
 
@@ -309,7 +298,7 @@ describe("createJojoAuthStore", () => {
 
   it("keeps an unconfirmed signup signed out and confirms its email code", async () => {
     const { client, signUp, verifyOtp, user } = createClient();
-    const { useAuthStore } = createJojoAuthStore(client);
+    const { useAuthStore } = createJojoAuthStore(client, { authorizeSignup: async () => "server-authorization" });
 
     const needsCode = await useAuthStore.getState().signUp({
       email: "reader@example.com",
@@ -319,7 +308,7 @@ describe("createJojoAuthStore", () => {
     expect(signUp).toHaveBeenCalledWith({
       email: "reader@example.com",
       password: "strong-password",
-      options: { data: { invitation_code: "A2BC9Z" } },
+      options: { data: { invitation_code: "A2BC9Z", signup_authorization: "server-authorization" } },
     });
     expect(needsCode).toBe(true);
     expect(useAuthStore.getState().user).toBeNull();
@@ -335,7 +324,7 @@ describe("createJojoAuthStore", () => {
 
   it("resends signup codes and starts recovery without exposing account existence", async () => {
     const { client, resend, resetPasswordForEmail } = createClient();
-    const { useAuthStore } = createJojoAuthStore(client);
+    const { useAuthStore } = createJojoAuthStore(client, { authorizeSignup: async () => "server-authorization" });
     await useAuthStore.getState().resendSignUpCode(" reader@example.com ");
     expect(resend).toHaveBeenCalledWith({ type: "signup", email: "reader@example.com" });
     await useAuthStore.getState().sendPasswordReset(" reader@example.com ");
@@ -345,7 +334,7 @@ describe("createJojoAuthStore", () => {
 
   it("verifies a recovery code, updates the password, and signs out other sessions", async () => {
     const { client, verifyOtp, updateUser, signOut } = createClient();
-    const { useAuthStore } = createJojoAuthStore(client);
+    const { useAuthStore } = createJojoAuthStore(client, { authorizeSignup: async () => "server-authorization" });
     await useAuthStore.getState().verifyPasswordResetCode("reader@example.com", "654321");
     expect(verifyOtp).toHaveBeenCalledWith({
       email: "reader@example.com",
@@ -386,7 +375,7 @@ describe("createJojoAuthStore", () => {
 
   it("rejects a successful OTP response for a different email", async () => {
     const { client, updateUser } = createClient();
-    const { useAuthStore } = createJojoAuthStore(client);
+    const { useAuthStore } = createJojoAuthStore(client, { authorizeSignup: async () => "server-authorization" });
     await expect(useAuthStore.getState().verifyPasswordResetCode("other@example.com", "123456")).rejects.toMatchObject({ code: "password_recovery_required" });
     await expect(useAuthStore.getState().completePasswordRecovery("new-password")).rejects.toMatchObject({ code: "password_recovery_required" });
     expect(updateUser).not.toHaveBeenCalled();
@@ -394,7 +383,7 @@ describe("createJojoAuthStore", () => {
 
   it.each(["cancel", "new-email", "sign-in", "session-switch"])("invalidates an earlier recovery on %s", async (transition) => {
     const { client, getSession, session, updateUser } = createClient();
-    const { useAuthStore } = createJojoAuthStore(client);
+    const { useAuthStore } = createJojoAuthStore(client, { authorizeSignup: async () => "server-authorization" });
     await useAuthStore.getState().verifyPasswordResetCode("reader@example.com", "654321");
     if (transition === "cancel") useAuthStore.getState().cancelPasswordRecovery();
     if (transition === "new-email") await useAuthStore.getState().sendPasswordReset("other@example.com");
@@ -410,7 +399,7 @@ describe("createJojoAuthStore", () => {
     const { client, verifyOtp, user, session } = createClient();
     let finishVerification!: (result: unknown) => void;
     verifyOtp.mockReturnValueOnce(new Promise((resolve) => { finishVerification = resolve; }));
-    const { useAuthStore } = createJojoAuthStore(client);
+    const { useAuthStore } = createJojoAuthStore(client, { authorizeSignup: async () => "server-authorization" });
     const verification = useAuthStore.getState().verifyPasswordResetCode(user.email, "123456");
     const rejected = expect(verification).rejects.toMatchObject({ code: "password_recovery_required" });
     useAuthStore.getState().cancelPasswordRecovery();
@@ -421,7 +410,7 @@ describe("createJojoAuthStore", () => {
 
   it("retains verified recovery on token refresh, but clears it on sign-out", async () => {
     const { client, session, getSession, onAuthStateChange, updateUser } = createClient();
-    const controller = createJojoAuthStore(client);
+    const controller = createJojoAuthStore(client, { authorizeSignup: async () => "server-authorization" });
     const stop = controller.startAuthSync();
     await vi.waitFor(() => expect(controller.useAuthStore.getState().initialized).toBe(true));
     await controller.useAuthStore.getState().verifyPasswordResetCode("reader@example.com", "123456");
@@ -441,7 +430,7 @@ describe("createJojoAuthStore", () => {
     const { client, getSession, onAuthStateChange, session } = createClient();
     let finishInitial!: (result: unknown) => void;
     getSession.mockReturnValueOnce(new Promise((resolve) => { finishInitial = resolve; }));
-    const controller = createJojoAuthStore(client);
+    const controller = createJojoAuthStore(client, { authorizeSignup: async () => "server-authorization" });
     const stop = controller.startAuthSync();
     const recoveredSession = { ...session, user: { ...session.user, id: "user-2", email: "other@example.com" } };
     onAuthStateChange.mock.calls[0]![0]("PASSWORD_RECOVERY", recoveredSession);
@@ -456,7 +445,7 @@ describe("createJojoAuthStore", () => {
     const { client, verifyOtp, user, session, getSession, onAuthStateChange } = createClient();
     let finishVerification!: (result: unknown) => void;
     verifyOtp.mockReturnValueOnce(new Promise((resolve) => { finishVerification = resolve; }));
-    const controller = createJojoAuthStore(client);
+    const controller = createJojoAuthStore(client, { authorizeSignup: async () => "server-authorization" });
     const stop = controller.startAuthSync();
     await vi.waitFor(() => expect(controller.useAuthStore.getState().initialized).toBe(true));
     const verification = controller.useAuthStore.getState().verifyPasswordResetCode(user.email, "123456");
@@ -481,7 +470,7 @@ describe("createJojoAuthStore", () => {
     const delayed = stage === "session" ? setSession : stage === "update" ? updateUser : signOut;
     delayed.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
     vi.mocked(client.createRecoveryClient).mockReturnValue({ auth: { setSession, updateUser, signOut, dispose } } as never);
-    const { useAuthStore } = createJojoAuthStore(client);
+    const { useAuthStore } = createJojoAuthStore(client, { authorizeSignup: async () => "server-authorization" });
     await useAuthStore.getState().verifyPasswordResetCode("reader@example.com", "123456");
     const saving = useAuthStore.getState().completePasswordRecovery("new-password");
     const rejected = expect(saving).rejects.toMatchObject({ code: "password_recovery_required" });
@@ -497,7 +486,7 @@ describe("createJojoAuthStore", () => {
 
   it("reauthenticates before changing a password or deleting the account", async () => {
     const { client, user, session, signInWithPassword, updateUser, invoke, signOut } = createClient();
-    const { useAuthStore } = createJojoAuthStore(client);
+    const { useAuthStore } = createJojoAuthStore(client, { authorizeSignup: async () => "server-authorization" });
     useAuthStore.setState({ user: user as never, session: session as never, profile });
     await useAuthStore.getState().changePassword("current-password", "new-strong-password");
     expect(signInWithPassword).toHaveBeenCalledWith({

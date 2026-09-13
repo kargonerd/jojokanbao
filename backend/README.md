@@ -22,7 +22,15 @@ pnpm dev:backend
 
 - `GET http://127.0.0.1:8088/v1/health`
 - `GET http://127.0.0.1:8088/v1/me`
-- `POST http://127.0.0.1:8088/v1/speech`（开发环境默认开启）
+- `POST http://127.0.0.1:8088/v1/account/signup-authorization`
+- `POST http://127.0.0.1:8088/v1/annotations`
+- `POST http://127.0.0.1:8088/v1/speech`
+
+注册与批注 API 使用 PostHog SDK 读取全局运行配置，按进程缓存已验证快照并后台刷新。
+设置 `POSTHOG_PROJECT_TOKEN`、`POSTHOG_API_HOST` 和服务端 `JOJO_OPERATOR_TOKEN`；
+Operator Token 必须与 Supabase 保存的摘要匹配。注册授权绑定邮箱、邀请码与短时有效期；
+批注请求保留用户 JWT，由后端提供可信公开阈值，数据库执行身份和业务权限校验。
+字段与部署顺序见 [PostHog 接入](../docs/posthog.md)。
 
 ## 听书 / 听新闻
 
@@ -46,8 +54,8 @@ B2 模式先查共享缓存，未命中才合成、压缩、上传，返回包�
 部署产物验证使用受控分块响应确认首块在结束前透传，防止本地流式正常而云端等待完整音频。
 
 - 登录仅在前端限制，后端和音频 URL 不鉴权，这是明确的产品选择。
-- MiMo Key、B2 凭据只在服务端。`JOJO_TTS_ENABLED` 统一控制 Edge/MiMo 新音频合成；关闭不影响缓存播放。MiMo 新合成还需 `MIMO_API_KEY`。
-- 总开关开发环境默认开启、生产默认关闭；修改环境变量后需重启后端或重新部署，不是前端用户设置。
+- MiMo Key、B2 凭据只在服务端。MiMo 合成需要 `MIMO_API_KEY` 或 `MIMO_API_KEYS`；缺少密钥或上游合成失败时，自动模式回退到无需密钥的 Edge。
+- 开发和生产遵循相同的服务商配置。优先复用已有音频；服务商不可用不影响缓存播放。修改密钥等环境配置后需重启后端或重新部署。
 - MiMo WAV 转 48 kbps 单声道 MP3；Edge MP3 直接存储。每进程最多同时合成 2 段。
 - 合成、编码、上传均有界；使用异步请求，但不是持久化后台任务队列。
 - B2 命中可跨用户/实例复用；同进程首请求合并，跨实例同时首次仍可能重复合成。
@@ -63,8 +71,8 @@ EdgeOne Python 超时已调整为 120 秒以容纳合成与上传；代码修改
 [听读运维说明](../tools/speech/README.md)。
 MiMo 免费期以[官方定价](https://mimo.mi.com/docs/zh-CN/price/pay-as-you-go)为准，不假设永久免费。
 
-Times 已迁移到 `tools/times-pipeline/` 的离线 GitHub Actions 流水线。Web 从 B2 CDN
-读取 Jox，不再通过 Python API 请求时实时抓取新闻。
+Times 内容由 `tools/times-pipeline/` 的离线 GitHub Actions 流水线生成。
+Web 从 B2 CDN 读取 Jox。
 
 ## 测试
 

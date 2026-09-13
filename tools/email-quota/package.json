@@ -1,0 +1,7 @@
+{
+  "name": "@jojo/email-quota",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node --test *.test.mjs" },
+  "dependencies": { "posthog-node": "5.52.1", "@jojo/maintenance-core": "workspace:*" }
+}

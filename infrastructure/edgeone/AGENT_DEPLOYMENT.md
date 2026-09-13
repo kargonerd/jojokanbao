@@ -95,18 +95,18 @@ Agent 实例之间串行准入；不同设备和会话也共享同一个账号�
 均释放对应请求的租约。执行超时会取消模型，租约额外留 30 秒清理宽限，进程崩溃
 后也不会永久锁住账号。状态仅存计数和时间，不保存问题或回答，注销账号时自动删除。
 
-发布前先应用 `202609080003_agent_usage_limits.sql` 和
-`202609080004_agent_usage_feature_config.sql`。后者把已有配额迁入功能开关，删除
-`private.agent_usage_policy`，保留账号计数和租约。Agent 使用既有
-`JOJO_OPERATOR_TOKEN` 调用配额 RPC，该值必须与 Supabase 功能开关运维密钥摘要
-匹配；无需把 service-role 密钥放入 Agent。配额服务不可用时拒绝开始新生成。
+部署时应用仓库数据库迁移，并按 [PostHog 配置指南](../../docs/posthog.md#部署与初始化)
+设置 Agent 运行环境的 `POSTHOG_PROJECT_TOKEN` 与 `POSTHOG_API_HOST`。Agent 使用 `JOJO_OPERATOR_TOKEN` 调用配额 RPC，
+该值必须与 Supabase Operator 密钥摘要匹配。配额服务不可用时拒绝开始新生成。
 `/rag/health` 只检查模型配置，发布后还必须验证实际认证请求和配额 RPC。
 
-管理员在功能开关管理页调整 `ai.usage_limits` 的 `config`：
+管理员在 PostHog 的 `ai_usage_limits_config` 调整参数：
 `requestsPerMinute`（1–60）、`requestsPerDay`（1–10000）、`maxRunSeconds`（30–600）。
-三项都必须是整数并完整提供，通过现有发布、修订历史和回滚流程保存；新请求立即
-读取配置，不需要重新部署。首次迁移保留原有的 3、100、300 配额。账号计数不随
-配置发布或回滚重置。监控账号遵循同一规则，每 30 分钟一次的日常探测约 48 次/天。
+三项都必须是整数并完整提供。Agent 使用 Node SDK 读取并校验，在进程内缓存有效快照；
+有缓存时立即使用，每 5 分钟由下一次请求触发后台刷新。冷启动没有有效配置时拒绝生成。
+参数修改和回滚在 PostHog 完成，下一次成功刷新后的新请求使用新值。
+账号计数与租约独立保存，参数调整和回滚保留用量。监控账号遵循同一规则，
+每 30 分钟一次的日常探测约 48 次/天。
 
 ## Trace
 

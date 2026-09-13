@@ -28,7 +28,6 @@ from vue_generator import generate_vue_code, generate_vue_diff, apply_vue_change
 from progress_manager import progress_manager
 from es_repair_routes import es_repair_blueprint
 from content_routes import content_blueprint
-from feature_flag_routes import feature_flags_blueprint
 from agent_admin_routes import agent_admin_blueprint
 from annotation_moderation_routes import annotation_moderation_blueprint
 from rmrb_review_routes import rmrb_review_blueprint
@@ -46,7 +45,6 @@ warnings.filterwarnings('ignore', category=DeprecationWarning)
 app = Flask(__name__)
 app.register_blueprint(es_repair_blueprint)
 app.register_blueprint(content_blueprint)
-app.register_blueprint(feature_flags_blueprint)
 app.register_blueprint(agent_admin_blueprint)
 app.register_blueprint(annotation_moderation_blueprint)
 app.register_blueprint(rmrb_review_blueprint)

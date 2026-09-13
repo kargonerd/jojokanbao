@@ -18,7 +18,7 @@ GitHub 工作流只做离线代码验证。
   策略；主动删除邮件记录或更换套餐后未更新配置可能影响准确性。
 - `usage_api`：直接读取官方 `/usage` 返回的团队日/月 `used`、`limit`、
   `resets_at`。接口目前 private beta；2026-09-09 本账号真实请求返回 404，
-  因此不能作为当前部署的数据源。以后开通后在管理台切换，并重新执行 probe。
+  因此不能作为当前部署的数据源。开通后在 PostHog 切换，并重新执行 probe。
 
 两种模式不静默切换。记录分页失败、重复/乱序、达到扫描上限、字段缺失时
 报告采集故障，不把部分结果或缺失值当作健康。每类最多 40 页，扫描预算
@@ -28,14 +28,14 @@ GitHub 工作流只做离线代码验证。
 表示付费套餐无限日额度；月额度仍检查。周期遵从接口的重置时间，避免自行
 计算账期。请求有 8 秒超时及 64 KiB 响应上限；函数上限 55 秒，并发上限 1。
 
-预警和紧急阈值复用 `private.feature_flags` 的 `ops.email_quota.config`：
-`warningPercent` 默认 80，`criticalPercent` 默认 90；耗尽固定为 100。
-`usageSource` 默认 `records`；估算采用 `dailyLimit=100`、`monthlyLimit=3000`，
-与本账号已核实的免费套餐一致，更换套餐时从同一管理入口更新。
-发布端要求整数且 `1 <= warning < critical <= 99`。管理台功能开关页面沿用
-Operator 发布、revision 冲突检查、历史与回滚，保留无关配置和规则。
-每次检查读取新配置；规则不能关闭额度检查。公开 RPC 只返回这五个非敏感
-策略值，不暴露实际用量、规则、账号、密钥或历史。
+预警和紧急阈值在 PostHog 的 `ops_email_quota_config` 管理。每次检查通过
+`posthog-node` SDK 读取完整配置，使用公开的 `POSTHOG_PROJECT_TOKEN` 与
+`POSTHOG_API_HOST`，固定配置身份为 `jojo-public-config`。
+`warningPercent`、`criticalPercent` 必须是整数，且 `1 <= warning < critical <= 99`；
+耗尽固定为 100。`usageSource` 为 `records` 或 `usage_api`，估算使用配置中的
+`dailyLimit`、`monthlyLimit`。更换套餐时在 PostHog 更新额度参数。
+配置读取失败或字段非法时报告采集故障，保留现有告警状态。PostHog 配置只包含公开参数，
+实际用量、通知状态和服务端凭据由各自的数据源与状态存储管理。
 
 ## 通知和去重
 

@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadCachedSpeechDurations, logicalSpeechVoice, requestSpeech, speechKey, speechObjectBase } from "../src/reading/speech";
 import { useAccountSessionStore } from "../src/account/session";
-import { useFeatureFlagStore } from "../src/featureFlags";
 
 const options = { provider: "mimo", cacheVersion: "test-v1", cdnBase: "https://blacknews.jojokanbao.cn" };
 
@@ -13,7 +12,7 @@ async function descriptor() {
 describe("public audio delivery", () => {
   beforeEach(() => {
     useAccountSessionStore.setState({ initialized: true, userId: "reader" });
-    useFeatureFlagStore.setState((state) => ({ flags: { ...state.flags, "reader.speech": true } }));
+
   });
   afterEach(() => vi.unstubAllGlobals());
 

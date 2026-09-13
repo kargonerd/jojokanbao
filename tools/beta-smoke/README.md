@@ -4,14 +4,16 @@
 
 Explicitly run `node tools/beta-smoke/comments.mjs [env-directory]` against an
 authorized Supabase project. The environment needs the existing management
-access token, project reference, publishable URL/key, and operator token.
+access token, project reference, publishable URL/key, operator token, and
+`READER_BASE_URL` pointing to the deployed Reader API origin. Account creation
+obtains the same signed signup authorization used by the clients.
 
 The test creates three temporary accounts with a unique `beta_smoke_run` marker
 and one synthetic book ID. It uses actual password authentication and HTTP RPCs
 to test public/private visibility, reply notifications, authorization, reports,
 and moderation. It does not send confirmation emails or touch real books.
 
-Apply `202609080005_explicit_notification_read_batch.sql` before running this
+Apply the repository migrations through `202609130004_posthog_runtime.sql` before running this
 test. Notification checks also cover explicitly marking displayed IDs, duplicate
 and empty batches, ownership, and a new reply arriving after the displayed
 snapshot. That later reply must remain unread.
@@ -22,32 +24,11 @@ accounts, and invitation. Results and the unique cleanup marker are written to
 reconcile those exact markers before another run; never bulk-delete by age or
 an email domain. This is an operator test and is intentionally not scheduled.
 
-## Feature configuration
-
-After the reviewed `202608290002_annotation_threshold_feature_config.sql`
-migration is applied, run:
-
-```bash
-node tools/beta-smoke/feature-flags.mjs [env-directory]
-```
-
-This verifies the migration record, configuration column, RPC signatures and
-private-table permissions, then creates one synthetic feature flag inside a
-single database transaction. It calls the operator RPCs as the anonymous role
-to verify nonempty config publishing, invalid-token and invalid-config rejection,
-revision conflicts, history, and rollback. The transaction always rolls back;
-the synthetic flag is never committed or visible to other sessions. An SQL
-failure aborts the transaction, so there are no cleanup records to reconcile.
-
-The final HTTP checks confirm PostgREST exposes the new config signature and
-rejects invalid config and operator credentials. They never submit valid changes
-to a real flag. A sanitized result is saved in `.runtime/beta-smoke/`.
-
 ## AI usage limits
 
-After the reviewed `202609080003_agent_usage_limits.sql` and
-`202609080004_agent_usage_feature_config.sql` migrations are applied,
-run against an authorized project with the same environment as the comment test:
+After the reviewed migrations through `202609130004_posthog_runtime.sql` are applied,
+run against an authorized project with the same environment as the comment test,
+plus `POSTHOG_PROJECT_TOKEN` and `POSTHOG_API_HOST`:
 
 ```bash
 node tools/beta-smoke/ai-usage.mjs [env-directory]
@@ -58,17 +39,11 @@ a unique `beta_smoke_run` marker. It does not send email or make model requests.
 Real REST calls verify that a signed-in reader cannot reserve or release usage
 without the operator token, two simultaneous reservations admit only one request,
 release permits further requests, and rejected requests do not consume quota.
-With the launch policy, three requests fit within a rolling minute and the fourth
-is rejected. The script reads the `ai.usage_limits` feature flag through the
-existing operator RPC and verifies `requestsPerMinute`, `requestsPerDay`, and
-`maxRunSeconds`. It checks that the old `private.agent_usage_policy` table was
-removed and `private.agent_usage_state` remains. It never changes the flag; the daily
-allowance must exceed the minute allowance and permit at least three requests.
-
-The database contract test also publishes quota changes through the feature-flag
-workflow, verifies that new reservations use them, rolls back the historical
-configuration, and rejects missing fields, nonintegers, and out-of-range limits.
-These configuration changes run only inside a rolled-back test transaction.
+The script reads `ai_usage_limits_config` directly from PostHog and verifies
+`requestsPerMinute`, `requestsPerDay`, and `maxRunSeconds`. It sends those trusted
+parameters to the operator-authenticated quota RPC. It checks that the usage state
+exists and never edits configuration; the daily allowance must exceed the minute
+allowance and permit at least three requests.
 
 To verify the daily limit, Shanghai calendar-day rollover, expired leases, and
 late release of an old request, it updates only that fixture's usage-state row,

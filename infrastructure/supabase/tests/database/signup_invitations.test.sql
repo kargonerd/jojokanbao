@@ -1,9 +1,6 @@
 begin;
-
-update private.feature_flags set config = config || '{"invitationRequired":true}'::jsonb
-where key = 'auth.signup';
-
 create extension if not exists pgtap with schema extensions;
+\ir ../signup-fixture.inc
 
 select extensions.plan(23);
 
@@ -132,7 +129,7 @@ select extensions.is(
           'email',
           'invited@example.invalid',
           'user_metadata',
-          jsonb_build_object('invitation_code', lower(admin_code))
+          pg_temp.signup_metadata('invited@example.invalid',lower(admin_code))
         )
       )
       from invitation_test_state
@@ -282,7 +279,7 @@ insert into auth.users (id, email, raw_user_meta_data)
 select
   invited_user_id,
   'invited@example.invalid',
-  jsonb_build_object('invitation_code', admin_code)
+  pg_temp.signup_metadata('invited@example.invalid',admin_code)
 from invitation_test_state;
 
 select extensions.ok(

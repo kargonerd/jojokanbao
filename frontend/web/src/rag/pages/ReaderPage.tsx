@@ -4,6 +4,7 @@ import DOMPurify from "dompurify";
 import { renderedChapter, shouldRenderChapterTitle } from "@jojo/content/book-renderer";
 export { renderedBody, shouldRenderChapterTitle } from "@jojo/content/book-renderer";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useReadingAnalytics } from "../../analytics/useReadingAnalytics";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { LoadingSpinner } from "@jojo/ui";
 import {
@@ -179,6 +180,7 @@ function waitForChapter<T>(request: Promise<T>, signal?: AbortSignal): Promise<T
 
 export function ReaderPage() {
   const { notebookId: datasetId, sourceId: itemKey } = useParams<{ notebookId: string; sourceId: string }>();
+  const readingKey = `${datasetId}:${itemKey}`;
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -192,6 +194,7 @@ export function ReaderPage() {
   const enabledSources = useLibraryPreferencesStore((state) => state.enabledSources);
   const [loaded, setLoaded] = useState<LoadedItem>();
   const [loadedBookKey, setLoadedBookKey] = useState("");
+  const [readingStateKey, setReadingStateKey] = useState("");
   const [fragment, setFragment] = useState<JojoFragment>();
   const [activeChapter, setActiveChapter] = useState("");
   const [chapterContent, setChapterContent] = useState<ReactNode>();
@@ -312,6 +315,7 @@ export function ReaderPage() {
   useEffect(() => {
     if (!datasetId || !itemKey) return;
     let active = true;
+    setReadingStateKey(readingKey);
     setLoaded(undefined); setFragment(undefined); setChapterContent(undefined);
     setLoading(true); setError("");
     loadItem(datasetId, itemKey).then((value) => {
@@ -330,7 +334,7 @@ export function ReaderPage() {
       setActiveChapter(requested?.id || value.manifest.content.chapters?.[0]?.id || "");
     }).catch((reason: Error) => { if (active) setError(reason.message); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [bookLoadKey, datasetId, itemKey, requestedAnnotation, requestedChapter, requestedQuote]);
+  }, [readingKey, bookLoadKey, datasetId, itemKey, requestedAnnotation, requestedChapter, requestedQuote]);
 
   useEffect(() => {
     if (!datasetId || !itemKey) return;
@@ -412,6 +416,9 @@ export function ReaderPage() {
   const spokenChapter = useMemo(() => fragment
     ? speechSegments(fragment.title, fragment.body.value, fragment.body.format)
     : [], [fragment]);
+  const analyticsAccess = loaded && libraryBookPolicy(loaded.entry, loaded.index, loaded.item, loaded.manifest).access;
+  const readingStateIsCurrent = readingStateKey === readingKey;
+  useReadingAnalytics("book", `${datasetId}:${itemKey}`, readingStateIsCurrent && Boolean(loaded && loadedBookKey === bookLoadKey && fragment && !loading && (analyticsAccess !== "authenticated" || (readerIdentityReady && Boolean(readerUserId)))), readingStateIsCurrent && Boolean(error));
   if (loading || (loaded && loadedBookKey !== bookLoadKey)) return <ReadingLoadingState kind="book" status="正在打开书籍" fullscreen />;
   if (!loaded) return <div className="p-8 text-center text-muted">{error || "内容不存在"}</div>;
   const { access, librarySource, publicationStatus } = libraryBookPolicy(loaded.entry, loaded.index, loaded.item, loaded.manifest);
