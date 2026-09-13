@@ -50,6 +50,33 @@ async function fixture(options: {
 }
 
 describe("EPUB import compatibility and integrity", () => {
+  it("preserves linked and imported CSS bold through canonical and regenerated EPUB", async () => {
+    const { file, directory } = await fixture({ entries: [
+      { id: "c1", file: "text/ch1.xhtml", body: '<link rel="stylesheet" href="../styles/book.css"/><h1>第一章</h1><p class="content-c1">1报告</p><p>普通正文</p>' },
+      { id: "c2", file: "text/ch2.xhtml", body: '<link rel="stylesheet" href="../styles/plain.css"/><h1>第二章</h1><p class="content-c1">普通小节</p>' },
+    ], files: {
+      "OPS/styles/book.css": '@import "weight.css"; .content-c1 {color: black}',
+      "OPS/styles/weight.css": ".content-c1 {font-weight: bold}",
+      "OPS/styles/plain.css": ".content-c1 {font-weight: normal}",
+    } });
+    const output = path.join(directory, "build");
+    const report = await buildContentPipeline({ inputPaths: [file], outputDirectory: output, fetchAssets: false });
+    expect(report).toMatchObject({ acceptedFiles: 1, chapters: 2 });
+    const item = JSON.parse(gunzipSync(await readFile(path.join(output, report.itemsBuilt[0]!.canonicalObject))).toString("utf8")) as JojoCanonicalItem;
+    expect(item).toMatchObject({ librarySource: "community", access: "authenticated" });
+    if (item.content.schema !== "jojo-content/book/1") throw new Error("Expected book");
+    expect(cheerio.load(item.content.chapters[0]!.body.value)("p strong").text()).toBe("1报告");
+    expect(cheerio.load(item.content.chapters[1]!.body.value)("strong")).toHaveLength(0);
+    expect((await validatePipelineOutput(output)).errors).toEqual([]);
+    const epub = await JSZip.loadAsync(await buildEpub({
+      itemId: item.itemId, title: item.title, language: item.language, author: "测试作者",
+      chapters: item.content.chapters, toc: item.content.toc, annotations: item.annotations,
+      assets: [], canonicalDatasetDirectory: directory,
+    }));
+    const bodies = await Promise.all(Object.values(epub.files).filter((entry) => entry.name.endsWith(".xhtml")).map((entry) => entry.async("string")));
+    expect(bodies.some((body) => cheerio.load(body)("p strong").text() === "1报告")).toBe(true);
+  });
+
   it("downgrades missing note destinations through canonical, delivery and EPUB export", async () => {
     const { file, directory } = await fixture({ entries: [
       { id: "c1", file: "text/ch1.xhtml", body: '<p>正文<a id="zero" href="#note0"><sup>(0)</sup></a>1）因为增长。</p><p><a id="missing-file" href="gone.xhtml#note">缺失注释</a><a id="valid" href="ch2.xhtml#note">有效跨章注释</a></p>' },

@@ -1,3 +1,4 @@
+import { LibrarySettingsPage } from "./library/LibrarySettingsPage";
 import { Fragment, lazy, Suspense, useEffect, type ReactNode } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Layout } from "./archive/components/Layout";
@@ -142,6 +143,7 @@ function RedesignedRoutes() {
       <RuntimeBootstrap />
       <Routes>
         <Route path="/account" element={<AccountRoute />} />
+        <Route path="/account/library" element={<AppLayout><LibrarySettingsPage /></AppLayout>} />
         <Route path="/account/times-sources" element={<AuthenticatedRoute><AppLayout><TimesSourceSettingsPage /></AppLayout></AuthenticatedRoute>} />
         <Route path="/account/confirm" element={<LazyRoute><AccountConfirmation /></LazyRoute>} />
         <Route path="/login" element={<Navigate to="/account" replace />} />

@@ -14,12 +14,27 @@ from tempfile import TemporaryDirectory
 from typing import Any, Callable
 
 from es_repair import _load_root_env
+from content_cache import refresh_book_delivery
+from content_index import index_status
 
+
+# Hub reads transport options once at import time. The configuration endpoint
+# loads get_token before any publication, so initialize these defaults here.
+_load_root_env()
+os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
+os.environ.setdefault("HF_XET_HIGH_PERFORMANCE", "0")
+os.environ.setdefault("HF_XET_FIXED_UPLOAD_CONCURRENCY", "2")
+os.environ.setdefault("HF_XET_CLIENT_RETRY_MAX_DURATION", "1200s")
+os.environ.setdefault("HF_XET_CLIENT_READ_TIMEOUT", "600s")
 
 ROOT = Path(__file__).resolve().parents[3]
 DELIVERY_REMOTE = os.getenv("JOJO_DELIVERY_REMOTE", "jojo-b2-s3:jojo-newspaper")
 RCLONE_COPY_FLAGS = ["--checksum", "--transfers", "16", "--checkers", "32"]
 DELIVERY_COPY_FLAGS = [*RCLONE_COPY_FLAGS, "--s3-no-check-bucket"]
+MUTABLE_DELIVERY_FLAGS = [
+    *DELIVERY_COPY_FLAGS, "--ignore-times", "--metadata",
+    "--metadata-set", "cache-control=public, max-age=0, must-revalidate",
+]
 
 
 def _huggingface_token() -> str:
@@ -40,6 +55,7 @@ def _huggingface_private() -> bool:
 def publication_status() -> dict[str, Any]:
     _load_root_env()
     return {
+        "elasticsearch": index_status(),
         "b2": {
             "configured": bool(shutil.which("rclone")),
             "deliveryRemote": os.getenv("JOJO_DELIVERY_REMOTE", DELIVERY_REMOTE),
@@ -126,17 +142,18 @@ def publish_b2(build_root: Path, on_log: Callable[[str], None]) -> dict[str, Any
     ], on_log)
     _run([
         "rclone", "copy", str(build_root / "delivery" / "content"), f"{delivery_remote}/content",
-        "--filter", "+ **/manifest.jox", "--filter", "- **", *DELIVERY_COPY_FLAGS,
+        "--filter", "+ **/manifest.jox", "--filter", "- **", *MUTABLE_DELIVERY_FLAGS,
     ], on_log)
     if (merged_metadata / "content").exists():
-        _run(["rclone", "copy", str(merged_metadata / "content"), f"{delivery_remote}/content", *DELIVERY_COPY_FLAGS], on_log)
+        _run(["rclone", "copy", str(merged_metadata / "content"), f"{delivery_remote}/content", *MUTABLE_DELIVERY_FLAGS], on_log)
     # B2's S3 compatibility endpoint may treat copyto(bucket/root-object) as a
     # bucket-creation attempt. Copy the parent with an exact root filter instead.
     _run([
         "rclone", "copy", str(merged_metadata), delivery_remote,
-        "--filter", "+ /catalog.jox", "--filter", "- **", *DELIVERY_COPY_FLAGS,
+        "--filter", "+ /catalog.jox", "--filter", "- **", *MUTABLE_DELIVERY_FLAGS,
     ], on_log)
-    return {"datasets": len(dataset_ids), "deliveryRemote": delivery_remote}
+    cache = refresh_book_delivery(build_root, on_log)
+    return {"datasets": len(dataset_ids), "deliveryRemote": delivery_remote, "cache": cache}
 
 
 def _hf_slug(title: str, fallback: str) -> str:
@@ -335,6 +352,7 @@ def _prepare_huggingface_snapshot(
                 "title": item.get("title"),
                 "type": item.get("type"),
                 "order": summary.get("order"),
+                **{key: item[key] for key in ("librarySource", "access", "publicationStatus") if key in item},
                 "chapterCount": len(chapters),
                 "tocPath": f"collections/{slug}/items/{item_key}.toc.json",
                 "pagePath": f"collections/{slug}/items/{item_key}.md",
@@ -370,6 +388,7 @@ def _prepare_huggingface_snapshot(
             "type": dataset.get("type"),
             "language": dataset.get("language"),
             "description": dataset.get("description"),
+            **{key: dataset[key] for key in ("librarySource", "access", "publicationStatus") if key in dataset},
             "path": f"collections/{slug}",
             "items": collection_items,
         })
@@ -572,15 +591,6 @@ def _hf_book_commit_plan(
 
 def publish_huggingface(build_root: Path, on_log: Callable[[str], None]) -> dict[str, Any]:
     _load_root_env()
-    # The current proxy accepts Xet payloads but can stall final shard
-    # registration indefinitely. Prefer the resumable LFS bridge by default;
-    # operators can opt back into Xet with HF_HUB_DISABLE_XET=0.
-    os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
-    # High-performance mode remains opt-in when an operator enables Xet.
-    os.environ.setdefault("HF_XET_HIGH_PERFORMANCE", "0")
-    os.environ.setdefault("HF_XET_FIXED_UPLOAD_CONCURRENCY", "2")
-    os.environ.setdefault("HF_XET_CLIENT_RETRY_MAX_DURATION", "1200s")
-    os.environ.setdefault("HF_XET_CLIENT_READ_TIMEOUT", "600s")
     token = _huggingface_token()
     repo_id = os.getenv("HF_DATASET_REPO", "")
     if not token or not repo_id:
@@ -629,6 +639,7 @@ def publish_huggingface(build_root: Path, on_log: Callable[[str], None]) -> dict
         "remoteFiles": len(remote_files),
         "deletedFiles": len(stale_files),
         "scope": "books/",
+        "revision": commit.oid,
         "commit": f"https://huggingface.co/datasets/{repo_id}/commit/{commit.oid}",
         **snapshot_stats,
     }

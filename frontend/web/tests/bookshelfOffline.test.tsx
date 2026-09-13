@@ -17,6 +17,7 @@ vi.mock("../src/offline/books", () => ({
   useOfflineBooksStore: (select: (state: unknown) => unknown) => select({ books: mocks.records, loading: mocks.loading, error: "" }),
 }));
 vi.mock("../src/rag/readerData", () => ({ loadBookshelf: mocks.load, setBookshelf: mocks.set }));
+vi.mock("../src/rag/content", () => ({ loadCatalog: async () => ({ datasets: [{ datasetId: "books", type: "book", title: "一本书" }] }) }));
 vi.mock("../src/library/BookCover", () => ({ BookCover: () => <span>封面</span> }));
 const entry = { datasetId: "books", itemId: "book:one", title: "一本书" };
 function record(status: OfflineBookRecord["status"] = "ready") {

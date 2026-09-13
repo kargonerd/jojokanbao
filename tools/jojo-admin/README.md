@@ -5,21 +5,42 @@ append-only Elasticsearch repairs, feature flags, and Agent operations.
 
 The product UI and internal package are both named **JOJO 管理台**, covering content operations, search maintenance,
 and runtime feature rules. `/content` is the JOJO v1 content importer and publisher. It accepts local
-WeRead WRX JSON, EPUB, and DRM-free MOBI 6/7 (`.azw`, `.mobi`, `.prc`) through local
-paths or browser-selected files. It runs the same [Content Pipeline](../content-pipeline/README.md),
+WeRead WRX JSON, EPUB, and DRM-free MOBI 6/7 (`.azw`, `.mobi`, `.prc`) through a
+single-file picker. It runs the same [Content Pipeline](../content-pipeline/README.md),
 shows background job progress and diagnostics, then publishes Canonical data to
-Hugging Face and Delivery objects to B2. Elasticsearch is updated separately by
-the unified ES sync described below.
+Hugging Face and Delivery objects to B2, then indexes the published books from that exact HF revision with the unified ES synchronizer.
 By default, a WeRead source is rejected when its declared TOC is truncated,
 TOC chapter responses are missing, or any response cannot be decoded.
-EPUB imports also reject missing spine content, invalid navigation/internal links,
+EPUB imports also reject missing spine content, invalid navigation,
 and missing embedded resources when asset import is enabled. Corrupt ZIPs, invalid
 spines, and encrypted content produce explicit errors. Unpaired plain-text note
 markers remain in the text with warnings; rich notes remain linked content.
 
 浏览器导入入口为 `http://127.0.0.1:4174/content`（`pnpm dev:admin`）或
-`http://127.0.0.1:5000/content`（`server/start.bat`）。上传会保留中文文件名供元数据回退，
-同名文件分目录暂存。任务生成后先查看诊断，再选择发布目标；导入本身不会自动发布。
+`http://127.0.0.1:5000/content`（`server/start.bat`）。点击“选择电子书文件”，每次选择一本，
+确认文件名及选项后点击“开始处理”。页面不提供目录选择、路径输入或多文件选择；取消选择不会报错。
+上传会保留中文文件名供元数据回退，
+同名文件分目录暂存。任务生成后先查看诊断，再点击“打开阅读预览”，检查目录、正文、图片和脚注；
+支持分卷选择、章节跳转和上一章 / 下一章。预览读取本机生成的 Reader 文件，草稿及登录可读的书籍
+也可直接检查，不依赖 HF / B2 配置。页面按“选择文件 → 处理与预览 → 设置发布 → 查看结果”四步操作，
+每次只显示当前步骤。导入始终先生成本地草稿；预览页可直接进入同一本书的发布设置。
+第三步选择草稿或发布到馆藏、阅读门槛及上传目标，确认后才上传。导入和预览都不会自动发布。
+结果页分别显示每个目标的进度、成功时间或失败原因，以及 B2 最后一次确认同步的馆藏状态。
+“上传完成”不等于书籍已公开：草稿会明确显示“不在馆藏展示”。
+点击“修改发布设置”可在草稿和发布之间切换，再“保存设置并同步”，无需重新导入；
+修改时需同时选择此前尝试上传的目标，避免副本状态不一致。设置不变时可只重试失败目标。
+“最近导入”可恢复最近 20 个本机任务；刷新页面保留当前书籍与步骤。上传中禁止重复提交，
+管理台重启中断的上传可重试。HF/B2 成功后自动同步本次书籍到 ES，结果页显示新增/已有章节数、失败原因并支持单独重试。草稿不新增索引，检索范围根据馆藏下架状态排除；存量 ES 内容冲突通过 ES repair 处理。
+EPUB 自动归入“共享书库”书源，需登录并在资料库设置中开启该书源；其他格式默认 JOJO书库。
+同一本书再次导入后，旧任务会标为“旧版本”并链接到新任务，不能再覆盖发布。
+B2 上传后从公开 CDN 读取当前书籍的 manifest、书目索引和 `catalog.jox`，
+核对本次书籍的内容、发布状态和阅读门槛；最多等待 180 秒，缓存未更新时显示失败并允许重试。
+这些可变元数据使用 `public, max-age=0, must-revalidate` 缓存策略。
+EdgeOne 的现有可变元数据规则还需覆盖 `content/books/<dataset>/index.jox` 和
+`content/books/<dataset>/items/<item>/manifest.jox`：浏览器缓存为 0 秒，边缘缓存为 60 秒，
+发布依靠该短缓存自然过期，不依赖主动刷新 CDN 或腾讯云登录。
+预览用于核对生成内容；正文和标题脚注复用正式阅读器的渲染逻辑，但管理台的页面布局、字号、
+行距和注释区域样式独立，不能作为正式阅读器最终排版的完全一致预览。
 管理台默认严格导入，不提供部分导入开关；确需恢复部分内容时使用 Content Pipeline 的
 `--allow-partial` 并检查 `report.json`。关闭资源导入表示主动只取文字。
 PDF 书籍先通过外部工具转换为 EPUB；Press 已移除，现有 `/pdf` 报刊 PDF 工作流继续独立使用。

@@ -1,10 +1,12 @@
+import { libraryBookPolicy, isLibrarySourceEnabled } from "@jojo/content";
+import { useLibraryPreferencesStore } from "../../library/preferencesStore";
 import DOMPurify from "dompurify";
+import { renderedChapter, shouldRenderChapterTitle } from "@jojo/content/book-renderer";
+export { renderedBody, shouldRenderChapterTitle } from "@jojo/content/book-renderer";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { LoadingSpinner } from "@jojo/ui";
 import {
-  JOJO_BOOK_SEARCH_BLOCK_SELECTOR,
-  bookSearchBlockAnchorId,
   type JojoAnnotation,
   type JojoFragment,
   type JojoTocNode,
@@ -33,10 +35,6 @@ export function flattenToc(nodes: JojoTocNode[] = [], depth = 0, inheritedTarget
     const targetId = node.targetId || inheritedTargetId;
     return [{ ...node, targetId, depth }, ...flattenToc(node.children, depth + 1, targetId)];
   });
-}
-
-function escapeHtml(value: string): string {
-  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
 const CHINESE_DIGITS: Record<string, number> = {
@@ -119,122 +117,15 @@ export function findReferencedAnnotation(
     ?? fragment.annotations.find((annotation) => annotation.label === label);
 }
 
-function matchesChapterTitle(heading: Element | undefined, title: string): boolean {
-  if (!heading || !/^H[1-6]$/.test(heading.tagName)) return false;
-  const normalize = (value: string) => value.normalize("NFKC").replace(/\s+/g, "");
-  if (normalize(heading.textContent || "") === normalize(title)) return true;
-  // Work on a detached copy: the displayed title keeps every note and anchor.
-  const comparison = heading.cloneNode(true) as Element;
-  for (const marker of comparison.querySelectorAll('a[href^="#"],a[data-target-id],a[data-anchor-id],[data-annotation-id],[role="doc-noteref"]')) {
-    const text = normalize(marker.textContent || "");
-    if (/^(?:\[\d+\]|〔\d+〕|【\d+】|\(\d+\)|[①-⑳*]+)$/.test(text)
-      || (marker.tagName === "A" && /^\d+$/.test(text) && marker.querySelector("sup"))) marker.remove();
-  }
-  return normalize(comparison.textContent || "") === normalize(title);
-}
-
-export function renderedBody(fragment: JojoFragment, assetUrls: Record<string, string>): string {
-  const source = fragment.body.format === "html"
-    ? fragment.body.value
-    : fragment.body.value.split(/\n{2,}/).map((paragraph) => `<p>${escapeHtml(paragraph).replaceAll("\n", "<br>")}</p>`).join("");
-  const clean = DOMPurify.sanitize(source);
-  const document = new DOMParser().parseFromString(`<main>${clean}</main>`, "text/html");
-  const main = document.querySelector("main");
-  let searchBlockNumber = 0;
-  for (const element of document.querySelectorAll<HTMLElement>(JOJO_BOOK_SEARCH_BLOCK_SELECTOR)) {
-    if (element.parentElement?.closest(JOJO_BOOK_SEARCH_BLOCK_SELECTOR)) continue;
-    if (!element.textContent?.normalize("NFKC").replace(/\s+/g, " ").trim()) continue;
-    searchBlockNumber += 1;
-    if (!element.id) element.id = bookSearchBlockAnchorId(fragment.fragmentId, searchBlockNumber);
-  }
-  const firstContentElement = [...(main?.children ?? [])].find((element) => (
-    element.tagName !== "HR"
-    && (element.textContent?.replace(/\s+/g, "").length || element.querySelector("img,figure,svg"))
-  ));
-  if (/^H[1-6]$/.test(firstContentElement?.tagName ?? "")
-    && !firstContentElement?.querySelector("a,sup,[data-annotation-id]")
-    && firstContentElement?.textContent?.normalize("NFKC").replace(/\s+/g, " ").trim()
-      === fragment.title.normalize("NFKC").replace(/\s+/g, " ").trim()) {
-    const headingId = firstContentElement.id;
-    if (headingId) {
-      const anchor = document.createElement("span");
-      anchor.id = headingId;
-      firstContentElement.before(anchor);
-    }
-    firstContentElement.remove();
-  }
-  if (fragment.title.normalize("NFKC").trim() === "目录") {
-    const selfEntry = [...(main?.children ?? [])].find((element) => (
-      element.textContent?.normalize("NFKC").replace(/\s+/g, "").trim() === "目录"
-    ));
-    selfEntry?.remove();
-  }
-  for (const placeholder of document.querySelectorAll("figure[data-asset-id], span[data-asset-id]")) {
-    const assetId = placeholder.getAttribute("data-asset-id") || "";
-    const url = assetUrls[assetId];
-    if (!url) continue;
-    const image = document.createElement("img");
-    image.src = url;
-    if (placeholder.tagName === "SPAN") {
-      image.alt = "行内图片";
-      image.setAttribute("data-book-inline-asset", "true");
-      placeholder.append(image);
-      continue;
-    }
-    const role = placeholder.getAttribute("data-role");
-    image.alt = placeholder.querySelector("figcaption")?.textContent
-      || (role === "cover" ? "封面" : role === "table-image" ? "表格" : "正文图片");
-    const width = Number(placeholder.getAttribute("data-width"));
-    if (Number.isInteger(width) && width >= 10 && width <= 100) {
-      (placeholder as HTMLElement).style.maxWidth = `${width}%`;
-    }
-    placeholder.prepend(image);
-  }
-  const annotations = new Map(fragment.annotations.map((annotation) => [annotation.id, annotation]));
-  for (const marker of document.querySelectorAll("sup[data-annotation-id]")) {
-    const annotationId = marker.getAttribute("data-annotation-id") || "";
-    const annotation = annotations.get(annotationId);
-    if (!annotation) continue;
-    const trailingText = marker.textContent || "";
-    marker.id = annotationMarkerId(annotationId);
-    marker.textContent = "";
-    const link = document.createElement("a");
-    link.href = `#${annotationId}`;
-    link.textContent = annotationDisplayLabel(annotation.label);
-    link.title = annotation.body.value;
-    link.setAttribute("aria-label", `查看注释 ${annotation.label || "注"}`);
-    link.className = "book-footnote-link text-red no-underline font-bold";
-    marker.append(link);
-    if (trailingText) marker.after(document.createTextNode(trailingText));
-  }
-  if (firstContentElement?.parentElement === main && matchesChapterTitle(firstContentElement, fragment.title)) {
-    firstContentElement.classList.add("book-chapter-title");
-  }
-  // Only internally generated Blob URLs are inserted after sanitization.
-  return main?.innerHTML || "";
-}
-
-export function shouldRenderChapterTitle(fragment: JojoFragment, html: string): boolean {
-  const document = new DOMParser().parseFromString(`<main>${html}</main>`, "text/html");
-  const main = document.querySelector("main");
-  if (fragment.title !== "封面" && fragment.title !== "插图") {
-    const normalize = (value: string) => value.normalize("NFKC").replace(/\s+/g, "");
-    const heading = [...(main?.children ?? [])].find((element) => element.tagName !== "HR"
-      && (normalize(element.textContent || "") || element.querySelector("img,figure,svg")));
-    return !matchesChapterTitle(heading, fragment.title);
-  }
-  return Boolean(main?.textContent?.replace(/\s+/g, "").length) || !main?.querySelector("img,figure,svg");
-}
-
 function BookChapterContent({ fragment, loaded, assetUrls, onAnnotationReference }: {
   fragment: JojoFragment;
   loaded: LoadedItem;
   assetUrls: Record<string, string>;
   onAnnotationReference: (reference: AnnotationReference) => void;
 }) {
-  const html = useMemo(() => renderedBody(fragment, assetUrls), [fragment, assetUrls]);
+  const { bodyHtml: html, titleHtml } = useMemo(() => renderedChapter(fragment, assetUrls), [fragment, assetUrls]);
   return <>
-    {shouldRenderChapterTitle(fragment, html) && <h1 className="book-chapter-title">{fragment.title}</h1>}
+    {shouldRenderChapterTitle(fragment, html) && <h1 className="book-chapter-title" dangerouslySetInnerHTML={{ __html: titleHtml }} />}
     <div className="prose-editorial [&_p]:my-[1.15em] [&_p]:text-justify [&_p]:indent-[2em] [&_h1]:text-red [&_h2]:text-red [&_h3]:text-red [&_h4]:text-red [&_figure]:my-10 [&_figure_img]:mx-auto [&_figure_img]:block [&_figure_img]:max-h-[78vh] [&_figure_img]:max-w-full [&_figcaption]:mt-3 [&_figcaption]:text-center [&_figcaption]:font-sans [&_figcaption]:text-xs [&_figcaption]:text-muted" dangerouslySetInnerHTML={{ __html: html }} />
     {fragment.annotations.length > 0 && <section className="mt-16 border-t border-rule pt-8 text-[.82em] leading-[1.85]"><h2 className="mb-6 font-sans text-sm tracking-[.18em]">本章注释</h2><ol className="m-0 list-none p-0">{fragment.annotations.map((note) => {
       const reference = parseAnnotationReference(note.body.value);
@@ -298,6 +189,7 @@ export function ReaderPage() {
   const readerReturnTo = safeReaderReturnPath(
     requestedReturnTo || readerReturnPathFromState(location.state),
   );
+  const enabledSources = useLibraryPreferencesStore((state) => state.enabledSources);
   const [loaded, setLoaded] = useState<LoadedItem>();
   const [loadedBookKey, setLoadedBookKey] = useState("");
   const [fragment, setFragment] = useState<JojoFragment>();
@@ -310,7 +202,7 @@ export function ReaderPage() {
   const [error, setError] = useState("");
   const { initialized: authInitialized, userId } = useAccountSessionStore();
   const offlineIdentityVersion = useOfflineBooksStore((state) => state.identityVersion);
-  const bookLoadKey = JSON.stringify([datasetId, itemKey, requestedAnnotation, requestedChapter, requestedQuote, authInitialized, userId, offlineIdentityVersion]);
+  const bookLoadKey = JSON.stringify([datasetId, itemKey, requestedAnnotation, requestedChapter, requestedQuote, authInitialized, userId, offlineIdentityVersion, enabledSources]);
   const offlineIdentity = browserOfflineBookIdentity();
   const readerUserId = loaded?.offline ? offlineIdentity.userId : userId;
   const readerIdentityReady = loaded?.offline ? offlineIdentity.initialized : authInitialized;
@@ -452,7 +344,7 @@ export function ReaderPage() {
 
   useEffect(() => {
     if (!loaded || !activeChapter || loadedBookKey !== bookLoadKey) return;
-    const access = loaded.manifest.access ?? loaded.item.access ?? loaded.index.access ?? loaded.entry.access ?? "public";
+    const { access } = libraryBookPolicy(loaded.entry, loaded.index, loaded.item, loaded.manifest);
     if (access === "authenticated" && (!readerIdentityReady || !readerUserId || loaded.ownerId !== readerUserId)) return;
     let cancelled = false;
     const controller = new AbortController();
@@ -522,7 +414,9 @@ export function ReaderPage() {
     : [], [fragment]);
   if (loading || (loaded && loadedBookKey !== bookLoadKey)) return <ReadingLoadingState kind="book" status="正在打开书籍" fullscreen />;
   if (!loaded) return <div className="p-8 text-center text-muted">{error || "内容不存在"}</div>;
-  const access = loaded.manifest.access ?? loaded.item.access ?? loaded.index.access ?? loaded.entry.access ?? "public";
+  const { access, librarySource, publicationStatus } = libraryBookPolicy(loaded.entry, loaded.index, loaded.item, loaded.manifest);
+  if (publicationStatus === "draft") return <main className="p-8 text-center">这本书已下架</main>;
+  if (!isLibrarySourceEnabled(librarySource, enabledSources)) return <main className="p-8 text-center"><p>这本书的书源已关闭</p><Link className="text-red" to="/account/library">前往资料库设置 →</Link></main>;
   if (access === "authenticated" && (!readerIdentityReady || !readerUserId)) {
     if (!readerIdentityReady) return <LoadingSpinner text="正在确认登录状态" fullscreen />;
     const returnTo = `${window.location.pathname}${window.location.search}`;

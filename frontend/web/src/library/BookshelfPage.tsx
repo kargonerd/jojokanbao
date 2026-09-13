@@ -1,3 +1,7 @@
+import { libraryBookPolicy, type JojoCatalogEntry } from "@jojo/content";
+import { loadCatalog } from "../rag/content";
+import { useLibraryVisibility } from "./preferencesStore";
+import { browserOfflineBookIdentity } from "../offline/identity";
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { LoadingSpinner } from "@jojo/ui";
@@ -18,10 +22,13 @@ function entryKey(entry: BookshelfEntry): string {
 
 export function BookshelfPage() {
   const location = useLocation();
+  const [catalog, setCatalog] = useState<JojoCatalogEntry[]>([]);
+  useEffect(() => { void loadCatalog().then((value) => setCatalog(value.datasets)).catch(() => undefined); }, []);
   const accountInitialized = useAccountSessionStore((state) => state.initialized);
   const userId = useAccountSessionStore((state) => state.userId);
   const flagsInitialized = useFeatureFlagStore((state) => state.initialized);
   const bookshelfEnabled = useFeatureFlag("library.bookshelf");
+  const bookVisible = useLibraryVisibility(Boolean(userId || browserOfflineBookIdentity().userId));
   const recentItems = useRecentReadingStore((state) => state.items);
   const offlineEnabled = supportsOfflineBooks();
   const offlineRecords = useOfflineBooksStore((state) => state.books);
@@ -76,8 +83,13 @@ export function BookshelfPage() {
 
   // A downloaded book must survive a failed cloud request or an offline cold start.
   const cloudItems = userId && userId === itemsOwner && bookshelfEnabled ? items : [];
-  const visibleItems = [...cloudItems];
+  const visibleItems = cloudItems.filter((item) => {
+    const entry = catalog.find((book) => book.datasetId === item.datasetId);
+    return Boolean(entry && bookVisible(entry));
+  });
   if (offlineEnabled) for (const record of offlineRecords) {
+    const entry = catalog.find((book) => book.datasetId === record.entry.datasetId);
+    if (!bookVisible(libraryBookPolicy(record.entry, record.index, record.item, record.manifest, entry))) continue;
     if (!visibleItems.some((item) => item.datasetId === record.entry.datasetId && (item.itemId === record.item.itemId || item.itemId === record.item.itemKey))) {
       visibleItems.push({ datasetId: record.entry.datasetId, itemId: record.item.itemKey, title: record.item.title });
     }
@@ -92,7 +104,7 @@ export function BookshelfPage() {
           ? "loading"
           : error && items.length === 0
             ? "error"
-            : items.length === 0
+            : visibleItems.length === 0
               ? "empty"
               : "ready";
 

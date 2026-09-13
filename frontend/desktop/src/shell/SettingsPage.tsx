@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { useEffect, useState } from 'react';
 
 type AppInfo = { version: string; platform: string; arch: string };
@@ -102,6 +103,7 @@ export function SettingsPage() {
     <main className="desktop-settings">
       <header className="desktop-page-heading">
         <p>桌面偏好</p>
+        <Link to="/settings/library" className="text-red">资料库设置 →</Link>
         <h1>设置</h1>
         <span>设置只保存在这台电脑。</span>
       </header>

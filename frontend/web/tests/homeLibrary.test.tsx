@@ -61,7 +61,7 @@ beforeEach(() => {
   shelfMocks.loadBookshelf.mockReset();
   shelfMocks.setBookshelf.mockReset();
   catalogMocks.loadBookCoverUrl.mockResolvedValue(undefined);
-  catalogMocks.loadCatalog.mockResolvedValue({ datasets: [] });
+  catalogMocks.loadCatalog.mockResolvedValue({ datasets: [{ datasetId: "mao", type: "book-series" }, { datasetId: "solo", type: "book" }] });
   shelfMocks.loadBookshelf.mockResolvedValue([]);
   shelfMocks.setBookshelf.mockResolvedValue(undefined);
   catalogMocks.list.mockResolvedValue([
@@ -324,6 +324,7 @@ describe("app homepage", () => {
   });
 
   it("shows the last book chapter once and keeps progress exclusive to books", async () => {
+    catalogMocks.list.mockResolvedValue([{ id: "philosophy-new", title: "大众哲学", type: "book" }]);
     useRecentReadingStore.setState({
       items: [
         {

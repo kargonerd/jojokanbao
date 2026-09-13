@@ -18,7 +18,7 @@ import { getLatestRmrbAvailableDate } from "../dateAvailability";
 import { archiveIssuePath } from "../../routes";
 import { rollout } from "../../rollout";
 import { loadCatalog } from "../../rag/content";
-import { isContentVisible } from "../../rag/contentVisibility";
+import { useLibraryVisibility } from "../../library/preferencesStore";
 
 type SearchContentType = "periodical" | "book";
 
@@ -290,6 +290,7 @@ export function SearchPage({
   const accountInitialized = useAccountSessionStore((state) => state.initialized);
   const userId = useAccountSessionStore((state) => state.userId);
   const signedIn = Boolean(userId);
+  const bookVisible = useLibraryVisibility(signedIn);
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const scrollToResultsRef = useRef(false);
@@ -320,7 +321,7 @@ export function SearchPage({
           .filter((dataset) => (
             (dataset.type === "book" || dataset.type === "book-series")
             && dataset.publicationStatus !== "draft"
-            && isContentVisible(dataset.access, signedIn)
+            && bookVisible(dataset)
           ))
           .map((dataset) => ({ id: dataset.datasetId, label: dataset.title }))
           .sort((left, right) => left.label.localeCompare(right.label, "zh-CN")));
@@ -334,7 +335,7 @@ export function SearchPage({
         if (active) setBookCatalogReady(true);
       });
     return () => { active = false; };
-  }, [accountInitialized, catalogRetryToken, platformRedesign, signedIn]);
+  }, [accountInitialized, catalogRetryToken, platformRedesign, signedIn, bookVisible]);
 
   useEffect(() => {
     const nextContentType = platformRedesign ? normalizeContentType(params.get("type")) : "periodical";

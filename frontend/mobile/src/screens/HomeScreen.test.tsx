@@ -18,6 +18,7 @@ vi.mock("../config/appVariant", () => ({ get IS_EINK_RELEASE() { return mocks.eI
 vi.mock("../components/PeriodicalCoverCard", () => ({ publicationImages: {} }));
 vi.mock("../components/ScreenHeader", () => ({ ScreenHeader: "header" }));
 vi.mock("../lib/books", () => ({ loadMobileBooks: mocks.loadBooks, loadMobileBookCover: mocks.loadCover, cachedMobileBookCover: () => "", fuzzyBookTitleScore: () => 0 }));
+vi.mock("../account/auth", () => ({ useMobileAuthStore: (select: (state: unknown) => unknown) => select({ user: { id: "reader" } }) }));
 vi.mock("../lib/haptics", () => ({ impactHaptic: vi.fn() }));
 vi.mock("../store/mobileStore", () => ({ useMobileStore: (select: (state: unknown) => unknown) => select({ hapticsEnabled: false,
   recentBooks: [{ datasetId: "book", itemKey: "full", title: "测试书", progress: 1, updatedAt: 1 }], recentIssues: [] }) }));
@@ -68,8 +69,8 @@ describe.each([false, true])("home bookshelf (eInk=%s)", (eInk) => {
     const book = { datasetId: "book", type: "book", title: "测试书", indexObject: "index.jox" };
     mocks.loadBooks.mockRejectedValueOnce(new Error("offline")).mockResolvedValue([book]);
     await act(async () => { view = create(<HomeScreen />); });
-    expect(view.root.findByType("img").props.source.uri).toBe("data:image/png;base64,AQID");
-    expect(mocks.loadCover).toHaveBeenCalledWith("book", "full");
+    expect(view.root.findAllByType("img")).toHaveLength(0);
+    expect(mocks.loadCover).not.toHaveBeenCalled();
     await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
     expect(mocks.loadBooks).toHaveBeenCalledTimes(2);
     expect(view.root.findByType("img").props.source.uri).toBe("data:image/png;base64,AQID");
@@ -77,14 +78,14 @@ describe.each([false, true])("home bookshelf (eInk=%s)", (eInk) => {
     expect(mocks.loadBooks).toHaveBeenCalledTimes(2);
   });
 
-  it("retries a failed cover independently of a stalled catalog", async () => {
+  it("does not expose an unclassified recent book while the catalog is stalled", async () => {
     vi.useFakeTimers();
     mocks.loadBooks.mockReturnValue(new Promise(() => undefined));
     mocks.loadCover.mockRejectedValueOnce(new Error("offline"));
     await act(async () => { view = create(<HomeScreen />); });
     expect(view.root.findAllByType("img")).toHaveLength(0);
     await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
-    expect(view.root.findByType("img").props.source.uri).toBe("data:image/png;base64,AQID");
-    expect(mocks.loadCover).toHaveBeenCalledTimes(2);
+    expect(view.root.findAllByType("img")).toHaveLength(0);
+    expect(mocks.loadCover).not.toHaveBeenCalled();
   });
 });

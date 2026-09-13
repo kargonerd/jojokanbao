@@ -64,18 +64,17 @@ vi.mock("../store/mobileStore", () => ({
 
 let view: ReactTestRenderer | undefined;
 describe("offline bookshelf screen", () => {
-  it("shows cached entries and requests their covers by ID before the catalog is available", async () => {
+  it("waits for source classification before displaying cloud shelf entries", async () => {
     mocks.loadBooks.mockReturnValueOnce(new Promise(() => undefined));
     mocks.loadShelf.mockResolvedValue([{ datasetId: "book", itemId: "book:full", title: "本地书籍" }]);
     const props = { navigation: { navigate: mocks.navigate, goBack() {} } } as unknown as ComponentProps<typeof BookshelfScreen>;
     await act(async () => { view = create(<BookshelfScreen {...props} />); });
-    const card = view!.root.findByType(BookCoverCard);
-    expect(card.props).toMatchObject({ book: "book", itemKey: "book:full", title: "本地书籍" });
-    await act(async () => card.props.onPress());
-    expect(mocks.navigate).toHaveBeenCalledWith("BookReader", expect.objectContaining({ datasetId: "book", itemKey: "book:full" }));
+    expect(view!.root.findAllByType(BookCoverCard)).toHaveLength(0);
+    expect(mocks.navigate).not.toHaveBeenCalled();
   });
 
   it("keeps the shelf visible after a background synchronization error", async () => {
+    mocks.loadBooks.mockResolvedValue([{ datasetId: "book", type: "book", title: "本地书籍", indexObject: "index.jox" }]);
     let callbacks: import("../account/bookshelfCache").BookshelfLoadOptions | undefined;
     mocks.loadShelf.mockImplementationOnce(async (options) => { callbacks = options; return [{ datasetId: "book", itemId: "book:full", title: "本地书籍" }]; });
     const props = { navigation: { navigate: mocks.navigate, goBack() {} } } as unknown as ComponentProps<typeof BookshelfScreen>;

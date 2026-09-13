@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { isLibrarySourceEnabled } from "@jojo/content";
+import { useLibraryPreferencesStore } from "./preferencesStore";
 import { LoadingSpinner } from "@jojo/ui";
 import { useAccountSessionStore } from "../account/session";
 import { useFeatureFlag, useFeatureFlagStore } from "../featureFlags";
 import { notebookApi } from "../rag/api";
-import { isContentVisible } from "../rag/contentVisibility";
+import { useLibraryVisibility } from "./preferencesStore";
 import { loadBookshelf, setBookshelf, type BookshelfEntry } from "../rag/readerData";
 import { readerReturnState, safeReaderReturnPath, withReaderReturnTo } from "../rag/readerNavigation";
 import type { RagNotebook, RagSource } from "../rag/types";
@@ -62,6 +64,7 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
   const accountInitialized = useAccountSessionStore((state) => state.initialized);
   const userId = useAccountSessionStore((state) => state.userId);
   const signedIn = Boolean(userId);
+  const bookVisible = useLibraryVisibility(signedIn);
   const flagsInitialized = useFeatureFlagStore((state) => state.initialized);
   const bookshelfEnabled = useFeatureFlag("library.bookshelf");
   const includePeriodicals = periodicals.length > 0;
@@ -110,7 +113,7 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
   }, [bookshelfEnabled, userId]);
 
   const selectedBook = books.find((item) => item.id === datasetId);
-  const selectedBookVisible = isContentVisible(selectedBook?.access, signedIn);
+  const selectedBookVisible = bookVisible(selectedBook ?? {});
 
   useEffect(() => {
     setSourceError("");
@@ -133,7 +136,7 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
     void notebookApi.getSources(datasetId)
       .then((items) => {
         if (!active) return;
-        const publishedSources = items.filter((item) => item.published !== false);
+        const publishedSources = items.filter((item) => item.published !== false && bookVisible(item));
         setSources(publishedSources);
         if (publishedSources.length === 1) {
           const source = publishedSources[0]!;
@@ -162,7 +165,7 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
         if (active) setSourceLoading(false);
       });
     return () => { active = false; };
-  }, [accountInitialized, datasetId, loading, navigate, remember, returnToBeforeCollection, selectedBook, selectedBookVisible, sourceRequest]);
+  }, [accountInitialized, datasetId, loading, navigate, remember, returnToBeforeCollection, selectedBook, selectedBookVisible, sourceRequest, bookVisible]);
 
   function selectType(nextType: LibraryType) {
     setSearchParams(nextType === "all" ? {} : { type: nextType });
@@ -275,13 +278,14 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
   const titleMatches = (value: string) => !libraryQuery.trim() || Number.isFinite(fuzzyBookTitleScore(value, libraryQuery));
   const visiblePeriodicals = periodicals.filter((entry) => titleMatches(entry.title));
   const visibleBooks = books.filter((book) => (
-    isContentVisible(book.access, signedIn) && titleMatches(book.title || book.name || "")
+    bookVisible(book) && titleMatches(book.title || book.name || "")
   ));
   const visibleSources = sources.filter((source) => (
-    isContentVisible(source.access, signedIn) && titleMatches(source.title || source.name || "")
+    bookVisible(source) && titleMatches(source.title || source.name || "")
   ));
   if (datasetId && accountInitialized && selectedBook && !selectedBookVisible) {
     const returnTo = `${location.pathname}${location.search}${location.hash}`;
+    if (!isLibrarySourceEnabled(selectedBook.librarySource, useLibraryPreferencesStore.getState().enabledSources)) return <main className="p-8 text-center"><p>这本书的书源已关闭</p><Link to="/account/library">前往资料库设置 →</Link></main>;
     return <Navigate to={`/account?returnTo=${encodeURIComponent(returnTo)}`} replace />;
   }
   return (

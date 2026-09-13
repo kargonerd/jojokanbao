@@ -1,7 +1,23 @@
 import { describe, expect, it } from "vitest";
-import { decodeWereadParts, hashWereadId, inspectWereadCompleteness } from "../src";
+import { convertWereadChapter, decodeWereadChapter, decodeWereadParts, hashWereadId, inspectWereadCompleteness } from "../src";
 
 describe("WeRead transport decoder", () => {
+  it("reads the separately encoded e_2 stylesheet and preserves its bold text", () => {
+    const chapter = decodeWereadChapter({
+      "/web/book/chapter/e_0": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAxPHA-aKMepeWRwvijcD4",
+      "/web/book/chapter/e_1": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "/web/book/chapter/e_3": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "/web/book/chapter/e_2": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAxLmNvnYRlZtamQHbnbn9udC13ZWlF7zQ6Ym9sZH0",
+    });
+    expect(chapter.content).toBe("<p>1报告</p>");
+    expect(chapter.stylesheets).toEqual([".content-c1{font-weight:bold}"]);
+    const result = convertWereadChapter({
+      ...chapter, content: chapter.content.replace("<p>", '<p class="content-c1">'),
+      id: "chapter:css", sourceCid: "css", sourceFiles: [], title: "报告", order: 1, level: 1,
+    }, []);
+    expect(result.chapter.body.value).toContain("<strong>1报告</strong>");
+  });
+
   it("decodes a minimally wrapped Base64 payload", () => {
     expect(decodeWereadParts([`${"A".repeat(32)}xSGk`])).toBe("Hi");
   });

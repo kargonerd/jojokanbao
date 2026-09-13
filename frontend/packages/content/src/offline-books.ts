@@ -1,3 +1,4 @@
+import { libraryBookPolicy, isLibraryBookVisible } from "./library-sources";
 import { gunzipSync, strFromU8 } from "fflate";
 import { bookFragmentAssetRefs } from "./book-assets";
 import { JoxClient, resolveJoxObject, transformJoxBytes } from "./jox";
@@ -48,10 +49,11 @@ export interface OfflineBookOptions {
   /** Browser adapters lock per dataset across tabs; native apps have one JS runtime. */
   lock?: (datasetId: string, task: () => Promise<void>, ifAvailable?: boolean) => Promise<void>;
   canDownload?: () => boolean;
+  librarySources?: () => readonly string[];
 }
 
 export function offlineBookAccess(book: OfflineBookSnapshot): "public" | "authenticated" {
-  return book.manifest.access ?? book.item.access ?? book.index.access ?? book.entry.access ?? "public";
+  return libraryBookPolicy(book.entry, book.index, book.item, book.manifest).access ?? "public";
 }
 
 export function offlineBookVisible(book: Pick<OfflineBookRecord, "scope">, identity: OfflineBookIdentity): boolean {
@@ -75,6 +77,11 @@ export class OfflineBookLibrary {
   constructor(private readonly options: OfflineBookOptions) {
     // No ResourceCache: partial downloads never become implicit offline books or public cache entries.
     this.client = new JoxClient(options.baseUrl, options.fetch);
+  }
+
+  private assertBookVisible(book: OfflineBookSnapshot) {
+    if (offlineBookAccess(book) === "authenticated" && !this.options.identity().userId) throw new Error("请先登录，再阅读这本书");
+    if (!isLibraryBookVisible(libraryBookPolicy(book.entry, book.index, book.item, book.manifest), Boolean(this.options.identity().userId), this.options.librarySources?.())) throw new Error("书源已关闭、书籍已下架或需要登录，请检查资料库设置");
   }
 
   subscribe(listener: () => void): () => void { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
@@ -128,7 +135,9 @@ export class OfflineBookLibrary {
   async open(datasetId: string, itemKey: string): Promise<(OfflineBookRecord & { client: JoxClient }) | undefined> {
     const book = await this.find(datasetId, itemKey);
     if (!book || book.status !== "ready") return undefined;
+    this.assertBookVisible(book);
     const fetchLocal: typeof fetch = async (input) => {
+      this.assertBookVisible(book);
       if (!offlineBookVisible(book, this.options.identity())) throw new Error("请使用保存这本书的账号登录");
       const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
       const base = new URL(book.baseUrl);
@@ -136,6 +145,7 @@ export class OfflineBookLibrary {
       const object = decodeURIComponent(url.pathname.slice(base.pathname.length));
       const bytes = await this.options.repository.getResource(book, object);
       if (!offlineBookVisible(book, this.options.identity())) throw new Error("登录状态已改变，请重新打开书籍");
+      this.assertBookVisible(book);
       if (!bytes) throw new Error("离线文件缺失，请在书架中删除下载后重试");
       return new Response(bytes.slice().buffer, { status: 200 });
     };
@@ -175,6 +185,7 @@ export class OfflineBookLibrary {
     };
     const assertActive = () => {
       if (signal.aborted) throw cancelled();
+      if (record) this.assertBookVisible(record);
       if (record && !offlineBookVisible(record, this.options.downloadIdentity?.() ?? this.options.identity())) throw new Error("登录状态已改变，下载已停止");
     };
     const fetchJson = async (object: string, descriptor?: JojoObjectDescriptor) => {
@@ -205,6 +216,7 @@ export class OfflineBookLibrary {
       const manifest = asJojoItemManifest(await fetchJson(manifestObject));
       if (manifest.datasetId !== entry.datasetId || manifest.itemId !== item.itemId || manifest.content.schema !== "jojo-content/book/1" || !manifest.content.chapters?.length || manifest.publicationStatus === "draft") throw new Error("书籍内容不完整，暂时无法下载");
       const snapshot = { catalog, entry, index, item, manifest, manifestObject };
+      this.assertBookVisible(snapshot);
       const scope = scopeFor(snapshot, this.options.downloadIdentity?.() ?? this.options.identity());
       setScope(scope);
       const id = JSON.stringify([scope, entry.datasetId, item.itemKey]);

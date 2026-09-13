@@ -162,6 +162,7 @@ export function AccountCenterPage({ userId, onForgotPassword }: AccountCenterPag
             <h2 id="reading-preferences-title" className="m-0 font-sans text-xs font-black tracking-[0.16em] text-red">阅读偏好</h2>
             <div className="border-y border-rule">
               <TimesLanguagePreference />
+              <Link to="/account/library" className="flex items-center justify-between border-t border-rule py-4 text-ink hover:text-red"><span>资料库设置</span><span aria-hidden="true">→</span></Link>
               <Link to="/account/times-sources" className="flex items-center justify-between gap-5 border-t border-rule py-4 text-ink hover:text-red focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-red">
                 <div>
                   <h3 className="m-0 font-serif text-base font-black">时事媒体源</h3>

@@ -34,3 +34,5 @@ export { TimesSourceSettingsPage } from "./account/pages/TimesSourceSettingsPage
 export { NotificationsPage } from "./notifications/NotificationsPage";
 export { default as TimesRoutes } from "./times/TimesRoutes";
 export { startOfflineAccountSync } from "./offline/books";
+
+export { LibrarySettingsPage } from "./library/LibrarySettingsPage";

@@ -1,3 +1,4 @@
+import { LibrarySettingsPage } from "@jojo/web/desktop";
 import { lazy, Suspense, useEffect, type ReactNode } from 'react';
 import {
   Link,
@@ -187,6 +188,8 @@ export function createDesktopRoutes(): RouteObject[] {
             },
             { path: 'notifications', element: <NotificationsPage /> },
             { path: 'settings', element: <SettingsPage /> },
+            { path: 'settings/library', element: <LibrarySettingsPage backTo="/settings" /> },
+            { path: 'account/library', element: <LibrarySettingsPage backTo="/settings" /> },
             { path: 'rag/*', element: <AuthenticatedRoute><RagRoutes /></AuthenticatedRoute> },
             { path: 'times/*', element: <AuthenticatedRoute><TimesRoutes /></AuthenticatedRoute> },
           ],

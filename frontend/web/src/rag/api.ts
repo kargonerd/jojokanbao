@@ -1,4 +1,5 @@
-import { supportsJojoDatasetAi } from "@jojo/content";
+import { useLibraryPreferencesStore } from "../library/preferencesStore";
+import { libraryBookPolicy, supportsJojoDatasetAi } from "@jojo/content";
 import { agentGatewayUrl } from "../api/agentGateway";
 import { loadCatalog, loadDataset } from "./content";
 import type {
@@ -107,7 +108,7 @@ export const notebookApi = {
     type: dataset.type,
     indexObject: dataset.indexObject,
     aiEnabled: dataset.aiEnabled,
-    access: dataset.access,
+    ...libraryBookPolicy(dataset),
   })),
   getSources: async (nid: string): Promise<RagSource[]> => {
     const loaded = await loadDataset(nid);
@@ -118,7 +119,7 @@ export const notebookApi = {
       title: item.title,
       published: item.publicationStatus !== "draft",
       manifestObject: item.manifestObject,
-      access: item.access ?? loaded.index.access ?? loaded.entry.access,
+      ...libraryBookPolicy(loaded.entry, loaded.index, item),
     }));
   },
   getSourceFulltext: () => Promise.reject(new Error("请从书籍章节中按需读取内容")),
@@ -177,6 +178,7 @@ export function askStream(params: { contentType?: "all" | "book" | "periodical";
         scope: {
           ...(params.contentType ? { contentType: params.contentType } : {}),
           mode: params.scopeMode,
+          librarySources: useLibraryPreferencesStore.getState().enabledSources,
           datasetIds: params.datasetIds,
           itemIds: params.itemIds ?? [],
           manifestObjects: params.manifestObjects ?? [],

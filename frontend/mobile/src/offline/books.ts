@@ -1,3 +1,4 @@
+import { useMobileStore } from "../store/mobileStore";
 import { JoxClient, OfflineBookLibrary, offlineIdentityFromStoredSession, type OfflineBookRecord, type OfflineBookIdentity } from "@jojo/content";
 import { create } from "zustand";
 import { MOBILE_ACCOUNT_CONFIGURED, mobileAuthClient, useMobileAuthStore } from "../account/auth";
@@ -31,6 +32,7 @@ export const mobileOfflineBooks = new OfflineBookLibrary({
   repository: mobileOfflineBookRepository,
   baseUrl: CONTENT_CDN,
   identity,
+  librarySources: () => useMobileStore.getState().librarySources,
   downloadIdentity: authenticatedIdentity,
   digest: async (bytes) => {
     const Crypto = await import("expo-crypto");

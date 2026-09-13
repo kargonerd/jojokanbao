@@ -1,3 +1,4 @@
+import { useMobileStore } from "../store/mobileStore";
 import { fetch } from "expo/fetch";
 import {
   mobileAccessToken,
@@ -155,6 +156,7 @@ export function askMobileLibraryAgent(
         message: request.question,
         history: boundedMobileAgentHistory(request.history ?? []),
         scope: {
+          librarySources: useMobileStore.getState().librarySources,
           ...(request.contentType ? { contentType: request.contentType } : {}),
           mode: request.scopeMode,
           datasetIds: request.datasetIds,

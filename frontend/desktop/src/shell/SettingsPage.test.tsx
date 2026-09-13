@@ -1,3 +1,4 @@
+import { MemoryRouter } from "react-router-dom";
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -49,7 +50,7 @@ beforeEach(() => {
 
 describe('Desktop settings', () => {
   it('loads and updates the persisted close behavior', async () => {
-    render(<SettingsPage />);
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>);
 
     const closeBehavior = await screen.findByRole('combobox', { name: '关闭窗口时' });
     await waitFor(() => expect(closeBehavior).toHaveValue('tray'));
@@ -60,7 +61,7 @@ describe('Desktop settings', () => {
   });
 
   it('lets the user restore first-close prompting', async () => {
-    render(<SettingsPage />);
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>);
 
     const closeBehavior = await screen.findByRole('combobox', { name: '关闭窗口时' });
     fireEvent.change(closeBehavior, { target: { value: 'ask' } });
@@ -68,7 +69,7 @@ describe('Desktop settings', () => {
   });
 
   it('uses the native launch-at-login preference', async () => {
-    render(<SettingsPage />);
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>);
 
     const launchAtLogin = await screen.findByRole('checkbox', { name: '开机时启动' });
     expect(launchAtLogin).not.toBeChecked();
@@ -80,7 +81,7 @@ describe('Desktop settings', () => {
   it('hides unsupported launch-at-login settings on Linux', async () => {
     window.jojoDesktop = { ...window.jojoDesktop!, platform: 'linux' };
 
-    render(<SettingsPage />);
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>);
 
     await screen.findByRole('combobox', { name: '关闭窗口时' });
     expect(screen.queryByRole('checkbox', { name: '开机时启动' })).not.toBeInTheDocument();
@@ -88,7 +89,7 @@ describe('Desktop settings', () => {
   });
 
   it('checks for application updates from settings', async () => {
-    render(<SettingsPage />);
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>);
 
     const check = await screen.findByRole('button', { name: '检查更新' });
     // The button exists before the native update-state promise has resolved.

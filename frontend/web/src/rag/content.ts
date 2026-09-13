@@ -1,3 +1,5 @@
+import { libraryBookPolicy, isLibrarySourceEnabled } from "@jojo/content";
+import { useLibraryPreferencesStore } from "../library/preferencesStore";
 import {
   JoxClient,
   ResourceCache,
@@ -73,7 +75,7 @@ export async function loadItem(datasetId: string, itemKey: string): Promise<Load
     await dataset.client.fetchJson<JojoItemManifest>(manifestObject),
   );
   if (manifest.itemId !== item.itemId) throw new Error("书籍暂时无法读取");
-  const access = manifest.access ?? item.access ?? dataset.index.access ?? dataset.entry.access ?? "public";
+  const { access } = libraryBookPolicy(dataset.entry, dataset.index, item, manifest);
   const ownerId = access === "authenticated" ? useAccountSessionStore.getState().userId ?? undefined : undefined;
   const itemClient = access === "authenticated" ? new JoxClient(CONTENT_CDN, async (input, init) => {
     if (!ownerId || useAccountSessionStore.getState().userId !== ownerId) throw new Error("请先登录，再阅读这本书");
@@ -85,7 +87,9 @@ export async function loadItem(datasetId: string, itemKey: string): Promise<Load
 }
 
 function assertLoadedAccess(loaded: LoadedItem) {
-  const access = loaded.manifest.access ?? loaded.item.access ?? loaded.index.access ?? loaded.entry.access ?? "public";
+  const { access, librarySource, publicationStatus } = libraryBookPolicy(loaded.entry, loaded.index, loaded.item, loaded.manifest);
+  if (publicationStatus === "draft") throw new Error("这本书已下架");
+  if (!isLibrarySourceEnabled(librarySource, useLibraryPreferencesStore.getState().enabledSources)) throw new Error("请在资料库设置中开启这本书的书源");
   const userId = loaded.offline ? browserOfflineBookIdentity().userId : useAccountSessionStore.getState().userId;
   if (access === "authenticated" && (!loaded.ownerId || loaded.ownerId !== userId)) throw new Error("请先登录，再阅读这本书");
 }
@@ -96,6 +100,7 @@ export async function loadFragment(loaded: LoadedItem, chapterId: string, signal
   if (!chapter) throw new Error("章节不存在");
   const fragment = asJojoFragment(await loaded.client.fetchJson<JojoFragment>(resolveJoxObject(loaded.manifestObject, chapter.object), signal, "default", chapter.sha256));
   if (fragment.itemId !== loaded.manifest.itemId || fragment.fragmentId !== chapter.id) throw new Error("章节内容不匹配");
+  assertLoadedAccess(loaded);
   return { ...fragment, assetRefs: bookFragmentAssetRefs(fragment) };
 }
 
@@ -104,6 +109,7 @@ export async function loadAssetUrl(loaded: LoadedItem, assetId: string, signal?:
   const asset = loaded.manifest.assets.find((candidate) => candidate.id === assetId);
   if (!asset) throw new Error(`资源不存在：${assetId}`);
   const bytes = await loaded.client.fetchDecodedBytes(resolveJoxObject(loaded.manifestObject, asset.object), signal, asset.sha256);
+  assertLoadedAccess(loaded);
   return URL.createObjectURL(new Blob([bytes.slice().buffer], { type: asset.mediaType }));
 }
 
@@ -166,6 +172,7 @@ export async function downloadExport(loaded: LoadedItem, exportId: string): Prom
     });
   }
   const bytes = await exportClient.fetchDecodedBytes(resolveJoxObject(loaded.manifestObject, descriptor.object), undefined, descriptor.sha256, 120_000);
+  assertLoadedAccess(loaded);
   const url = URL.createObjectURL(new Blob([bytes.slice().buffer], { type: descriptor.mediaType }));
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -232,6 +239,7 @@ export async function searchLoadedBook(loaded: LoadedItem, query: string, size =
   const needle = query.normalize("NFKC").toLocaleLowerCase().replace(/\s+/g, " ").trim();
   if (!needle) return [];
   const staticIndex = await loadBookSearchIndex(loaded);
+  assertLoadedAccess(loaded);
   if (staticIndex) return searchIndexResults(loaded, staticIndex, query, size);
   const chapters = loaded.manifest.content.chapters ?? [];
   const results: RagSearchHit[] = [];

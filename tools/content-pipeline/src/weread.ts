@@ -85,12 +85,16 @@ function chapterEncoding(chapter: WereadChapterRecord): "epub" | "text" | undefi
 export function decodeWereadChapter(chapter: WereadChapterRecord): {
   content: string;
   contentType: "application/xhtml+xml" | "text/plain";
+  stylesheets?: string[];
 } {
   const encoding = chapterEncoding(chapter);
   if (!encoding) throw new Error("找不到完整的 EPUB 或 TXT 章节分片");
   return {
     content: decodeWereadParts(ENDPOINTS[encoding].map((endpoint) => chapter[endpoint] as string)),
     contentType: encoding === "epub" ? "application/xhtml+xml" : "text/plain",
+    ...(encoding === "epub" && typeof chapter["/web/book/chapter/e_2"] === "string"
+      ? { stylesheets: [decodeWereadParts([chapter["/web/book/chapter/e_2"] as string])] }
+      : {}),
   };
 }
 
@@ -328,6 +332,7 @@ export async function decodeWereadFile(sourcePath: string): Promise<DecodedWerea
         level: Number(tocEntry?.level) || 1,
         contentType: chapter.contentType,
         content: chapter.content,
+        ...(chapter.stylesheets ? { stylesheets: chapter.stylesheets } : {}),
       });
     } catch (error) {
       errors.push({

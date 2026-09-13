@@ -19,14 +19,16 @@ vi.mock("@expo/vector-icons/Ionicons", () => ({ default: "i" }));
 vi.mock("react-native-safe-area-context", () => ({ SafeAreaView: "main" }));
 vi.mock("../components/ScreenHeader", () => ({ ScreenHeader: () => null }));
 vi.mock("../components/BookCoverCard", () => ({ BookCoverCard: "cover" }));
+vi.mock("../account/auth", () => ({ useMobileAuthStore: (select: (state: unknown) => unknown) => select({ user: { id: "reader" } }) }));
 vi.mock("../account/useBookshelf", () => ({ useBookshelf: () => ({ entries: mocks.entries, loading: mocks.loading, error: "", busyKey: "", toggle: mocks.toggle, reload: vi.fn() }) }));
-vi.mock("../lib/books", () => ({ loadMobileBooks: async () => [] }));
+vi.mock("../lib/books", () => ({ loadMobileBooks: async () => [{ datasetId: "books", type: "book", title: "一本书", indexObject: "index.jox" }] }));
 vi.mock("../lib/useRetryOnFailure", () => ({ useRetryOnFailure: () => undefined }));
 vi.mock("../lib/nativePerformance", () => ({ REMOVE_CLIPPED_SUBVIEWS: false }));
 vi.mock("../config/appVariant", () => ({ IS_EINK_RELEASE: false }));
 vi.mock("../store/mobileStore", () => ({ useMobileStore: (select: (state: unknown) => unknown) => select({ recentBooks: [] }) }));
 vi.mock("./books", () => ({
   startMobileOfflineAccountSync: vi.fn(),
+  mobileBookOwnerId: () => "reader",
   mobileOfflineBooks: { download: mocks.download, remove: mocks.remove },
   useMobileOfflineBooksStore: (select: (state: unknown) => unknown) => select({ books: mocks.records, loading: false, error: "" }),
 }));

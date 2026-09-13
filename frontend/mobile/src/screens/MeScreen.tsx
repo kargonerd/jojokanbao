@@ -633,6 +633,7 @@ export function MeScreen() {
           <SectionTitle title="设置" />
           <View style={[styles.panel, { borderColor: theme.rule, backgroundColor: theme.paper }]}>
             {([
+              { section: "library" as const, label: "资料库设置", icon: "library-outline" as const },
               { section: "reading" as const, label: "阅读设置", icon: "book-outline" as const },
               { section: "interaction" as const, label: "交互设置", icon: "hand-left-outline" as const },
               { section: "times" as const, label: "时事设置", icon: "newspaper-outline" as const },

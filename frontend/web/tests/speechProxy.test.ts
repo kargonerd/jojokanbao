@@ -23,7 +23,13 @@ beforeAll(async () => {
     optimizeDeps: { noDiscovery: true, include: [] },
     server: { host: "127.0.0.1", port: 0, strictPort: true, hmr: false, watch: null,
       proxy: createSpeechProxy(`http://127.0.0.1:${address.port}/v1`) } });
-  await vite.listen();
+  // Vite 6's listen() replaces port 0 with 5173; let Node allocate the port.
+  const server = vite.httpServer;
+  if (!server) throw new Error("Missing proxy server");
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
   const proxy = vite.httpServer?.address();
   if (!proxy || typeof proxy === "string") throw new Error("Missing proxy port");
   origin = `http://127.0.0.1:${proxy.port}`;

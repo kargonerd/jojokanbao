@@ -83,6 +83,17 @@ describe('Desktop shell routes', () => {
     expect(screen.getByRole('checkbox', { name: '开机时启动' })).toBeInTheDocument();
   });
 
+  it.each(['/settings/library', '/account/library'])('opens library source settings at %s without requiring login', (path) => {
+    const router = createMemoryRouter(createDesktopRoutes(), { initialEntries: [path] });
+    render(<RouterProvider router={router} />);
+
+    expect(screen.getByRole('heading', { name: '资料库设置' })).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'JOJO书库' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('switch', { name: 'JOJO书库' })).toBeDisabled();
+    expect(screen.getByRole('switch', { name: '共享书库' })).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByRole('link', { name: '← 返回设置' })).toHaveAttribute('href', '/settings');
+  });
+
   it('redirects the archive root to the shared periodical library', async () => {
     const router = createMemoryRouter(createDesktopRoutes(), { initialEntries: ['/archive'] });
     render(<RouterProvider router={router} />);

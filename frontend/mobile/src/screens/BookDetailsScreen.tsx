@@ -1,3 +1,6 @@
+import { ScreenHeader } from "../components/ScreenHeader";
+import { libraryBookPolicy } from "@jojo/content";
+import { useLibraryVisibility } from "../lib/libraryVisibility";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useEffect, useMemo, useState } from "react";
@@ -20,6 +23,7 @@ type Props = NativeStackScreenProps<RootStackParamList, "BookDetails">;
 export function BookDetailsScreen({ route, navigation }: Props) {
   const shelf = useBookshelf();
   const { book } = route.params;
+  const bookVisible = useLibraryVisibility();
   const { width: viewportWidth } = useWindowDimensions();
   const theme = mobileTheme;
   const hapticsEnabled = useMobileStore((state) => state.hapticsEnabled);
@@ -47,11 +51,12 @@ export function BookDetailsScreen({ route, navigation }: Props) {
   }, [book, retryToken]);
 
   const visibleVolumes = useMemo(() => volumes.filter((volume) => (
-    !query.trim() || Number.isFinite(fuzzyBookTitleScore(volume.title, query))
-  )), [query, volumes]);
+    bookVisible(libraryBookPolicy(book, volume)) && (!query.trim() || Number.isFinite(fuzzyBookTitleScore(volume.title, query)))
+  )), [query, volumes, book, bookVisible]);
   const featuredVolume = viewportWidth >= 700 && !loading && !error && !query.trim() && visibleVolumes.length === 1;
   const listColumnCount = featuredVolume ? 1 : columnCount;
 
+  if (!bookVisible(book)) return <SafeAreaView><ScreenHeader title="书源未开启或需要登录" onBack={() => navigation.goBack()} /><Pressable onPress={() => navigation.navigate("Settings", { section: "library" })}><Text>资料库设置 →</Text></Pressable></SafeAreaView>;
   return (
     <SafeAreaView edges={["top"]} style={[styles.safe, { backgroundColor: theme.paper }]}>
       <View style={[styles.header, { borderBottomColor: theme.ruleDark, backgroundColor: theme.paper }]}>

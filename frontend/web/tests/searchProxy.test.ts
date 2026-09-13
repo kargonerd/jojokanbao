@@ -57,7 +57,13 @@ beforeAll(async () => {
       proxy: createSearchProxy(`http://${upstreamHost}`),
     },
   });
-  await vite.listen();
+  // Vite 6's listen() replaces port 0 with 5173; let Node allocate the port.
+  const server = vite.httpServer;
+  if (!server) throw new Error("Missing proxy server");
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
   const proxyAddress = vite.httpServer?.address();
   if (!proxyAddress || typeof proxyAddress === "string") throw new Error("Missing proxy address");
   proxyOrigin = `http://127.0.0.1:${proxyAddress.port}`;

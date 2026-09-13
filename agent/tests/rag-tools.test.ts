@@ -8,7 +8,7 @@ function jox(value: unknown, key: string): Uint8Array {
   return transformJoxBytes(gzipSync(JSON.stringify(value)), key);
 }
 
-function seriesFixture(scope: RagScope) {
+function seriesFixture(scope: RagScope, librarySource?: "jojo" | "community") {
   const indexObject = "content/books/series/index.jox";
   const itemIds = ["series:one", "series:two", "series:draft"];
   const manifestObjects = itemIds.map((id) => `content/books/series/items/${id.split(":")[1]}/manifest.jox`);
@@ -18,7 +18,7 @@ function seriesFixture(scope: RagScope) {
   add("catalog.jox", {
     formatVersion: "jojo-catalog/1", revision: 1, updatedAt: "2026-09-08T00:00:00.000Z",
     datasets: [{
-      datasetId: "series", type: "book-series", title: "分卷测试", language: "zh-CN",
+      librarySource, datasetId: "series", type: "book-series", title: "分卷测试", language: "zh-CN",
       itemCount: 3, indexObject, aiEnabled: true, publicationStatus: "published",
     }],
   });
@@ -64,6 +64,22 @@ function seriesFixture(scope: RagScope) {
 }
 
 describe("RAG content tools", () => {
+  it("keeps JOJO books available with an old empty source preference", async () => {
+    const { tool } = seriesFixture({ contentType: "book", librarySources: [] }, "jojo");
+    expect(JSON.stringify((await tool("list_library_books").execute("list", {}, undefined)).details)).toContain("分卷测试");
+  });
+  it("keeps community books out of default and empty scopes, including direct manifest access", async () => {
+    for (const librarySources of [undefined, [], ["jojo"]]) {
+      const { tool, manifestObjects } = seriesFixture({ contentType: "book", librarySources }, "community");
+      const list = await tool("list_library_books").execute("list", {}, undefined);
+      expect(JSON.stringify(list.details)).not.toContain("分卷测试");
+      await expect(tool("inspect_item").execute("direct", { manifestObject: manifestObjects[0] }, undefined)).rejects.toThrow();
+    }
+    const { tool } = seriesFixture({ contentType: "book", librarySources: ["community"] }, "community");
+    expect(JSON.stringify((await tool("list_library_books").execute("list", {}, undefined)).details)).toContain("分卷测试");
+    expect((await tool("search_content").execute("search", { query: "苹果", datasetIds: ["series"] }, undefined)).details).toMatchObject({ total: 2 });
+  });
+
   it.each([{}, { contentType: "all" as const, datasetIds: ["rmrb", "series"] }])(
     "searches book indexes and periodical ES with separate citations in a combined scope: %j", async (scope) => {
       const { tool, fetchFn, fragmentObjects } = seriesFixture(scope);
@@ -364,7 +380,12 @@ describe("RAG content tools", () => {
         itemIds: ["book-a:full-book"],
         manifestObjects: [noSearchManifestObject],
       },
-      fetchFn: fetchFn as typeof fetch,
+      fetchFn: (async (input: RequestInfo | URL) => {
+        if (String(input) === `https://cdn.test/${datasetIndexObject}`) return new Response(jox({
+          formatVersion: "jojo-delivery-index/1", datasetId: "book-a", items: [{ itemId: "book-a:full-book", itemKey: "full-book", manifestObject: noSearchManifestObject.slice(datasetIndexObject.lastIndexOf("/") + 1) }],
+        }, datasetIndexObject).slice().buffer);
+        return fetchFn(input);
+      }) as typeof fetch,
     });
     const unavailable = await noSearchTools
       .find((tool) => tool.name === "search_selected_item")!
@@ -441,6 +462,7 @@ describe("RAG content tools", () => {
       estimatedBytes: 400,
       byteBudget: 300,
     });
-    expect(fetchFn).toHaveBeenCalledTimes(14);
+    // Independent tool sessions also verify the catalog and canonical manifest path.
+    expect(fetchFn).toHaveBeenCalledTimes(21);
   });
 });

@@ -362,6 +362,9 @@ importers:
 
   frontend/packages/content:
     dependencies:
+      dompurify:
+        specifier: ^3.4.12
+        version: 3.4.12
       fflate:
         specifier: ^0.8.2
         version: 0.8.3
@@ -570,6 +573,9 @@ importers:
       pinyin-pro:
         specifier: 3.28.1
         version: 3.28.1
+      postcss:
+        specifier: 8.5.25
+        version: 8.5.25
       sanitize-html:
         specifier: ^2.17.0
         version: 2.17.6
@@ -595,6 +601,9 @@ importers:
 
   tools/jojo-admin/web:
     dependencies:
+      '@jojo/content':
+        specifier: workspace:*
+        version: link:../../../frontend/packages/content
       '@jojo/ui':
         specifier: workspace:*
         version: link:../../../frontend/packages/ui
@@ -6811,10 +6820,6 @@ packages:
 
   postcss-value-parser@4.2.0:
     resolution: {integrity: sha512-1NNCs6uurfkVbeXG4S8JFT9t19m45ICnif8zWLd5oPSZ50QnwMfK+H3jv408d4jw/7Bttv5axS5IiHoLaVNHeQ==}
-
-  postcss@8.5.15:
-    resolution: {integrity: sha512-FfR8sjd4em2T6fb3I2MwAJU7HWVMr9zba+enmQeeWFfCbm+UOC/0X4DS8XtpUTMwWMGbjKYP7xjfNekzyGmB3A==}
-    engines: {node: ^10 || ^12 || >=14}
 
   postcss@8.5.25:
     resolution: {integrity: sha512-DTPx3RWSSnWyzLxQnlH0rJP+EW5ekl16ZU4/psbIhA0e53kJfdgaN5vKM+xP7yJtXVu+nfdVFmlgFDEKAe4Pyw==}
@@ -15725,12 +15730,6 @@ snapshots:
 
   postcss-value-parser@4.2.0: {}
 
-  postcss@8.5.15:
-    dependencies:
-      nanoid: 3.3.16
-      picocolors: 1.1.1
-      source-map-js: 1.2.1
-
   postcss@8.5.25:
     dependencies:
       nanoid: 3.3.16
@@ -17062,7 +17061,7 @@ snapshots:
       esbuild: 0.25.12
       fdir: 6.5.0(picomatch@4.0.4)
       picomatch: 4.0.4
-      postcss: 8.5.15
+      postcss: 8.5.25
       rollup: 4.60.4
       tinyglobby: 0.2.16
     optionalDependencies:
@@ -17079,7 +17078,7 @@ snapshots:
       esbuild: 0.25.12
       fdir: 6.5.0(picomatch@4.0.4)
       picomatch: 4.0.4
-      postcss: 8.5.15
+      postcss: 8.5.25
       rollup: 4.60.4
       tinyglobby: 0.2.16
     optionalDependencies:
@@ -17096,7 +17095,7 @@ snapshots:
       esbuild: 0.25.12
       fdir: 6.5.0(picomatch@4.0.4)
       picomatch: 4.0.4
-      postcss: 8.5.15
+      postcss: 8.5.25
       rollup: 4.60.4
       tinyglobby: 0.2.16
     optionalDependencies:

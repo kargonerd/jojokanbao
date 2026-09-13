@@ -1,3 +1,6 @@
+import { isLibraryBookVisible } from "@jojo/content";
+import { useLibraryPreferencesStore } from "../library/preferencesStore";
+import { useAccountSessionStore } from "../account/session";
 import { ARCHIVE_PUBLICATION_BY_ID, JOJO_AI_PERIODICAL_IDS } from "@jojo/content";
 import type { RagNotebook } from "./types";
 
@@ -19,6 +22,6 @@ export function scopeNotebooks(notebooks: RagNotebook[], contentType: RagContent
   const periodicals = JOJO_AI_PERIODICAL_IDS.map((id) => ({
     id, title: ARCHIVE_PUBLICATION_BY_ID[id].title, type: "newspaper",
   }));
-  const books = notebooks.filter((notebook) => !notebook.type || notebook.type === "book" || notebook.type === "book-series");
+  const books = notebooks.filter((notebook) => (!notebook.type || notebook.type === "book" || notebook.type === "book-series") && isLibraryBookVisible(notebook, Boolean(useAccountSessionStore.getState().userId), useLibraryPreferencesStore.getState().enabledSources));
   return contentType === "all" ? [...periodicals, ...books] : contentType === "periodical" ? periodicals : books;
 }

@@ -102,6 +102,7 @@ export interface AgentRequestBody {
   scope?: {
     contentType?: "all" | "book" | "periodical";
     mode?: "all" | "selected";
+    librarySources?: string[];
     datasetIds?: string[];
     itemIds?: string[];
     manifestObjects?: string[];

@@ -8,7 +8,7 @@ import { fuzzyBookTitleScore } from "../library/bookSearch";
 import type { PeriodicalEntry } from "../library/catalog";
 import { useRecentReadingStore, type RecentReadingItem } from "../library/recentReadingStore";
 import { notebookApi } from "../rag/api";
-import { isContentVisible } from "../rag/contentVisibility";
+import { useLibraryVisibility } from "../library/preferencesStore";
 import { readerReturnState, withReaderReturnTo } from "../rag/readerNavigation";
 import type { RagNotebook } from "../rag/types";
 import { dailyQuote } from "./dailyQuote";
@@ -80,24 +80,25 @@ export function HomePage({ periodicals = [] }: { periodicals?: readonly Periodic
   const accountInitialized = useAccountSessionStore((state) => state.initialized);
   const userId = useAccountSessionStore((state) => state.userId);
   const signedIn = Boolean(userId);
+  const bookVisible = useLibraryVisibility(signedIn);
   const storedRecentItems = useRecentReadingStore((state) => state.items);
   const includePeriodicals = periodicals.length > 0;
   const recentBooksPending = !signedIn
     && (!accountInitialized || catalogStatus !== "ready")
     && storedRecentItems.some((item) => item.kind === "book");
   const visibleBooks = useMemo(
-    () => books.filter((book) => isContentVisible(book.access, signedIn)),
-    [books, signedIn],
+    () => books.filter((book) => bookVisible(book)),
+    [books, bookVisible],
   );
   const recentItems = uniqueRecentReading(
     storedRecentItems.filter((item) => includePeriodicals || item.kind === "book"),
   ).filter((item) => {
-    if (item.kind !== "book" || signedIn) return true;
+    if (item.kind !== "book") return true;
     if (!accountInitialized || catalogStatus !== "ready") return false;
     const datasetId = recentBookDatasetId(item);
-    if (!datasetId) return true;
+    if (!datasetId) return false;
     const book = books.find((candidate) => candidate.id === datasetId);
-    return !book || isContentVisible(book.access, false);
+    return Boolean(book && bookVisible(book));
   }).slice(0, 4);
   const quote = useMemo(() => dailyQuote(), []);
 
