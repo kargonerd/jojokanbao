@@ -1,6 +1,5 @@
 import { Link } from "react-router-dom";
 import { useEffect, useState } from 'react';
-import { AnalyticsPreference } from '@jojo/web/desktop';
 
 type AppInfo = { version: string; platform: string; arch: string };
 type CloseBehavior = 'ask' | 'tray' | 'quit';
@@ -151,9 +150,6 @@ export function SettingsPage() {
         ) : null}
       </section>
 
-      <section className="desktop-preference-list" aria-label="使用统计">
-        <AnalyticsPreference />
-      </section>
       <section className="desktop-preference-list desktop-update-preference" aria-label="应用更新">
         <div className="desktop-preference-row">
           <div className="desktop-preference-copy">

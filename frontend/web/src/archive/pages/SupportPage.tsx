@@ -5,7 +5,6 @@ import weixinImg from "../../../../packages/content/assets/support/weixin.png";
 import zfbImg from "../../../../packages/content/assets/support/zfb.png";
 import { Link, Navigate, useLocation } from "react-router-dom";
 import "./support.css";
-import { AnalyticsPreference } from "../../analytics/AnalyticsPreference";
 
 const downloads = [
   { name: "人民日报", links: [
@@ -152,7 +151,6 @@ export function SupportPage() {
             </span>
             <span aria-hidden="true" className="font-serif text-red">→</span>
           </Link>
-          <AnalyticsPreference />
     </SupportPageFrame>
   );
 }
