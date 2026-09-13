@@ -1,28 +1,24 @@
-"""Local-only annotation moderation backed by the existing operator token."""
+"""Comment moderation through the authenticated Cloud API."""
 from __future__ import annotations
 
 from typing import Any
 
 from flask import Blueprint, jsonify, request
-from operator_rpc import OperatorRpcError, SupabaseOperatorRpcClient
+from cloud_admin import AdminApiError, AdminApiClient
 
 
 annotation_moderation_blueprint = Blueprint("annotation_moderation", __name__)
 
-AnnotationModerationError = OperatorRpcError
+AnnotationModerationError = AdminApiError
 
 
-class SupabaseAnnotationModerationClient(SupabaseOperatorRpcClient):
+class SupabaseAnnotationModerationClient(AdminApiClient):
     def list_reports(self, status: str) -> list[dict[str, Any]]:
-        result = self.rpc("operator_list_annotation_reports", {"p_status": status})
+        result = self.call("GET", "moderation/comments", params={"status": status}).get("items")
         return result if isinstance(result, list) else []
 
     def moderate(self, comment_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-        result = self.rpc("operator_moderate_annotation_comment", {
-            "p_comment_id": comment_id,
-            "p_action": payload["action"],
-            "p_reason": payload["reason"],
-        })
+        result = self.call("POST", f"moderation/comments/{comment_id}", body=payload).get("result")
         if not isinstance(result, dict):
             raise AnnotationModerationError("评论审核服务返回了无效数据")
         return result

@@ -237,6 +237,7 @@ describe("EdgeOneEncryptedCredentialPersistence", () => {
       credentials: runtimeStore,
     });
     const handleAdmin = createCredentialAdminHandler({
+      authorize: async () => ({id:"admin",isAdmin:true}),
       createCredentialStore: () => adminStore,
       claimCredential: async (credential) => ({
         ...credential,
@@ -269,7 +270,7 @@ describe("EdgeOneEncryptedCredentialPersistence", () => {
       const pendingRuntimeAuth = runtime.models.getAuth("openai-codex");
       await runtimeStarted;
       const adminResponse = await handleAdmin({
-        env: { JOJO_OPERATOR_TOKEN: "a".repeat(32) },
+        env: {},
         request: new Request("https://agent.example.com/gateway/credentials", {
           method: "POST",
           headers: {

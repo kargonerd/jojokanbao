@@ -56,7 +56,6 @@ def write_user_codex_auth(home: Path) -> None:
 
 def configured_env():
     return {
-        "JOJO_OPERATOR_TOKEN": "o" * 64,
         "JOJO_CREDENTIAL_SERVICE_URL": "https://agent.example.com",
         "JOJO_CODEX_AUTH_PATH": "",
         "JOJO_AGENT_AUTH_PATH": "",
@@ -69,9 +68,8 @@ def test_status_reports_readiness_without_returning_secrets(tmp_path):
         patch("agent_admin_routes.ROOT", tmp_path),
         patch.dict(os.environ, configured_env(), clear=False),
     ):
-        status = AgentCredentialAdmin().status()
+        status = AgentCredentialAdmin(access_token="fixture-admin-session").status()
 
-    assert status["operatorConfigured"] is True
     assert status["credential"]["available"] is True
     assert status["credential"]["sourceLabel"] == "Agent OAuth 文件"
     assert status["credential"]["pathHint"] == "agent/auth.json"
@@ -81,18 +79,18 @@ def test_status_reports_readiness_without_returning_secrets(tmp_path):
     assert "o" * 64 not in json.dumps(status)
 
 
-def test_push_uses_operator_bearer_and_codex_oauth(tmp_path):
+def test_push_uses_admin_session_and_codex_oauth(tmp_path):
     write_agent_auth(tmp_path / "agent" / "auth.json")
     transport = FakeTransport()
     with (
         patch("agent_admin_routes.ROOT", tmp_path),
         patch.dict(os.environ, configured_env(), clear=False),
     ):
-        result = AgentCredentialAdmin(transport=transport).push()
+        result = AgentCredentialAdmin(access_token="fixture-admin-session", transport=transport).push()
 
     url, options = transport.calls[0]
     assert url == "https://agent.example.com/gateway/credentials"
-    assert options["headers"]["Authorization"] == f"Bearer {'o' * 64}"
+    assert options["headers"]["Authorization"] == "Bearer fixture-admin-session"
     assert options["json"]["provider"] == "openai-codex"
     assert options["json"]["credential"]["type"] == "oauth"
     assert result["targetOrigin"] == "https://agent.example.com"
@@ -109,7 +107,7 @@ def test_configured_auth_path_overrides_repository_default(tmp_path):
         patch("agent_admin_routes.ROOT", repository_root),
         patch.dict(os.environ, env, clear=False),
     ):
-        admin = AgentCredentialAdmin()
+        admin = AgentCredentialAdmin(access_token="fixture-admin-session")
         status = admin.status()
 
     assert admin.auth_path == configured_path
@@ -124,7 +122,7 @@ def test_agent_auth_path_is_supported_when_legacy_path_is_unset(tmp_path):
     env = {**configured_env(), "JOJO_AGENT_AUTH_PATH": str(configured_path)}
 
     with patch.dict(os.environ, env, clear=False):
-        admin = AgentCredentialAdmin()
+        admin = AgentCredentialAdmin(access_token="fixture-admin-session")
         status = admin.status()
 
     assert admin.auth_path == configured_path
@@ -142,7 +140,7 @@ def test_user_codex_auth_is_never_used_as_fallback(tmp_path):
         patch.object(Path, "home", return_value=tmp_path) as home,
         patch.dict(os.environ, configured_env(), clear=False),
     ):
-        admin = AgentCredentialAdmin()
+        admin = AgentCredentialAdmin(access_token="fixture-admin-session")
         status = admin.status()
 
     home.assert_not_called()
@@ -159,7 +157,7 @@ def test_configured_path_rejects_native_codex_token_format(tmp_path):
     env = {**configured_env(), "JOJO_CODEX_AUTH_PATH": str(auth_path)}
 
     with patch.dict(os.environ, env, clear=False):
-        status = AgentCredentialAdmin().status()
+        status = AgentCredentialAdmin(access_token="fixture-admin-session").status()
 
     assert status["credential"]["available"] is False
     assert status["credential"]["error"] == (
@@ -168,10 +166,9 @@ def test_configured_path_rejects_native_codex_token_format(tmp_path):
     assert status["canPush"] is False
 
 
-def test_routes_do_not_require_browser_login():
+def test_routes_forward_authenticated_admin_session():
     client = app.test_client()
     status = {
-        "operatorConfigured": True,
         "serviceConfigured": True,
         "targetOrigin": "https://agent.example.com",
         "credential": {"available": True},
@@ -196,7 +193,7 @@ def test_antigravity_push_preserves_project_and_never_returns_tokens(tmp_path):
     auth_path.write_text(json.dumps(content))
     transport = FakeTransport()
     with patch("agent_admin_routes.ROOT", tmp_path), patch.dict(os.environ, configured_env()):
-        admin = AgentCredentialAdmin(provider="antigravity", transport=transport)
+        admin = AgentCredentialAdmin(access_token="fixture-admin-session", provider="antigravity", transport=transport)
         status = admin.status()
         admin.push()
     assert status["provider"] == "antigravity"
@@ -217,7 +214,7 @@ def test_antigravity_rejects_missing_project(tmp_path):
     content["antigravity"] = content["openai-codex"]
     auth_path.write_text(json.dumps(content))
     with patch("agent_admin_routes.ROOT", tmp_path), patch.dict(os.environ, configured_env()):
-        status = AgentCredentialAdmin(provider="antigravity").status()
+        status = AgentCredentialAdmin(access_token="fixture-admin-session", provider="antigravity").status()
     assert status["canPush"] is False
     assert "projectId" in status["credential"]["error"]
 
@@ -227,8 +224,8 @@ def test_routes_forward_selected_provider_and_reject_unknown_provider():
     with patch("agent_admin_routes.AgentCredentialAdmin") as admin_class:
         admin_class.return_value.status.return_value = {"canPush": True}
         client.get("/api/agent/credentials/status?provider=antigravity")
-        admin_class.assert_called_with(provider="antigravity")
+        admin_class.assert_called_with(provider="antigravity", access_token="fixture-admin-session")
         admin_class.return_value.push.return_value = {"pushedAt": "now"}
         client.post("/api/agent/credentials/push", json={"provider": "antigravity"})
-        admin_class.assert_called_with(provider="antigravity")
+        admin_class.assert_called_with(provider="antigravity", access_token="fixture-admin-session")
     assert client.get("/api/agent/credentials/status?provider=unknown").status_code == 400

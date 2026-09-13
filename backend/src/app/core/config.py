@@ -70,7 +70,7 @@ class Settings:
     supabase_url: str | None
     supabase_publishable_key: str | None
     auth_timeout_seconds: float
-    operator_token: str | None = field(default=None, repr=False)
+    supabase_secret_key: str | None = field(default=None, repr=False)
     posthog_project_token: str | None = None
     posthog_api_host: str = "https://us.i.posthog.com"
     mimo_api_key: str | None = field(default=None, repr=False)
@@ -113,7 +113,7 @@ class Settings:
                 default=5.0,
                 name="JOJO_AUTH_TIMEOUT_SECONDS",
             ),
-            operator_token=os.getenv("JOJO_OPERATOR_TOKEN", "").strip() or None,
+            supabase_secret_key=os.getenv("SUPABASE_SECRET_KEY", "").strip() or None,
             posthog_project_token=os.getenv("POSTHOG_PROJECT_TOKEN", "").strip() or None,
             posthog_api_host=os.getenv("POSTHOG_API_HOST", "https://us.i.posthog.com").strip().rstrip("/"),
             mimo_api_key=((os.getenv("MIMO_API_KEY") or "").strip() or None)

@@ -74,7 +74,7 @@ export async function authorizeSupabaseUser(
   }
   const payload = await response.json() as {
     id?: unknown;
-    app_metadata?: { account_purpose?: unknown };
+    app_metadata?: { account_purpose?: unknown; jojo_roles?: unknown };
   };
   if (typeof payload.id !== "string" || !payload.id) {
     throw new AgentHttpError(503, "Authentication service returned invalid data");
@@ -83,6 +83,8 @@ export async function authorizeSupabaseUser(
   // conversation ID prefixes must never grant access to network diagnostics.
   return {
     id: payload.id,
+    ...(Array.isArray(payload.app_metadata?.jojo_roles) && payload.app_metadata.jojo_roles.includes("admin")
+      ? { isAdmin: true } : {}),
     ...(payload.app_metadata?.account_purpose === "ai_availability_monitor"
       ? { isAvailabilityMonitor: true } : {}),
   };

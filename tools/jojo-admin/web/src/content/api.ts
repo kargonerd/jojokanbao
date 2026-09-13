@@ -1,5 +1,5 @@
 import type { LibrarySourceId } from "@jojo/content";
-
+import { adminFetch } from "../auth/request";
 export interface ContentDiagnostic {
   level: "warning" | "error";
   code: string;
@@ -73,9 +73,9 @@ async function json<T>(response: Response): Promise<T> {
 }
 
 export const contentApi = {
-  status: () => fetch("/api/content/status").then((response) => json<{ success: true; publishers: PublisherStatus }>(response)),
-  jobs: () => fetch("/api/content/jobs").then((response) => json<{ success: true; jobs: ContentJob[] }>(response)),
-  job: (jobId: string) => fetch(`/api/content/jobs/${jobId}`).then((response) => json<{ success: true; job: ContentJob }>(response)),
+  status: () => adminFetch("/api/content/status").then((response) => json<{ success: true; publishers: PublisherStatus }>(response)),
+  jobs: () => adminFetch("/api/content/jobs").then((response) => json<{ success: true; jobs: ContentJob[] }>(response)),
+  job: (jobId: string) => adminFetch(`/api/content/jobs/${jobId}`).then((response) => json<{ success: true; job: ContentJob }>(response)),
   importFile: (file: File, fetchAssets: boolean, publicationStatus: "draft" | "published", access: "public" | "authenticated", librarySource: LibrarySourceId) => {
     const body = new FormData();
     body.append("files", file);
@@ -83,10 +83,10 @@ export const contentApi = {
     body.append("publicationStatus", publicationStatus);
     body.append("access", access);
     body.append("librarySource", librarySource);
-    return fetch("/api/content/import-files", { method: "POST", body })
+    return adminFetch("/api/content/import-files", { method: "POST", body })
       .then((response) => json<{ success: true; job: ContentJob }>(response));
   },
-  publish: (jobId: string, targets: string[], publicationStatus: ContentJob["publicationStatus"], access: ContentJob["access"]) => fetch(`/api/content/jobs/${jobId}/publish`, {
+  publish: (jobId: string, targets: string[], publicationStatus: ContentJob["publicationStatus"], access: ContentJob["access"]) => adminFetch(`/api/content/jobs/${jobId}/publish`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ targets, publicationStatus, access }),

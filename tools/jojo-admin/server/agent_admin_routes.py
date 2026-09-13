@@ -10,7 +10,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 import requests
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -43,6 +43,7 @@ class AgentCredentialAdmin:
         *,
         transport: Any = requests,
         provider: str = "openai-codex",
+        access_token: str = "",
     ) -> None:
         if not isinstance(provider, str) or provider not in {"openai-codex", "antigravity"}:
             raise AgentAdminError("不支持的 Agent provider")
@@ -50,7 +51,7 @@ class AgentCredentialAdmin:
         self.provider_label = "Codex" if provider == "openai-codex" else "Antigravity"
         _load_root_env()
         self.transport = transport
-        self.operator_token = os.getenv("JOJO_OPERATOR_TOKEN", "").strip()
+        self.access_token = access_token
         self.service_url = (
             os.getenv("JOJO_CREDENTIAL_SERVICE_URL", "").strip()
             or DEFAULT_CREDENTIAL_SERVICE_URL
@@ -130,13 +131,11 @@ class AgentCredentialAdmin:
             else None
         )
         expired = expires is not None and expires <= int(datetime.now(tz=timezone.utc).timestamp() * 1000)
-        operator_configured = len(self.operator_token) >= 32
         service_configured = bool(parsed.hostname) and (
             parsed.scheme == "https" or parsed.hostname in {"localhost", "127.0.0.1"}
         )
         return {
             "provider": self.provider,
-            "operatorConfigured": operator_configured,
             "serviceConfigured": service_configured,
             "targetOrigin": f"{parsed.scheme}://{parsed.netloc}" if parsed.netloc else None,
             "credential": {
@@ -148,18 +147,18 @@ class AgentCredentialAdmin:
                 "expired": expired,
                 "error": credential_error,
             },
-            "canPush": operator_configured and service_configured and credential is not None,
+            "canPush": bool(self.access_token) and service_configured and credential is not None,
         }
 
     def push(self) -> dict[str, Any]:
-        if len(self.operator_token) < 32:
-            raise AgentAdminError("JOJO_OPERATOR_TOKEN 未配置或长度不足 32 位")
+        if not self.access_token:
+            raise AgentAdminError("请先使用管理员账号登录。")
         credential = self._credential()
         try:
             response = self.transport.post(
                 self._target(),
                 headers={
-                    "Authorization": f"Bearer {self.operator_token}",
+                    "Authorization": f"Bearer {self.access_token}",
                     "Content-Type": "application/json",
                     "Accept": "application/json",
                 },
@@ -172,8 +171,8 @@ class AgentCredentialAdmin:
             )
         except requests.RequestException as error:
             raise AgentAdminError("无法连接 Agent 凭据服务") from error
-        if response.status_code == 401:
-            raise AgentAdminError("远端 Agent 的 JOJO_OPERATOR_TOKEN 与本机不一致")
+        if response.status_code in (401, 403):
+            raise AgentAdminError("管理员登录已失效或没有凭据管理权限，请重新登录。")
         if not response.ok:
             raise AgentAdminError(f"Agent 凭据服务返回 HTTP {response.status_code}")
         return {
@@ -185,7 +184,7 @@ class AgentCredentialAdmin:
 @agent_admin_blueprint.get("/api/agent/credentials/status")
 def agent_credential_status():
     try:
-        admin = AgentCredentialAdmin(provider=request.args.get("provider", "openai-codex"))
+        admin = AgentCredentialAdmin(provider=request.args.get("provider", "openai-codex"), access_token=g.admin_access_token)
         return jsonify({"success": True, "status": admin.status()})
     except AgentAdminError as error:
         return jsonify({"success": False, "message": str(error)}), 400
@@ -197,7 +196,7 @@ def push_agent_credential():
         body = request.get_json(silent=True) or {}
         if not isinstance(body, dict):
             return jsonify({"success": False, "message": "请求格式无效"}), 400
-        result = AgentCredentialAdmin(provider=body.get("provider", "openai-codex")).push()
+        result = AgentCredentialAdmin(provider=body.get("provider", "openai-codex"), access_token=g.admin_access_token).push()
         return jsonify({"success": True, "result": result})
     except AgentAdminError as error:
         return jsonify({"success": False, "message": str(error)}), 502

@@ -14,7 +14,7 @@ insert into public.content_annotation_marks(annotation_id, user_id) values
 insert into public.annotation_comments(id, annotation_id, user_id, body, visibility) values
  ('00000000-0000-4000-9000-000000009211', '00000000-0000-4000-9000-000000009210', '00000000-0000-4000-9000-000000009201', '私密想法', 'private');
 
-select extensions.ok(not has_function_privilege('anon', 'public.annotation_request(text,integer,text,jsonb)', 'execute'), 'anonymous callers cannot delete marks');
+select extensions.ok(not has_function_privilege('anon', 'public.annotation_request(uuid,integer,text,jsonb)', 'execute'), 'anonymous callers cannot delete marks');
 select extensions.ok(not has_table_privilege('authenticated', 'public.content_annotation_marks', 'DELETE'), 'readers cannot delete arbitrary marks directly');
 select set_config('request.jwt.claim.sub', '', true);
 select extensions.throws_ok($$select private.delete_my_annotation_mark(2, '00000000-0000-4000-9000-000000009210')$$,

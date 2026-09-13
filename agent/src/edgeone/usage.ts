@@ -16,23 +16,22 @@ export async function acquireAgentUsage(
 ): Promise<AgentUsageLease> {
   const environment = context.env ?? process.env;
   const baseUrl = environment.VITE_SUPABASE_URL?.trim().replace(/\/$/, "");
-  const key = environment.VITE_SUPABASE_PUBLISHABLE_KEY?.trim();
-  const operatorToken = environment.JOJO_OPERATOR_TOKEN?.trim();
-  if (!baseUrl || !key || !operatorToken) {
+  const key = environment.SUPABASE_SECRET_KEY?.trim();
+  if (!baseUrl || !key) {
     throw new AgentHttpError(503, "AI 使用限额服务暂时不可用，请稍后重试。");
   }
   const requestId = crypto.randomUUID();
   let limits: AgentUsageLimits;
   try { limits = await getAgentUsageLimits(environment); }
   catch { throw new AgentHttpError(503, "AI 使用限额服务暂时不可用，请稍后重试。"); }
-  const body = JSON.stringify({ p_operator_token: operatorToken, p_user_id: user.id, p_request_id: requestId });
+  const body = JSON.stringify({ p_user_id: user.id, p_request_id: requestId });
   const acquireBody = JSON.stringify({ ...JSON.parse(body), p_requests_per_minute: limits.requestsPerMinute,
     p_requests_per_day: limits.requestsPerDay, p_max_run_seconds: limits.maxRunSeconds });
   const rpc = async (name: string, signal?: AbortSignal): Promise<Response> => {
     const timeout = AbortSignal.timeout(5_000);
     return fetch(`${baseUrl}/rest/v1/rpc/${name}`, {
       method: "POST",
-      headers: { apikey: key, "Content-Type": "application/json" },
+      headers: { apikey: key, "Content-Type": "application/json", ...(key.startsWith("eyJ") ? { Authorization: `Bearer ${key}` } : {}) },
       body: name === "acquire_agent_usage" ? acquireBody : body,
       signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
     });

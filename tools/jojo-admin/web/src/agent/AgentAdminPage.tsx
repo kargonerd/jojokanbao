@@ -99,7 +99,7 @@ export function AgentAdminPage() {
           </article>
           <div className="agent-transfer-gate" aria-hidden="true">
             <span>JOJO</span>
-            <b>OPERATOR</b>
+            <b>管理员</b>
             <i>→</i>
           </div>
           <article>
@@ -124,7 +124,6 @@ export function AgentAdminPage() {
             </button>
           </header>
           <dl>
-            <div><dt>Operator Token</dt><dd><i className={status?.operatorConfigured ? "ok" : "bad"} />{status?.operatorConfigured ? "本机已加载" : "未配置"}</dd></div>
             <div><dt>凭据类型</dt><dd>{status?.credential.type || "—"}</dd></div>
             <div><dt>凭据有效期</dt><dd className={status?.credential.expired ? "bad-text" : ""}>{status?.credential.expiresAt ? readableTime(status.credential.expiresAt) : "—"}</dd></div>
             <div><dt>写入范围</dt><dd><code>agent / {provider}</code></dd></div>
@@ -170,7 +169,7 @@ export function AgentAdminPage() {
         details={[
           { label: "目标", value: status?.targetOrigin || "—" },
           { label: "范围", value: `agent / ${provider}` },
-          { label: "认证", value: "JOJO_OPERATOR_TOKEN" },
+          { label: "认证", value: "当前管理员账号" },
         ]}
         confirmLabel="确认更新"
         cancelLabel="取消"

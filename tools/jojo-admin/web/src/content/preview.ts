@@ -1,3 +1,4 @@
+import { adminFetch } from "../auth/request";
 import {
   JoxClient, asJojoFragment, asJojoItemManifest, bookFragmentAssetRefs, resolveJoxObject,
   type JojoFragment, type JojoItemManifest,
@@ -16,7 +17,7 @@ export function previewClient(jobId: string): JoxClient {
     if (url.origin !== base.origin || !url.pathname.startsWith(base.pathname)) {
       throw new Error("预览只能读取本次导入的本地文件");
     }
-    return fetch(url, { ...init, cache: "no-store" });
+    return adminFetch(url, { ...init, cache: "no-store" });
   });
 }
 

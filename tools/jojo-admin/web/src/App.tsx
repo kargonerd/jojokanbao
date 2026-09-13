@@ -8,10 +8,11 @@ import { ContentPreviewPage } from "./pages/ContentPreviewPage";
 import { AgentAdminPage } from "./agent/AgentAdminPage";
 import { ModerationPage } from "./moderation/ModerationPage";
 import { RmrbReviewPage } from "./rmrb/RmrbReviewPage";
+import { AdminAccess } from "./auth/AdminAccess";
 
 export function App() {
   return (
-    <BrowserRouter>
+    <AdminAccess><BrowserRouter>
       <Routes>
         <Route path="content/:jobId/preview" element={<ContentPreviewPage />} />
         <Route element={<AdminShell />}>
@@ -25,6 +26,6 @@ export function App() {
           <Route path="es-repair" element={<Navigate replace to="/es" />} />
         </Route>
       </Routes>
-    </BrowserRouter>
+    </BrowserRouter></AdminAccess>
   );
 }
