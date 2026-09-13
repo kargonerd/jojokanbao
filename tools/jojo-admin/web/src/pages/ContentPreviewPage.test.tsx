@@ -86,10 +86,15 @@ function openPreview() {
   </Routes></MemoryRouter>);
 }
 
+// Decoding and rendering can be delayed while CI builds other workspaces.
+function findPreviewText(text: string) {
+  return screen.findByText(text, {}, { timeout: 5_000 });
+}
+
 describe("local book preview", () => {
   it("decodes draft Reader objects and supports images, notes, TOC anchors and volume switching without publishing", async () => {
     const { container } = openPreview();
-    await screen.findByText("本地正文");
+    await findPreviewText("本地正文");
     expect(screen.getByRole("img", { name: "测试插图" })).toHaveAttribute("src", "blob:local-photo");
     expect(container.querySelector("script, [onerror]")).toBeNull();
     expect(screen.getByRole("button", { name: "上一章" })).toBeDisabled();
@@ -108,23 +113,23 @@ describe("local book preview", () => {
     fireEvent.click(within(document.getElementById("note1")!).getByRole("link", { name: "返回正文脚注标记" }));
     await waitFor(() => expect(document.activeElement?.id).toBe("annotation-ref-note1"));
     fireEvent.click(screen.getByText("跨章链接"));
-    await screen.findByText("第二章正文");
+    await findPreviewText("第二章正文");
     await waitFor(() => expect(document.activeElement?.id).toBe("section-two"));
     expect(screen.getByRole("button", { name: "下一章" })).toBeDisabled();
     expect(revoke).toHaveBeenCalledWith("blob:local-photo");
     fireEvent.click(screen.getByRole("button", { name: "上一章" }));
-    await screen.findByText("本地正文");
+    await findPreviewText("本地正文");
     fireEvent.click(within(screen.getByRole("navigation", { name: "书籍目录" })).getByRole("button", { name: "第二章小节" }));
-    await screen.findByText("第二章正文");
+    await findPreviewText("第二章正文");
     fireEvent.change(screen.getByLabelText("选择分卷"), { target: { value: "1" } });
-    await screen.findByText("第二卷正文");
+    await findPreviewText("第二卷正文");
     expect(requests.every((path) => path === "/api/content/jobs/local-book" || path.startsWith(base))).toBe(true);
-  });
+  }, 30_000);
 
   it("keeps readable text when a local image is missing and displays the failure", async () => {
     failImage = true;
     openPreview();
-    await screen.findByText("本地正文");
+    await findPreviewText("本地正文");
     expect(screen.getByRole("alert")).toHaveTextContent("图片未能加载");
   });
 
@@ -135,7 +140,7 @@ describe("local book preview", () => {
     expect(requests).toEqual(["/api/content/jobs/local-book"]);
     jobStatus = "ready";
     fireEvent.click(screen.getByRole("button", { name: "重新加载" }));
-    await screen.findByText("本地正文");
+    await findPreviewText("本地正文");
   });
 
   it("refuses object paths pointing outside this job instead of fetching them", async () => {
