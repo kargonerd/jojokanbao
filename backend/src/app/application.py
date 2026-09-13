@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.account.router import router as account_router
 from app.account.signup import router as signup_router
 from app.account.annotations import router as annotations_router
+from app.account.admin import router as admin_router
 from app.core.remote_config import RemoteConfig
 from app.core.config import get_settings
 from app.core.http_middleware import (
@@ -47,5 +48,6 @@ def create_app() -> FastAPI:
     app.include_router(account_router, prefix="/v1")
     app.include_router(signup_router, prefix="/v1")
     app.include_router(annotations_router, prefix="/v1")
+    app.include_router(admin_router, prefix="/v1")
     app.include_router(speech_router, prefix="/v1")
     return app

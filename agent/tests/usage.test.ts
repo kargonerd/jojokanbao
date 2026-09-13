@@ -7,7 +7,7 @@ import * as agentRuntime from "../src/runtime";
 vi.mock("../src/edgeone/posthog", () => ({ getAgentUsageLimits: async () => ({ requestsPerMinute: 3, requestsPerDay: 100, maxRunSeconds: 300 }) }));
 
 const context: EdgeOneAgentContext = {
-  env: { VITE_SUPABASE_URL: "https://test.supabase.co", VITE_SUPABASE_PUBLISHABLE_KEY: "public", JOJO_OPERATOR_TOKEN: "test-operator" },
+  env: { VITE_SUPABASE_URL: "https://test.supabase.co", VITE_SUPABASE_PUBLISHABLE_KEY: "public", SUPABASE_SECRET_KEY: "sb_secret_test" },
   request: { body: { message: "hello" } },
 };
 const user = { id: "00000000-0000-4000-8000-000000000081" };

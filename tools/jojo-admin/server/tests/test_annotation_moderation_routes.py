@@ -32,7 +32,7 @@ class FakeTransport:
         self.response = response
         self.calls = []
 
-    def post(self, url, **kwargs):
+    def request(self, method, url, **kwargs):
         self.calls.append((url, kwargs))
         return self.response
 
@@ -41,31 +41,29 @@ def configured_env():
     return {
         "VITE_SUPABASE_URL": "https://example.supabase.co",
         "VITE_SUPABASE_PUBLISHABLE_KEY": "publishable",
-        "JOJO_OPERATOR_TOKEN": "o" * 32,
     }
 
 
-def test_client_keeps_operator_token_server_side_for_moderation():
-    transport = FakeTransport(FakeResponse([{"commentId": "comment-1"}]))
+def test_client_forwards_session_to_cloud_moderation_api():
+    transport = FakeTransport(FakeResponse({"items":[{"commentId": "comment-1"}]}))
     with patch.dict(os.environ, configured_env(), clear=False):
-        client = SupabaseAnnotationModerationClient(transport=transport)
+        client = SupabaseAnnotationModerationClient(transport=transport, access_token="staff-session")
         assert client.list_reports("pending") == [{"commentId": "comment-1"}]
 
     url, options = transport.calls[0]
-    assert url.endswith("/rest/v1/rpc/operator_list_annotation_reports")
-    assert options["json"]["p_operator_token"] == "o" * 32
-    assert options["json"]["p_status"] == "pending"
-    assert "Authorization" not in options["headers"]
+    assert url.endswith("/admin/moderation/comments")
+    assert options["params"]["status"] == "pending"
+    assert options["headers"]["Authorization"] == "Bearer staff-session"
 
 
-def test_client_fails_closed_without_existing_operator_token():
-    with patch.dict(os.environ, {**configured_env(), "JOJO_OPERATOR_TOKEN": ""}, clear=False):
+def test_client_fails_closed_without_admin_session():
+    with patch.dict(os.environ, configured_env(), clear=False):
         try:
-            SupabaseAnnotationModerationClient(transport=FakeTransport(FakeResponse([])))
+            SupabaseAnnotationModerationClient(transport=FakeTransport(FakeResponse([])), access_token="")
         except AnnotationModerationError as error:
-            assert "JOJO_OPERATOR_TOKEN" in str(error)
+            assert "登录" in str(error)
         else:
-            raise AssertionError("missing operator token should fail closed")
+            raise AssertionError("missing session should fail closed")
 
 
 def test_routes_validate_and_forward_moderation_without_exposing_token():

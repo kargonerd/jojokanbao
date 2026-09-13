@@ -1,3 +1,4 @@
+import { adminFetch } from "../auth/request";
 export type RmrbDecision = {
   decision: "accept" | "reject";
   content?: string;
@@ -90,7 +91,7 @@ export type RmrbSyncResult = {
 };
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init);
+  const response = await adminFetch(url, init);
   const payload = await response.json();
   if (!response.ok || payload.success === false) {
     throw new Error(payload.error || payload.message || `Request failed: ${response.status}`);

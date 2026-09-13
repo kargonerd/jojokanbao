@@ -1,13 +1,13 @@
 import { before, after, beforeEach, afterEach, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createHash, createHmac, randomUUID } from 'node:crypto';
+import { createHmac, randomUUID } from 'node:crypto';
 import { migrationDatabase } from './db-fixture.mjs';
 
 const token = 'fixture-operator-token-with-at-least-32-characters';
 const users = [randomUUID(), randomUUID(), randomUUID()];
-let db, oldState;
+let db, oldState, signingKey, currentUser;
 const value = async (sql, args = []) => (await db.query(sql, args)).rows[0]?.value;
-const actor = user => db.query("select set_config('request.jwt.claim.sub',$1,false)", [user || '']);
+const actor = user => { currentUser = user; return db.query("select set_config('request.jwt.claim.sub',$1,false)", [user || '']); };
 async function rejectQuery(sql, args, pattern) {
   await db.exec('savepoint rejected');
   try { await assert.rejects(db.query(sql, args), pattern); }
@@ -15,10 +15,10 @@ async function rejectQuery(sql, args, pattern) {
 }
 function receipt(email, code = '', required = false, expires = Math.floor(Date.now()/1000)+120) {
   const encoded = Buffer.from(JSON.stringify({email, code, required, expires})).toString('base64url');
-  return `${encoded}.${createHmac('sha256', createHash('sha256').update(token).digest()).update(`jojo.signup.v1.${encoded}`).digest('hex')}`;
+  return `${encoded}.${createHmac('sha256', signingKey).update(`jojo.signup.v1.${encoded}`).digest('hex')}`;
 }
 const metadata = (email, code = '', required = false) => ({ invitation_code: code, signup_authorization: receipt(email, code, required), keep: 'yes' });
-const annotation = (operation, params, threshold = 2, credential = token) => value(
+const annotation = (operation, params, threshold = 2, credential = currentUser) => value(
   'select public.annotation_request($1,$2,$3,$4::jsonb) as value', [credential, threshold, operation, JSON.stringify(params)]);
 const subject = {p_content_type:'book',p_content_id:'book:test',p_section_id:'chapter:one'};
 const anchor = {...subject,p_content_title:'Book',p_content_url:'/library/test',p_quote:'Shared anchor',p_prefix:'',p_suffix:''};
@@ -31,15 +31,16 @@ before(async () => {
       values($1,current_date,50,$2,now()+interval '1 hour')`, [users[2],randomUUID()]);
     oldState = (await database.query('select to_jsonb(s) as value from private.agent_usage_state s')).rows[0].value;
   }});
+  signingKey = await value('select signing_key as value from private.signup_signing_secret');
 });
 after(async () => db?.close());
 beforeEach(async () => db.exec('begin'));
 afterEach(async () => db.exec('rollback'));
 
-test('all migrations remove the flag system and preserve operator credentials, readers and running usage', async () => {
+test('all migrations remove the flag system and preserve readers and running usage', async () => {
   assert.equal(await value("select to_regclass('private.feature_flags') as value"), null);
   assert.equal(await value("select count(*)::integer as value from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in ('public','private') and (p.proname like '%feature_flag%' or p.prosrc like '%private.feature_flags%')"), 0);
-  assert.equal(await value('select private.operator_authorized($1) as value',[token]), true);
+  assert.equal(await value("select to_regclass('private.operator_credentials') as value"), null);
   assert.deepEqual(await value('select to_jsonb(s) as value from private.agent_usage_state s'), oldState);
   assert.equal(await value('select count(*)::integer as value from auth.users'), 3);
 });
@@ -101,22 +102,23 @@ test('annotation thresholds come from trusted server parameters while private co
 });
 
 test('unauthenticated readers and clients without the server credential cannot provide annotation parameters', async () => {
-  await rejectQuery('select public.annotation_request($1,2,$2,$3)',[token,'get_annotation_threads',JSON.stringify(subject)],/Authentication is required/);
+  await rejectQuery('select public.annotation_request($1,2,$2,$3)',[null,'get_annotation_threads',JSON.stringify(subject)],/insufficient_privilege|insufficient privilege/i);
   await actor(users[0]);
-  await rejectQuery('select public.annotation_request($1,1,$2,$3)',['untrusted','get_annotation_threads',JSON.stringify(subject)],/Operator token is invalid/);
+  assert.equal(await value("select has_function_privilege('authenticated','public.annotation_request(uuid,integer,text,jsonb)','execute') as value"),false);
+  assert.equal(await value("select has_function_privilege('service_role','public.annotation_request(uuid,integer,text,jsonb)','execute') as value"),true);
   assert.equal(await value("select to_regprocedure('public.get_annotation_threads(text,text,text)') as value"),null);
   assert.equal(await value("select has_function_privilege('authenticated','public.add_annotation_comment(uuid,text,uuid,text)','execute') as value"),false);
 });
 
 test('AI limits use trusted request values and preserve atomic per-user concurrency and counts', async () => {
   const request=randomUUID();
-  const acquire=(id,minute=1,day=2,seconds=60)=>value('select public.acquire_agent_usage($1,$2,$3,$4,$5,$6) as value',[token,users[0],id,minute,day,seconds]);
+  const acquire=(id,minute=1,day=2,seconds=60)=>value('select public.acquire_agent_usage($1,$2,$3,$4,$5) as value',[users[0],id,minute,day,seconds]);
   assert.deepEqual(await acquire(request),{allowed:true,maxRunSeconds:60});
   assert.equal((await acquire(randomUUID())).reason,'concurrent');
-  await value('select public.release_agent_usage($1,$2,$3) as value',[token,users[0],request]);
+  await value('select public.release_agent_usage($1,$2) as value',[users[0],request]);
   assert.equal((await acquire(randomUUID())).reason,'minute');
   assert.equal((await acquire(randomUUID(),2,1)).reason,'daily');
-  await rejectQuery('select public.acquire_agent_usage($1,$2,$3,0,2,60)',[token,users[0],randomUUID()],/parameters are invalid/);
-  await rejectQuery('select public.acquire_agent_usage($1,$2,$3,1,2,60)',['untrusted',users[0],randomUUID()],/Operator token is invalid/);
+  await rejectQuery('select public.acquire_agent_usage($1,$2,0,2,60)',[users[0],randomUUID()],/parameters are invalid/);
+  assert.equal(await value("select has_function_privilege('authenticated','public.acquire_agent_usage(uuid,uuid,integer,integer,integer)','execute') as value"),false);
   assert.equal(await value("select to_regprocedure('public.acquire_agent_usage(text,uuid,uuid)') as value"),null);
 });

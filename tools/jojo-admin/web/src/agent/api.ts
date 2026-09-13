@@ -4,7 +4,6 @@ export type AgentProvider = "openai-codex" | "antigravity";
 
 export interface AgentCredentialStatus {
   provider: AgentProvider;
-  operatorConfigured: boolean;
   serviceConfigured: boolean;
   targetOrigin: string | null;
   credential: {

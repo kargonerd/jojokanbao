@@ -1,3 +1,4 @@
+import { adminFetch } from "../auth/request";
 export interface ApiResult {
   success: boolean;
   message?: string;
@@ -175,12 +176,12 @@ async function parse<T>(response: Response): Promise<T> {
 }
 
 export async function apiGet<T>(path: string): Promise<T> {
-  return parse<T>(await fetch(path));
+  return parse<T>(await adminFetch(path));
 }
 
 export async function apiPost<T>(path: string, body: unknown = {}): Promise<T> {
   return parse<T>(
-    await fetch(path, {
+    await adminFetch(path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),

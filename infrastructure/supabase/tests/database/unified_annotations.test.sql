@@ -68,9 +68,7 @@ select reporter_id, '测试丙-GHJ' from annotation_test_state
 union all
 select pager_id, '测试丁-KLM' from annotation_test_state;
 
-insert into private.operator_credentials(singleton, token_digest)
-values (true, extensions.digest(repeat('o', 32), 'sha256'))
-on conflict (singleton) do update set token_digest = excluded.token_digest;
+
 
 do $$
 begin
@@ -347,14 +345,14 @@ set report_id = (
 )::uuid;
 
 select extensions.is(
-  public.operator_moderate_annotation_comment(
-    repeat('o', 32),
+  public.admin_moderate_annotation_comment(
+    auth.uid(),
     (select comment_id from annotation_test_state),
     'hide',
     '确认违反讨论规则'
   )->>'success',
   'true',
-  'an operator can hide a reported comment'
+  'a trusted API can hide a reported comment'
 );
 
 select extensions.is(

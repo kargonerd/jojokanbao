@@ -9,7 +9,7 @@ export async function checkReaderRuntime(env, request = fetch) {
     headers: { apikey: key }, signal: AbortSignal.timeout(10_000),
   });
   const payload = await response.json();
-  if (response.ok && payload === '202609130004') return true;
+  if (response.ok && payload === '202609130005') return true;
   if (response.status === 404 && payload?.code === 'PGRST202') return false;
   throw new Error(`Reader database contract check failed (HTTP ${response.status})`);
 }

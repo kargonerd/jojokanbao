@@ -10,6 +10,7 @@ import { createEdgeOneCredentialStore } from "./credential-store";
 import type { EdgeOneMessageStore } from "./types";
 import type { OAuthCredential } from "@earendil-works/pi-ai";
 import { AntigravityRefreshError, antigravityProjectId, refreshAntigravityCredential } from "../antigravity/auth";
+import { AgentHttpError, authorizeSupabaseUser } from "./auth";
 
 const MAX_CREDENTIAL_BYTES = 64 * 1024;
 
@@ -22,6 +23,7 @@ export interface CredentialAdminContext {
 }
 
 export interface CreateCredentialAdminHandlerOptions {
+  authorize?: typeof authorizeSupabaseUser;
   createCredentialStore?: typeof createEdgeOneCredentialStore;
   claimCredential?: (
     credential: OAuthCredential,
@@ -41,31 +43,6 @@ function jsonResponse(status: number, body: Record<string, unknown>): Response {
     status,
     headers: { "Cache-Control": "no-store" },
   });
-}
-
-async function digest(value: string): Promise<Uint8Array> {
-  return new Uint8Array(
-    await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)),
-  );
-}
-
-async function secretMatches(provided: string, expected: string): Promise<boolean> {
-  const [providedDigest, expectedDigest] = await Promise.all([
-    digest(provided),
-    digest(expected),
-  ]);
-  let difference = 0;
-  for (let index = 0; index < expectedDigest.length; index += 1) {
-    difference |= providedDigest[index]! ^ expectedDigest[index]!;
-  }
-  return difference === 0;
-}
-
-function bearerToken(request: Request): string {
-  const authorization = request.headers.get("authorization") ?? "";
-  return authorization.startsWith("Bearer ")
-    ? authorization.slice("Bearer ".length)
-    : "";
 }
 
 function parseUpload(value: unknown): CredentialUpload {
@@ -90,7 +67,7 @@ function parseUpload(value: unknown): CredentialUpload {
 /**
  * Platform credential administration endpoint.
  *
- * The endpoint and its operator authentication are intentionally not tied to
+ * The endpoint and its administrator session are intentionally not tied to
  * Agent or Codex. Each supported scope/provider pair must still be explicitly
  * allowlisted and validated before it can reach storage.
  */
@@ -105,14 +82,13 @@ export function createCredentialAdminHandler(
     }
 
     const environment = context.env ?? process.env;
-    const adminToken = environment.JOJO_OPERATOR_TOKEN?.trim() ?? "";
-    if (adminToken.length < 32) {
-      return jsonResponse(503, {
-        error: "Credential administration is not configured",
+    try {
+      const user = await (options.authorize ?? authorizeSupabaseUser)({ env: environment, request: context.request });
+      if (!user.isAdmin) return jsonResponse(403, { error: "Administrator permission required" });
+    } catch (error) {
+      return jsonResponse(error instanceof AgentHttpError ? error.status : 503, {
+        error: error instanceof AgentHttpError ? error.message : "Authentication service unavailable",
       });
-    }
-    if (!await secretMatches(bearerToken(context.request), adminToken)) {
-      return jsonResponse(401, { error: "Authentication required" });
     }
 
     const declaredLength = Number(

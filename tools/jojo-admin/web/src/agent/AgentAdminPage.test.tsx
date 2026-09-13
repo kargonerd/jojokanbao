@@ -12,7 +12,6 @@ import { AgentAdminPage } from "./AgentAdminPage";
 
 const readyStatus = {
   provider: "openai-codex",
-  operatorConfigured: true,
   serviceConfigured: true,
   targetOrigin: "https://agent.example.com",
   credential: {
@@ -40,7 +39,6 @@ describe("AgentAdminPage", () => {
     render(<AgentAdminPage />);
 
     expect(await screen.findByText("本机就绪")).toBeInTheDocument();
-    expect(screen.getByText("本机已加载")).toBeInTheDocument();
     expect(screen.getByText("agent/auth.json")).toBeInTheDocument();
     expect(screen.queryByText("~/.codex/auth.json")).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/token/i)).not.toBeInTheDocument();

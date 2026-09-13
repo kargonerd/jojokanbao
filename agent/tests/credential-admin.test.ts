@@ -5,9 +5,11 @@ import {
 import { describe, expect, it, vi } from "vitest";
 import { createCredentialAdminHandler } from "../src";
 
-const OPERATOR_TOKEN = "a".repeat(32);
+import { AgentHttpError } from "../src/edgeone/auth";
 
-function request(body: unknown, token = OPERATOR_TOKEN): Request {
+const ADMIN_SESSION = "a".repeat(32);
+
+function request(body: unknown, token = ADMIN_SESSION): Request {
   return new Request("https://agent.example.com/internal/credentials", {
     method: "POST",
     headers: {
@@ -23,10 +25,10 @@ describe("createCredentialAdminHandler", () => {
     let stored: CredentialFile = { "openai-codex": { type: "oauth", access: "codex", refresh: "codex-refresh", expires: 500 } };
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ access_token: "fresh-google", expires_in: 3_600 }));
     try {
-      const handle = createCredentialAdminHandler({
+      const handle = createCredentialAdminHandler({ authorize: async (context) => { if (new Headers(context.request.headers as Headers).get("Authorization") !== `Bearer ${ADMIN_SESSION}`) throw new AgentHttpError(401,"invalid session"); return {id:"admin",isAdmin:true}; },
         createCredentialStore: () => new PersistentCredentialStore({ read: async () => stored, write: async (next) => { stored = next; } }),
       });
-      const response = await handle({ env: { JOJO_OPERATOR_TOKEN: OPERATOR_TOKEN }, request: request({
+      const response = await handle({ env: { JOJO_ADMIN_SESSION: ADMIN_SESSION }, request: request({
         scope: "agent", provider: "antigravity",
         credential: { type: "oauth", access: "old-google", refresh: "google-refresh", expires: 0, projectId: "project-one" },
       }) });
@@ -41,8 +43,8 @@ describe("createCredentialAdminHandler", () => {
 
   it("rejects Antigravity credentials without projectId before touching storage", async () => {
     const createCredentialStore = vi.fn();
-    const response = await createCredentialAdminHandler({ createCredentialStore })({
-      env: { JOJO_OPERATOR_TOKEN: OPERATOR_TOKEN }, request: request({
+    const response = await createCredentialAdminHandler({ authorize: async (context) => { if (new Headers(context.request.headers as Headers).get("Authorization") !== `Bearer ${ADMIN_SESSION}`) throw new AgentHttpError(401,"invalid session"); return {id:"admin",isAdmin:true}; }, createCredentialStore })({
+      env: { JOJO_ADMIN_SESSION: ADMIN_SESSION }, request: request({
         scope: "agent", provider: "antigravity", credential: { type: "oauth", access: "access", refresh: "refresh", expires: 0 },
       }),
     });
@@ -58,7 +60,7 @@ describe("createCredentialAdminHandler", () => {
         stored = next;
       },
     });
-    const handle = createCredentialAdminHandler({
+    const handle = createCredentialAdminHandler({ authorize: async (context) => { if (new Headers(context.request.headers as Headers).get("Authorization") !== `Bearer ${ADMIN_SESSION}`) throw new AgentHttpError(401,"invalid session"); return {id:"admin",isAdmin:true}; },
       createCredentialStore: () => credentials,
       claimCredential: async (credential) => ({
         ...credential,
@@ -69,7 +71,7 @@ describe("createCredentialAdminHandler", () => {
     });
 
     const response = await handle({
-      env: { JOJO_OPERATOR_TOKEN: OPERATOR_TOKEN },
+      env: { JOJO_ADMIN_SESSION: ADMIN_SESSION },
       request: request({
         scope: "agent",
         provider: "openai-codex",
@@ -112,13 +114,13 @@ describe("createCredentialAdminHandler", () => {
         oauthErrorCode: "refresh_token_reused",
       });
     });
-    const handle = createCredentialAdminHandler({
+    const handle = createCredentialAdminHandler({ authorize: async (context) => { if (new Headers(context.request.headers as Headers).get("Authorization") !== `Bearer ${ADMIN_SESSION}`) throw new AgentHttpError(401,"invalid session"); return {id:"admin",isAdmin:true}; },
       createCredentialStore: () => credentials,
       claimCredential,
     });
 
     const response = await handle({
-      env: { JOJO_OPERATOR_TOKEN: OPERATOR_TOKEN },
+      env: { JOJO_ADMIN_SESSION: ADMIN_SESSION },
       request: request({
         scope: "agent",
         provider: "openai-codex",
@@ -141,12 +143,12 @@ describe("createCredentialAdminHandler", () => {
 
   it("rejects an invalid administrator token before touching storage", async () => {
     const createCredentialStore = vi.fn();
-    const handle = createCredentialAdminHandler({
+    const handle = createCredentialAdminHandler({ authorize: async (context) => { if (new Headers(context.request.headers as Headers).get("Authorization") !== `Bearer ${ADMIN_SESSION}`) throw new AgentHttpError(401,"invalid session"); return {id:"admin",isAdmin:true}; },
       createCredentialStore,
     });
 
     const response = await handle({
-      env: { JOJO_OPERATOR_TOKEN: OPERATOR_TOKEN },
+      env: { JOJO_ADMIN_SESSION: ADMIN_SESSION },
       request: request({}, "wrong-token"),
     });
 
@@ -156,12 +158,12 @@ describe("createCredentialAdminHandler", () => {
 
   it("allowlists and validates each supported scope/provider pair", async () => {
     const createCredentialStore = vi.fn();
-    const handle = createCredentialAdminHandler({
+    const handle = createCredentialAdminHandler({ authorize: async (context) => { if (new Headers(context.request.headers as Headers).get("Authorization") !== `Bearer ${ADMIN_SESSION}`) throw new AgentHttpError(401,"invalid session"); return {id:"admin",isAdmin:true}; },
       createCredentialStore,
     });
 
     const response = await handle({
-      env: { JOJO_OPERATOR_TOKEN: OPERATOR_TOKEN },
+      env: { JOJO_ADMIN_SESSION: ADMIN_SESSION },
       request: request({
         scope: "agent",
         provider: "openai-codex",
@@ -175,12 +177,12 @@ describe("createCredentialAdminHandler", () => {
 
   it("rejects unregistered platform credential scopes", async () => {
     const createCredentialStore = vi.fn();
-    const handle = createCredentialAdminHandler({
+    const handle = createCredentialAdminHandler({ authorize: async (context) => { if (new Headers(context.request.headers as Headers).get("Authorization") !== `Bearer ${ADMIN_SESSION}`) throw new AgentHttpError(401,"invalid session"); return {id:"admin",isAdmin:true}; },
       createCredentialStore,
     });
 
     const response = await handle({
-      env: { JOJO_OPERATOR_TOKEN: OPERATOR_TOKEN },
+      env: { JOJO_ADMIN_SESSION: ADMIN_SESSION },
       request: request({
         scope: "search",
         provider: "elasticsearch",

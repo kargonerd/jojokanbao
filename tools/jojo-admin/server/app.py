@@ -31,6 +31,7 @@ from content_routes import content_blueprint
 from agent_admin_routes import agent_admin_blueprint
 from annotation_moderation_routes import annotation_moderation_blueprint
 from rmrb_review_routes import rmrb_review_blueprint
+from admin_auth import install_admin_auth
 import tkinter as tk
 from tkinter import filedialog
 import requests
@@ -43,6 +44,7 @@ warnings.filterwarnings('ignore', category=UserWarning)
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 
 app = Flask(__name__)
+install_admin_auth(app)
 app.register_blueprint(es_repair_blueprint)
 app.register_blueprint(content_blueprint)
 app.register_blueprint(agent_admin_blueprint)

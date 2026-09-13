@@ -17,7 +17,6 @@
     "auth:codex": "pi-ai login openai-codex",
     "auth:antigravity": "tsx src/antigravity/login.ts",
     "verify:antigravity": "tsx src/antigravity/verify.ts",
-    "credentials:push": "tsx src/edgeone/push-credential.ts",
     "smoke": "tsx src/smoke.ts",
     "rag:smoke": "tsx src/rag-smoke.ts",
     "content:smoke": "tsx src/content-smoke.ts",

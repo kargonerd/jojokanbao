@@ -1,8 +1,4 @@
 import asyncio
-import base64
-import hashlib
-import hmac
-import json
 from dataclasses import replace
 from unittest.mock import AsyncMock
 
@@ -14,14 +10,13 @@ from app.application import create_app
 from app.core.config import Settings, get_settings
 from app.core.remote_config import RemoteConfig, get_remote_config
 from app.core.errors import ApiError
-from app.account.signup import sign_signup_authorization
 
-TOKEN = "fixture-operator-token-with-at-least-32-characters"
+TOKEN = "sb_secret_fixture"
 
 
 def settings():
     return Settings(environment="test", allowed_origins=(), supabase_url="https://test.supabase.co", supabase_publishable_key="public",
-                    auth_timeout_seconds=1, operator_token=TOKEN, posthog_project_token="phc_test")
+                    auth_timeout_seconds=1, supabase_secret_key=TOKEN, posthog_project_token="phc_test")
 
 
 class Flags:
@@ -70,28 +65,30 @@ def test_invalid_first_snapshot_cannot_open_registration():
 
 
 @pytest.mark.parametrize("required", [False, True])
-def test_signup_uses_server_policy_and_binds_the_signed_claim_to_email_and_code(required):
+def test_signup_sends_only_server_policy_to_the_server_only_database_rpc(required, monkeypatch):
     app = create_app()
     config = AsyncMock()
     config.get.return_value = {"invitationRequired": required}
     app.dependency_overrides[get_remote_config] = lambda: config
     app.dependency_overrides[get_settings] = settings
+    seen = []
+    async def post(_self, url, **kwargs):
+        seen.append((url, kwargs))
+        return httpx.Response(200, json="signed-receipt")
+    monkeypatch.setattr(httpx.AsyncClient, "post", post)
     with TestClient(app) as client:
-        response = client.post("/v1/account/signup-authorization", json={"email": " Reader@example.com ", "invitationCode": "abc234" if required else ""})
+        response = client.post("/v1/account/signup-authorization", json={"email":" Reader@example.com ","invitationCode":"abc234" if required else ""})
         assert response.status_code == 200
-        encoded, signature = response.json()["authorization"].split(".")
-        assert hmac.compare_digest(signature, hmac.new(hashlib.sha256(TOKEN.encode()).digest(), f"jojo.signup.v1.{encoded}".encode(), hashlib.sha256).hexdigest())
-        payload = json.loads(base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)))
-        assert payload["email"] == "reader@example.com"
-        assert payload["required"] is required
-        assert payload["code"] == ("ABC234" if required else "")
-        assert config.get.call_args.args == ("auth_signup_config",)
+        assert response.json() == {"authorization":"signed-receipt"}
+        assert seen[0][1]["headers"] == {"apikey":TOKEN}
+        assert seen[0][1]["json"] == {"p_email":"reader@example.com","p_code":"ABC234" if required else "","p_invitation_required":required}
+        assert seen[0][0].endswith("/rpc/authorize_signup")
         assert client.post("/v1/account/signup-authorization", json={"email":"x@example.com","invitationRequired":False}).status_code == 422
         if required:
             assert client.post("/v1/account/signup-authorization", json={"email":"x@example.com"}).status_code == 400
 
 
-def test_signup_denies_missing_server_credentials_and_unavailable_posthog():
+def test_signup_denies_unavailable_policy_and_missing_server_key():
     app = create_app()
     config = AsyncMock()
     config.get.side_effect = ApiError(503, "remote_config_unavailable", "unavailable")
@@ -99,38 +96,35 @@ def test_signup_denies_missing_server_credentials_and_unavailable_posthog():
     app.dependency_overrides[get_settings] = settings
     with TestClient(app) as client:
         assert client.post("/v1/account/signup-authorization", json={"email":"x@example.com"}).status_code == 503
-        app.dependency_overrides[get_settings] = lambda: replace(settings(), operator_token=None)
-        config.get.reset_mock()
+        app.dependency_overrides[get_settings] = lambda: replace(settings(), supabase_secret_key=None)
+        config.get.side_effect = None
+        config.get.return_value = {"invitationRequired":False}
         assert client.post("/v1/account/signup-authorization", json={"email":"x@example.com"}).status_code == 503
-        config.get.assert_not_called()
 
 
-def test_annotation_gateway_forwards_captured_identity_and_its_own_threshold(monkeypatch):
+def test_annotation_gateway_verifies_identity_before_sending_its_own_threshold(monkeypatch):
     app = create_app()
     config = AsyncMock()
-    config.get.return_value = {"publicMarkThreshold": 7}
+    config.get.return_value = {"publicMarkThreshold":7}
     app.dependency_overrides[get_remote_config] = lambda: config
     app.dependency_overrides[get_settings] = settings
     seen = []
+    async def get(_self, path, **kwargs):
+        assert path == "/auth/v1/user"
+        assert kwargs["headers"]["Authorization"] == "Bearer captured-reader-token"
+        return httpx.Response(200, json={"id":"verified-reader"})
     async def post(_self, url, **kwargs):
         seen.append((url, kwargs))
         return httpx.Response(200, json=[])
+    monkeypatch.setattr(httpx.AsyncClient, "get", get)
     monkeypatch.setattr(httpx.AsyncClient, "post", post)
     with TestClient(app) as client:
-        body = {"operation":"get_annotation_threads","params":{"p_public_mark_threshold":1}}
+        body = {"operation":"get_annotation_threads","params":{"p_public_mark_threshold":1,"p_user_id":"victim"}}
         assert client.post("/v1/annotations", json=body).status_code == 401
         assert not seen
-        response = client.post("/v1/annotations", json=body, headers={"Authorization":"Bearer captured-reader-token"})
+        response = client.post("/v1/annotations",json=body,headers={"Authorization":"Bearer captured-reader-token"})
         assert response.status_code == 200
-        assert seen[0][1]["headers"]["Authorization"] == "Bearer captured-reader-token"
+        assert seen[0][1]["headers"] == {"apikey":TOKEN}
+        assert seen[0][1]["json"]["p_user_id"] == "verified-reader"
         assert seen[0][1]["json"]["p_public_mark_threshold"] == 7
-        assert seen[0][1]["json"]["p_operator_token"] == TOKEN
         assert TOKEN not in response.text
-
-
-def test_authorization_encoding_is_stable_for_database_verification():
-    signed = sign_signup_authorization("reader@example.com", "ABC234", True, TOKEN, now=1000)
-    encoded, _ = signed.split(".")
-    assert json.loads(base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4))) == {
-        "email":"reader@example.com", "code":"ABC234", "required":True, "expires":1120,
-    }
