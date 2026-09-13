@@ -164,10 +164,10 @@ describe("JOJO Web navigation", () => {
 
   it("shows AI and Times only to signed-in readers and keeps Support immediately before About", () => {
     expect(buildAppNavigationItems(false).map((item) => item.label)).toEqual([
-      "首页", "资料库", "搜索", "支持我们", "关于",
+      "首页", "资料库", "搜索", "捐助", "关于",
     ]);
     expect(buildAppNavigationItems(true).map((item) => item.label)).toEqual([
-      "首页", "资料库", "搜索", "AI", "时事", "支持我们", "关于",
+      "首页", "资料库", "搜索", "AI", "时事", "捐助", "关于",
     ]);
     expect(buildAppNavigationItems(true).find((item) => item.href === "/rag")).toMatchObject({
       label: "AI",
@@ -420,7 +420,7 @@ describe("Support page", () => {
   it("opens the independent Support page from its sibling navigation entry", async () => {
     renderAt("/support");
     const navigation = screen.getByRole("navigation", { name: "主导航" });
-    const support = within(navigation).getByRole("link", { name: "支持我们" });
+    const support = within(navigation).getByRole("link", { name: "捐助" });
     expect(support.nextElementSibling).toBe(within(navigation).getByRole("link", { name: "关于" }));
     fireEvent.click(support);
 

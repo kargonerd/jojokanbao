@@ -15,7 +15,7 @@ describe('Desktop shell routes', () => {
     expect(navigation.querySelector('a[href="/library"]')).toHaveTextContent('资料库');
     expect(navigation.querySelector('a[href="/search"]')).toHaveTextContent('搜索');
     expect(navigation.querySelector('a[href="/support"]')).toHaveTextContent('关于');
-    expect(navigation.querySelector('a[href="/donate"]')).toHaveTextContent('支持我们');
+    expect(navigation.querySelector('a[href="/donate"]')).toHaveTextContent('捐助');
     expect(navigation.querySelector('a[href="/donate"]')?.nextElementSibling).toBe(navigation.querySelector('a[href="/support"]'));
     expect(navigation.querySelector('a[href="/rag"]')).toBeNull();
     expect(navigation.querySelector('a[href="/settings"]')).toBeNull();
@@ -51,7 +51,7 @@ describe('Desktop shell routes', () => {
     const view = render(<RouterProvider router={router} />);
     try {
       const navigation = screen.getByRole('navigation', { name: '主导航' });
-      const support = within(navigation).getByRole('link', { name: '支持我们' });
+      const support = within(navigation).getByRole('link', { name: '捐助' });
       expect(support).toHaveAttribute('href', '#/donate');
       expect(support.nextElementSibling).toBe(within(navigation).getByRole('link', { name: '关于' }));
       fireEvent.click(support);
