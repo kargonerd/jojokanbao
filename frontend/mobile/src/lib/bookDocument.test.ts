@@ -84,8 +84,10 @@ describe("createBookDocument", () => {
     expect(html).toContain("column-count: 2");
     expect(html).toContain("column-fill: auto");
     expect(html).toContain("height: 100vh");
-    expect(html).toContain("padding: 5rem 2rem");
-    expect(html).toContain("padding: 5rem 4rem");
+    expect(html).toContain("padding: 72px 24px");
+    expect(html).toContain("padding: 72px 48px");
+    expect(html).toContain("column-gap: 48px");
+    expect(html).toContain("column-gap: 96px");
     expect(html).toContain("orientation: landscape");
     expect(html).toContain('data-reading-mode="paged"');
     expect(DomUtils.findOne((element) => "data-book-content" in element.attribs, parseDocument(html).children)?.attribs["data-target-id"])

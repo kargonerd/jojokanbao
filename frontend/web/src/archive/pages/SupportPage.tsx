@@ -69,7 +69,7 @@ function DonationContent() {
 export function DonationPage() {
   return (
     <SupportPageFrame platformRedesign>
-      <h1 className="mb-4 text-2xl font-bold tracking-wider text-ink">支持 JOJO 看报</h1>
+      <h1 className="mb-4 text-2xl font-bold tracking-wider text-ink">支持我们</h1>
       <DonationContent />
     </SupportPageFrame>
   );

@@ -202,6 +202,40 @@ describe("book reader bridge", () => {
     expect(createBookReaderBridgeScript("start")).not.toContain("下一章 · 继续上滑阅读");
   });
 
+  it("reports deliberate vertical scrolling once per gesture and suppresses its trailing tap", () => {
+    const { handlers, messages, advanceTime } = readerHarness("scroll");
+    const touch = (x: number, y: number) => ({ touches: [{}], changedTouches: [{ clientX: x, clientY: y }] });
+    handlers.get("touchstart")!(touch(50, 80));
+    handlers.get("touchmove")!(touch(50, 74));
+    expect(messages.some((message) => message.type === "reader-scroll-gesture")).toBe(false);
+    handlers.get("touchmove")!(touch(51, 45));
+    handlers.get("touchmove")!(touch(52, 30));
+    expect(messages.filter((message) => message.type === "reader-scroll-gesture")).toHaveLength(1);
+    handlers.get("click")!({ target: { closest: () => null }, clientX: 50, clientY: 50 });
+    expect(messages.some((message) => message.type === "reader-tap")).toBe(false);
+    advanceTime(500);
+    handlers.get("touchstart")!(touch(50, 80));
+    handlers.get("touchmove")!(touch(50, 30));
+    expect(messages.filter((message) => message.type === "reader-scroll-gesture")).toHaveLength(2);
+    expect(parseBookReaderMessage('{"type":"reader-scroll-gesture"}')).toEqual({ type: "reader-scroll-gesture" });
+  });
+
+  it("does not treat selection, controls, horizontal swipes or multitouch as reading scroll gestures", () => {
+    const { handlers, messages, window } = readerHarness("scroll");
+    const touch = (x: number, y: number) => ({ touches: [{}], changedTouches: [{ clientX: x, clientY: y }] });
+    handlers.get("touchstart")!(touch(50, 80));
+    handlers.get("touchmove")!(touch(10, 78));
+    handlers.get("touchstart")!({ ...touch(50, 80), target: { closest: () => ({}) } });
+    handlers.get("touchmove")!(touch(50, 30));
+    handlers.get("touchstart")!(touch(50, 80));
+    handlers.get("touchmove")!({ ...touch(50, 30), touches: [{}, {}] });
+    handlers.get("touchmove")!(touch(50, 10));
+    window.getSelection = () => ({ toString: () => "正在选择的文字" });
+    handlers.get("touchstart")!(touch(50, 80));
+    handlers.get("touchmove")!(touch(50, 30));
+    expect(messages.some((message) => message.type === "reader-scroll-gesture")).toBe(false);
+  });
+
   it("keeps long presses available for text selection instead of turning the page", () => {
     const { handlers, root, advanceTime } = readerHarness("paged");
     handlers.get("touchstart")!({ changedTouches: [{ clientX: 80, clientY: 50 }] });

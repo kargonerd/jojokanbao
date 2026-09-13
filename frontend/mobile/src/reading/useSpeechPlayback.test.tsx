@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@react-native-async-storage/async-storage", () => ({ default: { getItem: mocks.getItem, setItem: mocks.setItem } }));
 vi.mock("expo-audio", () => ({ useAudioPlayer: () => mocks.player, setAudioModeAsync: async () => undefined,
   preload: mocks.preload, clearPreloadedSource: mocks.clearPreloadedSource }));
+vi.mock("expo-status-bar", () => ({ StatusBar: () => null }));
 vi.mock("react-native", async () => {
   const { createElement } = await import("react");
   return { ActivityIndicator: "progress", Image: "img", Pressable: "button", ScrollView: "section", Text: "span", View: "div",

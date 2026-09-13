@@ -34,7 +34,7 @@ it("opens support directly from the settings row immediately above about", async
   expect(aboutIndex).toBeGreaterThan(0);
   const support = rows[aboutIndex - 1]!;
   const about = rows[aboutIndex]!;
-  expect(support.findAllByType("span").some((text) => text.props.children === "支持 JOJO 看报")).toBe(true);
+  expect(support.findAllByType("span").some((text) => text.props.children === "支持我们")).toBe(true);
   expect(support.parent).toBe(about.parent);
   await act(async () => support.props.onPress());
   expect(mocks.navigate).toHaveBeenCalledExactlyOnceWith("Support");

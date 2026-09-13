@@ -31,7 +31,7 @@ export function SupportScreen() {
       <ScreenHeader title="支持我们" onBack={() => navigation.goBack()} />
       <ScrollView contentContainerStyle={styles.content} bounces={!theme.eInk} overScrollMode={theme.eInk ? "never" : "auto"}>
         <View style={[styles.panel, { backgroundColor: theme.paper, borderColor: theme.rule, borderTopColor: theme.red }]}>
-          <Text accessibilityRole="header" style={[styles.title, { color: theme.red, fontFamily: theme.serif }]}>支持 JOJO 看报</Text>
+          <Text accessibilityRole="header" style={[styles.title, { color: theme.red, fontFamily: theme.serif }]}>支持我们</Text>
           <Text style={[styles.body, { color: theme.ink, fontFamily: theme.serif }]}>
             如果 JOJO 看报对您有帮助，欢迎自愿捐助，支持网站与 APP 的持续维护。
           </Text>

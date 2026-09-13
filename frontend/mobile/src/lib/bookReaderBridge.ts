@@ -3,7 +3,8 @@ import type { SpeechLocation, SpeechReadingPosition } from "@jojo/content";
 import { SPEECH_EXCLUDED_ELEMENTS } from "@jojo/content";
 import { SPEECH_READER_FACTORY } from "@jojo/content/speech-dom-script";
 import type { ReaderSelectionRect } from "@jojo/ui/reader-selection";
-import { CONTINUOUS_BOOK_SCROLL_FACTORY, type ContinuousChapter } from "./continuousBookScroll";
+import type { ContinuousChapter } from "./continuousBookScroll";
+import { CONTINUOUS_BOOK_SCROLL_FACTORY } from "./continuousBookScroll.generated";
 
 export type BookReadingMode = "paged" | "scroll";
 export type BookChapterEdge = "start" | "end";
@@ -49,6 +50,7 @@ export type BookReaderMessage =
   | { type: "reader-speech-position"; requestId: number; position: SpeechReadingPosition }
   | { type: "reader-selection-clear" }
   | { type: "reader-tap" }
+  | { type: "reader-scroll-gesture" }
   | { type: "reader-boundary"; direction: "previous" | "next" }
   | { type: "reader-chapter-request"; chapterId: string }
   | { type: "reader-annotation"; id: string }
@@ -129,6 +131,7 @@ export function parseBookReaderMessage(value: string): BookReaderMessage | null 
       return message as Extract<BookReaderMessage, { type: "reader-speech-position" }>;
     }
     if (message.type === "reader-tap") return { type: "reader-tap" };
+    if (message.type === "reader-scroll-gesture") return { type: "reader-scroll-gesture" };
     if (message.type === "reader-chapter-request" && typeof message.chapterId === "string" && message.chapterId) return { type: "reader-chapter-request", chapterId: message.chapterId };
     if (message.type === "reader-annotation" && typeof message.id === "string" && message.id) {
       return { type: "reader-annotation", id: message.id };
@@ -234,6 +237,7 @@ export function createBookReaderBridgeScript(
       var draggingPage = false;
       var touchInteractive = false;
       var touchGestureCancelled = false;
+      var scrollGestureReported = false;
       var tocAnchorIds = ${jsonArgument(navigation.tocAnchorIds ?? [])};
       var reduceMotion = ${navigation.eInk ? "true" : "false"} || Boolean(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
       var selectionGesture = false;
@@ -684,6 +688,7 @@ export function createBookReaderBridgeScript(
         if (draggingPage) showSpread(currentSpread);
         draggingPage = false;
         touchGestureCancelled = Boolean(event.touches && event.touches.length !== 1);
+        scrollGestureReported = false;
         touchInteractive = Boolean(event.target && event.target.closest && event.target.closest("a, button, input"));
 
       }, { passive: true });
@@ -792,6 +797,19 @@ export function createBookReaderBridgeScript(
         window.visualViewport.addEventListener("scroll", reportSelection);
       }
       if (!paged) {
+        document.addEventListener("touchmove", function (event) {
+          if (event.touches.length !== 1) touchGestureCancelled = true;
+          if (touchGestureCancelled || selectionGesture || touchInteractive || (window.getSelection && window.getSelection().toString())) return;
+          var touch = event.changedTouches[0];
+          var dx = touch.clientX - touchStartX;
+          var dy = touch.clientY - touchStartY;
+          if (Math.abs(dy) <= 10 || Math.abs(dy) <= Math.abs(dx)) return;
+          lastSwipeAt = Date.now();
+          if (!scrollGestureReported) {
+            scrollGestureReported = true;
+            post({ type: "reader-scroll-gesture" });
+          }
+        }, { passive: true });
         document.addEventListener("scroll", function () {
           window.clearTimeout(scrollTimer);
           scrollTimer = window.setTimeout(function () { reportScroll(); reportSelection(); }, 90);

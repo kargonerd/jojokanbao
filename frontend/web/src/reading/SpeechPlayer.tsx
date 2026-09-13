@@ -121,6 +121,7 @@ function ActiveSpeechPlayer({
   defaultVoice?: SpeechVoice;
 }) {
   const bookshelf = useContext(ReadingBookshelfContext);
+  const paperColor = bookshelf?.paperColor ?? "white";
   const [listening, setListening] = useState<{ id?: string; title?: string; segments: string[]; index: number } | null>(null);
   const segments = listening?.segments ?? readingSegments;
   const title = listening?.title ?? readingTitle;
@@ -826,9 +827,9 @@ function ActiveSpeechPlayer({
   const settingTitle = settingPanel === "sleep" ? "定时关闭" : settingPanel === "voice" ? "选择声音" : "语速设置";
 
   const panel = panelOpen ? createPortal(
-    <div className="speech-player__overlay" onKeyDown={(event) => event.stopPropagation()}>
+    <div className="speech-player__overlay" data-speech-theme={paperColor} onKeyDown={(event) => event.stopPropagation()}>
       <div ref={dialogRef} tabIndex={-1} className={`speech-player__dialog${isNews ? " is-news" : ""}`} role="dialog" aria-modal="true" aria-label={`${label}播放器`}>
-        {cover && <div className="speech-player__ambience" aria-hidden="true"><img src={cover} alt="" /></div>}
+        {cover && !bookshelf && <div className="speech-player__ambience" aria-hidden="true"><img src={cover} alt="" /></div>}
         <header className="speech-player__header">
           <button type="button" className="speech-player__close" onClick={closePlayer} aria-label="收起听读播放器">
             <NavArrowDown aria-hidden="true" />
@@ -986,14 +987,14 @@ function ActiveSpeechPlayer({
     document.body,
   ) : null;
 
-  const launcher = <section className={`speech-player${miniPlayerTarget ? " is-docked" : ""}`} aria-label={label} aria-hidden={bookshelf?.chromeHidden || undefined} inert={bookshelf?.chromeHidden}>
+  const launcher = <section className={`speech-player${miniPlayerTarget ? " is-docked" : ""}`} data-speech-theme={paperColor} aria-label={label} aria-hidden={bookshelf?.chromeHidden || undefined} inert={bookshelf?.chromeHidden}>
     <button ref={launcherRef} type="button" className={`speech-player__launcher${active ? " is-playing" : ""}`} onClick={openPlayer} disabled={!playableSegments.length} aria-label={`打开${label}播放器`}>
       <span className="speech-player__launcher-mark">听</span>
     </button>
   </section>;
   const mini = sessionStarted && !panelOpen ? createPortal(
-    <section className={`speech-mini${bookshelf ? " is-reader" : ""}${miniPlayerTarget ? " is-docked" : ""}`} aria-label="迷你听读播放器" aria-hidden={bookshelf?.chromeHidden || undefined} inert={bookshelf?.chromeHidden} onKeyDown={(event) => event.stopPropagation()}>
-      {cover && <div className="speech-player__ambience speech-mini__ambience" aria-hidden="true"><img src={cover} alt="" /></div>}
+    <section className={`speech-mini${bookshelf ? " is-reader" : ""}${miniPlayerTarget ? " is-docked" : ""}`} data-speech-theme={paperColor} aria-label="迷你听读播放器" aria-hidden={bookshelf?.chromeHidden || undefined} inert={bookshelf?.chromeHidden} onKeyDown={(event) => event.stopPropagation()}>
+      {cover && !bookshelf && <div className="speech-player__ambience speech-mini__ambience" aria-hidden="true"><img src={cover} alt="" /></div>}
       <div className="speech-mini__inner">
         <button ref={miniExpandRef} type="button" className="speech-mini__content" onClick={openPlayer} aria-label={`展开播放器：${displayTitle}`}>
           <span className={`speech-mini__cover${isNews ? " is-news" : ""}${publisherCover ? " is-logo" : ""}`}>{cover ? <img src={cover} alt="" onError={() => setFailedArtwork((failed) => [...failed, cover])} /> : <Headset aria-hidden="true" />}</span>
@@ -1008,7 +1009,7 @@ function ActiveSpeechPlayer({
     </section>, miniPlayerTarget || document.body,
   ) : null;
   const loginPanel = panelOpen && !userId ? createPortal(
-    <div className="speech-player__overlay" onKeyDown={(event) => { if (event.key === "Escape") setPanelOpen(false); }}>
+    <div className="speech-player__overlay" data-speech-theme={paperColor} onKeyDown={(event) => { if (event.key === "Escape") setPanelOpen(false); }}>
       <div ref={dialogRef} tabIndex={-1} className="speech-player__login" role="dialog" aria-modal="true" aria-label="登录后听读">
       <h2>登录后即可听书、听新闻</h2><p>听到的位置会保存在当前浏览器。</p>
       <div className="speech-player__login-actions"><a href={`/account?returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`}>前往登录</a>

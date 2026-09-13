@@ -25,7 +25,7 @@ export function AccountEntry() {
         </p>
         <div className="flex flex-col items-start gap-5 text-sm font-bold text-red">
           <Link to="/">返回首页 →</Link>
-          <Link to="/donate">支持 JOJO 看报 →</Link>
+          <Link to="/donate">支持我们 →</Link>
           <Link to="/support">关于 JOJO 看报 →</Link>
         </div>
       </div>

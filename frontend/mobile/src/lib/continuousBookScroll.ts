@@ -167,5 +167,3 @@ export function createContinuousBookScroll(
     start: () => { paused = false; anchor = captureAnchor(); loadNearby(); },
   };
 }
-
-export const CONTINUOUS_BOOK_SCROLL_FACTORY = createContinuousBookScroll.toString();
