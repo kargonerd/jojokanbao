@@ -32,12 +32,11 @@ class ContentCacheTest(unittest.TestCase):
         self.session = Mock()
         self.session.__enter__ = Mock(return_value=self.session)
         self.session.__exit__ = Mock(return_value=False)
-        self.run = Mock()
 
     def response(self, key, value):
         return Mock(content=_transform_jox(gzip.compress(_json_bytes(value)), key))
 
-    def test_purges_only_mutable_objects_and_waits_for_stale_cdn(self):
+    def test_reads_only_mutable_objects_and_waits_for_stale_cdn(self):
         calls = {}
 
         def get(url, **_):
@@ -52,12 +51,11 @@ class ContentCacheTest(unittest.TestCase):
 
         self.session.get.side_effect = get
         with patch.object(content_cache.requests, "Session", return_value=self.session), patch.object(content_cache.time, "sleep"), patch.dict(content_cache.os.environ, {"VITE_CONTENT_CDN_BASE": "https://example.test/"}):
-            result = content_cache.refresh_book_delivery(self.root, self.run, lambda _: None)
+            result = content_cache.refresh_book_delivery(self.root, lambda _: None)
         self.assertEqual(result["status"], "verified")
         self.assertEqual(calls[self.index], 2)
         self.assertEqual(calls[self.manifest], 1)
-        command = self.run.call_args.args[0]
-        self.assertEqual(set(command[2:]), {"https://example.test/" + key for key in self.values})
+        self.assertEqual(set(calls), set(self.values))
 
     def test_timeout_does_not_hide_a_wrong_reading_gate(self):
         def get(url, **_):
@@ -70,14 +68,24 @@ class ContentCacheTest(unittest.TestCase):
         self.session.get.side_effect = get
         with patch.object(content_cache.requests, "Session", return_value=self.session), patch.object(content_cache.time, "monotonic", side_effect=[0, 181]):
             with self.assertRaisesRegex(RuntimeError, "线上缓存尚未更新"):
-                content_cache.refresh_book_delivery(self.root, self.run, lambda _: None)
+                content_cache.refresh_book_delivery(self.root, lambda _: None)
 
-    def test_failed_purge_does_not_verify_or_report_success(self):
-        self.run.side_effect = RuntimeError("purge failed")
-        with patch.object(content_cache.requests, "Session") as session:
-            with self.assertRaisesRegex(RuntimeError, "purge failed"):
-                content_cache.refresh_book_delivery(self.root, self.run, lambda _: None)
-            session.assert_not_called()
+    def test_transient_network_failure_retries_unverified_objects(self):
+        calls = {}
+
+        def get(url, **_):
+            key = next(key for key in self.values if url.endswith(key))
+            calls[key] = calls.get(key, 0) + 1
+            if key == self.manifest and calls[key] == 1:
+                raise content_cache.requests.ConnectionError("temporary failure")
+            return self.response(key, self.values[key])
+
+        self.session.get.side_effect = get
+        with patch.object(content_cache.requests, "Session", return_value=self.session), patch.object(content_cache.time, "sleep"):
+            result = content_cache.refresh_book_delivery(self.root, lambda _: None)
+        self.assertEqual(result["status"], "verified")
+        self.assertEqual(calls[self.manifest], 2)
+        self.assertEqual(calls[self.index], 1)
 
 
 if __name__ == "__main__":

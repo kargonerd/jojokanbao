@@ -152,7 +152,7 @@ def publish_b2(build_root: Path, on_log: Callable[[str], None]) -> dict[str, Any
         "rclone", "copy", str(merged_metadata), delivery_remote,
         "--filter", "+ /catalog.jox", "--filter", "- **", *MUTABLE_DELIVERY_FLAGS,
     ], on_log)
-    cache = refresh_book_delivery(build_root, _run, on_log)
+    cache = refresh_book_delivery(build_root, on_log)
     return {"datasets": len(dataset_ids), "deliveryRemote": delivery_remote, "cache": cache}
 
 

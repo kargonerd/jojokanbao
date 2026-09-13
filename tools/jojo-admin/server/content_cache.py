@@ -1,4 +1,4 @@
-"""Refresh mutable book metadata and verify the reader-facing CDN before success."""
+"""Wait for mutable metadata to expire and verify the reader-facing CDN."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "content-pipeline")
 from jojo_format import _decode_jox, _transform_jox
 
 
-def refresh_book_delivery(build_root: Path, run, on_log) -> dict:
+def refresh_book_delivery(build_root: Path, on_log) -> dict:
     report = json.loads((build_root / "report.json").read_text(encoding="utf-8"))
     dataset_ids = {item["datasetId"] for item in report["itemsBuilt"]}
     manifests = sorted({item["manifestObject"] for item in report["itemsBuilt"]})
@@ -27,8 +27,7 @@ def refresh_book_delivery(build_root: Path, run, on_log) -> dict:
         source = build_root / ("delivery" if key in manifests else ".publish/merged") / key
         expected[key] = _decode_jox(source, key)
 
-    on_log("文件已上传，正在刷新线上目录与阅读缓存")
-    run(["node", "tools/archive-pdf/purge-cache.mjs", *[f"{origin}/{quote(key, safe='/')}" for key in keys]], on_log)
+    on_log("文件已上传，正在等待线上缓存更新并核对发布结果")
 
     def comparable(key, value):
         # Other books may be published concurrently; only compare our entries.

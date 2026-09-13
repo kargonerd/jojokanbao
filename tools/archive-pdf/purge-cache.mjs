@@ -1,13 +1,5 @@
 #!/usr/bin/env node
 import crypto from "node:crypto";
-import { execFile } from "node:child_process";
-import { mkdtemp, writeFile, unlink, rmdir } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
-
-const execFileAsync = promisify(execFile);
 
 const SERVICE = "teo";
 const VERSION = "2022-09-01";
@@ -24,8 +16,6 @@ Options:
 Environment:
   TENCENTCLOUD_SECRET_ID or TENCENT_SECRET_ID
   TENCENTCLOUD_SECRET_KEY or TENCENT_SECRET_KEY
-  TENCENTCLOUD_TOKEN for temporary environment credentials. Without environment
-  credentials, the existing tccli login/profile is used (including OAuth refresh).
   EDGEONE_ZONE_ID may be used instead of --zone-id. If neither is supplied, the
   closest matching EdgeOne zone is discovered from the target URL hostname.
   EDGEONE_ENDPOINT may be used instead of --endpoint
@@ -93,11 +83,10 @@ function hmac(key, value, encoding) {
 function getCredential() {
   const secretId = process.env.TENCENTCLOUD_SECRET_ID ?? process.env.TENCENT_SECRET_ID;
   const secretKey = process.env.TENCENTCLOUD_SECRET_KEY ?? process.env.TENCENT_SECRET_KEY;
-  if (!secretId && !secretKey) return null;
   if (!secretId || !secretKey) {
     throw new Error("Tencent Cloud credentials are required in TENCENTCLOUD_SECRET_ID/TENCENTCLOUD_SECRET_KEY");
   }
-  return { secretId, secretKey, token: process.env.TENCENTCLOUD_TOKEN };
+  return { secretId, secretKey };
 }
 
 function buildAuthorization({ action, endpoint, payload, secretId, secretKey, timestamp }) {
@@ -123,34 +112,8 @@ function buildAuthorization({ action, endpoint, payload, secretId, secretKey, ti
   return `TC3-HMAC-SHA256 Credential=${secretId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
 }
 
-export async function requestTencent({ action, credential, endpoint, payload, runCli = execFileAsync }) {
+async function requestTencent({ action, credential, endpoint, payload }) {
   const body = JSON.stringify(payload);
-  if (!credential) {
-    // Let tccli refresh its own OAuth credentials. Never copy credentials into
-    // command arguments or persist a second credential file for the publisher.
-    const directory = await mkdtemp(join(tmpdir(), "jojo-purge-"));
-    const input = join(directory, "request.json");
-    try {
-      await writeFile(input, body, "utf8");
-      const { stdout } = await runCli("tccli", [
-        "teo", action, "--cli-input-json", `file://${input}`, "--endpoint", endpoint,
-      ], { encoding: "utf8", timeout: 120_000, windowsHide: true });
-      const result = JSON.parse(stdout);
-      const response = result.Response ? result : { Response: result };
-      if (response.Response.Error) throw new Error(`EdgeOne ${action} failed: ${JSON.stringify(response.Response.Error)}`);
-      return response;
-    } catch (error) {
-      // Preserve the domain error needed to try another matching zone, without
-      // including a CLI command line or credential diagnostics in job logs.
-      if (String(error?.stderr).includes("InvalidParameter.DomainNotFound")) {
-        throw new Error("InvalidParameter.DomainNotFound");
-      }
-      throw new Error(`EdgeOne ${action} failed through tccli; check its login and permissions (${error?.code ?? "invalid response"})`);
-    } finally {
-      await unlink(input).catch(() => {});
-      await rmdir(directory);
-    }
-  }
   const timestamp = Math.floor(Date.now() / 1000);
   const authorization = buildAuthorization({
     action,
@@ -170,7 +133,6 @@ export async function requestTencent({ action, credential, endpoint, payload, ru
       "X-TC-Action": action,
       "X-TC-Timestamp": String(timestamp),
       "X-TC-Version": VERSION,
-      ...(credential.token ? { "X-TC-Token": credential.token } : {}),
     },
     body,
   });
@@ -241,9 +203,6 @@ async function main() {
           ...(options.method ? { Method: options.method } : {}),
         },
       });
-      if (result.Response?.FailedList?.length) {
-        throw new Error(`EdgeOne rejected purge targets: ${JSON.stringify(result.Response.FailedList)}`);
-      }
       console.log(JSON.stringify(result));
       return;
     } catch (error) {
@@ -255,9 +214,7 @@ async function main() {
   }
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  main().catch((error) => {
-    console.error(error instanceof Error ? error.message : String(error));
-    process.exitCode = 1;
-  });
-}
+main().catch((error) => {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
+});
