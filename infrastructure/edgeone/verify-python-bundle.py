@@ -113,7 +113,7 @@ def verify(bundle: Path) -> None:
             response = await client.post("/api/v1/account/signup-authorization", json={"email": "reader@example.invalid"})
             require(response.status_code == 503, "Signup must reject missing server credentials")
             response = await client.post("/api/v1/annotations", json={"operation": "get_annotation_threads", "params": {}})
-            require(response.status_code == 401, "Annotations must require a reader session")
+            require(response.status_code == 404, "Reader annotations must not be served by the Python bundle")
 
     async def check_streaming_runtime():
         require(any(getattr(route, "path", None) == "/v1/speech/stream/" for route in application.routes),
