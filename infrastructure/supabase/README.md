@@ -17,8 +17,9 @@ SUPABASE_PROJECT_REF=
 VITE_SUPABASE_URL=
 VITE_SUPABASE_PUBLISHABLE_KEY=
 
-# Existing local operator secret. Do not prefix it with VITE_.
-JOJO_OPERATOR_TOKEN=
+# Server-only access for the Python API, the Agent and the local admin
+# workbench. Equivalent to the service_role key. Never prefix it with VITE_.
+SUPABASE_SECRET_KEY=
 ```
 
 `.env.local` may override values for one machine. Both files are ignored by
@@ -41,22 +42,17 @@ pnpm dlx supabase functions deploy delete-account
 The database migration must be pushed before the Auth config because the config
 enables a hook backed by `public.hook_require_signup_invitation`.
 
-### Configure the Operator credential
+### Configure server credentials
 
-Registration authorization, trusted policy operations and local administration use `JOJO_OPERATOR_TOKEN`.
-After applying the reviewed database migrations, register the SHA-256 digest of
-the token in the target project:
+Registration authorization, quota accounting, annotation writes and the management
+endpoints run as `service_role`. Read the project secret key from
+`GET /v1/projects/{ref}/api-keys?reveal=true` (`type=secret`) and set the same
+`SUPABASE_SECRET_KEY` in the Python API, the Agent and the local JOJO admin
+workbench. The raw credential must never enter a client build.
 
-```sql
-insert into private.operator_credentials (singleton, token_digest)
-values (true, extensions.digest('<same JOJO_OPERATOR_TOKEN>', 'sha256'))
-on conflict (singleton) do update
-set token_digest = excluded.token_digest,
-    updated_at = timezone('utc', now());
-```
-
-The Python API, Agent and JOJO 管理台 Flask server keep the same token in their
-server environment. The raw credential must never enter a client build.
+`202609130005_admin_api_auth.sql` removed the earlier `private.operator_credentials`
+table and the operator-token RPC parameters. Do not re-create them; there is no
+token digest to register any more.
 
 Apply complete migrations and record their versions in the same transaction.
 Check pending migrations and coordinate API/client releases with the

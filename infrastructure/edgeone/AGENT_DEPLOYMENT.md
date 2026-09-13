@@ -61,7 +61,10 @@ JOJO_AGENT_PROVIDER=openai-codex
 JOJO_AGENT_MODEL=gpt-5.6-luna
 
 JOJO_CREDENTIAL_ENCRYPTION_KEY=<32-byte random key encoded as base64>
-JOJO_OPERATOR_TOKEN=<at least 32 random characters>
+SUPABASE_SECRET_KEY=<Supabase secret key, service_role equivalent>
+
+POSTHOG_PROJECT_TOKEN=<PostHog 公开项目 Token>
+POSTHOG_API_HOST=https://us.i.posthog.com
 ```
 
 Agent 默认使用 Luna，推理强度固定为 `low`，优先控制 MVP 阶段的订阅额度消耗。
@@ -75,8 +78,8 @@ JOJO_AGENT_MODEL=gemini-3.5-flash-lite
 
 `JOJO_AGENT_MODEL` 留空也会选择该默认模型。修改后重新部署国际 Agent；
 Reader/Web/Mobile 不单独配置模型。本地开发则在根目录 `.env.local` 修改并重启 `pnpm dev:agent`。
-先运行 `pnpm --filter @jojo/agent auth:antigravity`，再运行
-`pnpm --filter @jojo/agent credentials:push -- antigravity` 上传；上传本身不切换运行 provider。
+先运行 `pnpm --filter @jojo/agent auth:antigravity`，再在管理台 `/agent` 页面选择
+Antigravity 并点「更新 Agent 凭据」上传；上传本身不切换运行 provider。
 部署端自动刷新过期 access token 并回写加密 Store。Google 未轮换 refresh token 时保留原值。
 Antigravity 使用固定版本 `pi-antigravity@0.7.2` 及仓库补丁；生成包携带同一补丁和可选 peer
 配置。JOJO 本地登录入口和 `auth.json` 不包含在部署源码中。
@@ -96,8 +99,9 @@ Agent 实例之间串行准入；不同设备和会话也共享同一个账号�
 后也不会永久锁住账号。状态仅存计数和时间，不保存问题或回答，注销账号时自动删除。
 
 部署时应用仓库数据库迁移，并按 [PostHog 配置指南](../../docs/posthog.md#部署与初始化)
-设置 Agent 运行环境的 `POSTHOG_PROJECT_TOKEN` 与 `POSTHOG_API_HOST`。Agent 使用 `JOJO_OPERATOR_TOKEN` 调用配额 RPC，
-该值必须与 Supabase Operator 密钥摘要匹配。配额服务不可用时拒绝开始新生成。
+设置 Agent 运行环境的 `POSTHOG_PROJECT_TOKEN` 与 `POSTHOG_API_HOST`。Agent 使用
+`SUPABASE_SECRET_KEY`（service_role 等级）调用配额 RPC，这两个 RPC 只授予 `service_role`。
+配额服务不可用时拒绝开始新生成。
 `/rag/health` 只检查模型配置，发布后还必须验证实际认证请求和配额 RPC。
 
 管理员在 PostHog 的 `ai_usage_limits_config` 调整参数：
@@ -124,18 +128,20 @@ Agent 进程内并行查询两个固定的 IP 服务，最多等待 3 秒。Trac
 
 `JOJO_CREDENTIAL_ENCRYPTION_KEY` 用于把平台托管凭据以 AES-256-GCM 形式写入
 Makers 内置 Store。Agent 的 `context.store` 与 Cloud Function 的
-`context.agent.store` 访问同一份数据。`JOJO_OPERATOR_TOKEN` 用于平台运维操作，
-不能发送给浏览器；后续由 JOJO 管理员登录和 RBAC 替代。
+`context.agent.store` 访问同一份数据。`/gateway/credentials` 由 JOJO 管理员登录态鉴权：
+Agent 用 `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY` 校验 Supabase JWT，并要求
+`app_metadata.jojo_roles` 含 `admin`，否则返回 403。凭据和密钥都不发送给浏览器。
 
-PowerShell 生成两个随机值：
+PowerShell 生成加密密钥：
 
 ```powershell
 $encryptionBytes = [Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
 [Convert]::ToBase64String($encryptionBytes)
-
-$adminBytes = [Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
-[Convert]::ToHexString($adminBytes).ToLowerInvariant()
 ```
+
+`SUPABASE_SECRET_KEY` 不是自定义随机值，直接取 Supabase 项目设置里的 secret key
+（管理 API 的 `GET /v1/projects/{ref}/api-keys?reveal=true`，`type=secret` 那一项）。
+Python API 与 Agent 使用同一个值。
 
 ## 发布顺序
 
@@ -153,38 +159,38 @@ $adminBytes = [Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
 pnpm --filter @jojo/agent auth:codex
 ```
 
-部署国际项目后，把本地凭证通过 HTTPS 写入加密 Store：
+部署国际项目后，在管理台把本地凭证通过受保护接口写入加密 Store：
 
 ```powershell
-$env:JOJO_CREDENTIAL_SERVICE_URL="https://agent-global.jojokanbao.cn"
-$env:JOJO_OPERATOR_TOKEN="<与 Makers 项目一致>"
-pnpm push:credentials
+pnpm dev:admin
+# 打开 http://127.0.0.1:4174/agent
 ```
 
-仓库根命令 `pnpm push:credentials` 会调用 `@jojo/agent` 的
-`credentials:push`。这不是把本地 OAuth 文件原样复制到 Store：部署端会在持久化前先
-刷新一次凭据，将新生成的 rotating refresh token 写入加密 Store，并由部署端接管该
-token。上传成功后，本地 `agent/auth.json` 中的 refresh token 已被消费，不能再用于本地
-Agent。若还要继续本地调试，必须再次执行 `pnpm --filter @jojo/agent auth:codex`，建立与
-部署端相互独立的本地登录；不要再上传这份本地凭据，除非有意替换部署端凭据。
+`@jojo/agent` 没有凭据上传 CLI，管理台 `/agent` 页面是唯一上传入口。两点前置条件：
+账号需要带 `agent` 权限的 JOJO 管理员角色，`.env` 需要配置 `JOJO_CREDENTIAL_SERVICE_URL`
+指向已部署的 Agent（例如 `https://agent-global.jojokanbao.cn`）。进入页面后选择
+`OAuth Provider`，点「更新 Agent 凭据」并确认。浏览器不读取 OAuth 明文，凭据只在本机
+服务和部署端之间传输。
 
-如果上传或 Agent 请求报告 `refresh_token_reused`，不要反复重试旧
-`agent/auth.json`。按以下顺序重新登录并上传：
+上传不是把本地 OAuth 文件原样复制到 Store：部署端会在持久化前先刷新一次凭据，将新生成的
+rotating refresh token 写入加密 Store，并由部署端接管该 token。上传成功后，本地
+`agent/auth.json` 中的 refresh token 已被消费，不能再用于本地 Agent。若还要继续本地调试，
+必须再次执行 `pnpm --filter @jojo/agent auth:codex`，建立与部署端相互独立的本地登录；
+不要再上传这份本地凭据，除非有意替换部署端凭据。
+
+如果上传或 Agent 请求报告 `refresh_token_reused`，不要反复重试旧 `agent/auth.json`。
+先重新登录，再回管理台 `/agent` 页面重新上传：
 
 ```powershell
 pnpm --filter @jojo/agent auth:codex
-pnpm --filter @jojo/agent credentials:push
+pnpm dev:admin
 ```
 
-第二步成功后，部署端已经拥有新 token；如仍需本地运行 Agent，再执行一次
+上传成功后，部署端已经拥有新 token；如仍需本地运行 Agent，再执行一次
 `pnpm --filter @jojo/agent auth:codex`，取得仅供本地使用的独立凭据。
 
-也可以启动 `pnpm dev:admin`，在本机 JOJO 管理台的 `/agent` 页面检查凭据来源并确认
-更新。管理台复用同一个 `JOJO_OPERATOR_TOKEN`，浏览器不读取 Token 或 OAuth 明文；
-部署端必须先配置相同的 Operator Token。
-
-上传体不经过环境变量，因此不受 Makers 单个环境变量 500 字节限制。命令只上传
-`openai-codex` OAuth 项，不上传 Pi 文件里的其他 Provider 凭据。
+上传体不经过环境变量，因此不受 Makers 单个环境变量 500 字节限制。一次上传只写入所选
+provider 的 OAuth 项，不上传 Pi 文件里的其他 Provider 凭据。
 
 ## 调用
 

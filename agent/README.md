@@ -74,16 +74,18 @@ Pi 在每次请求前检查有效期；过期时刷新并回写凭据。Google �
 核心模块不依赖 `pi-coding-agent`；
 根包和生成的部署包均将该可选 peer 排除。升级包时需同步复核补丁和内部导入路径。
 
-上传指定 provider（不改变运行时 provider）：
+上传指定 provider（不改变运行时 provider）：在管理台的 `/agent` 页面选择 OAuth Provider，
+再点「更新 Agent 凭据」。
 
 ```powershell
-pnpm --filter @jojo/agent credentials:push -- antigravity
-pnpm --filter @jojo/agent credentials:push -- openai-codex
+pnpm dev:admin
+# 打开 http://127.0.0.1:4174/agent
 ```
 
-不传参数时按 `JOJO_AGENT_PROVIDER` 选择。部署端先刷新并校验上传的 OAuth，再写入
-现有加密 Store。两家 provider 使用独立命名空间，Codex 继续读取原有存储地址，
-避免相互刷新时覆盖凭据。管理台 `/agent` 也可选择上传的 provider。
+`@jojo/agent` 没有凭据上传 CLI，管理台是唯一上传入口（需要带 `agent` 权限的 JOJO 管理员账号，
+并先在 `.env` 配置 `JOJO_CREDENTIAL_SERVICE_URL` 指向已部署的 Agent）。部署端先刷新并校验
+上传的 OAuth，再写入现有加密 Store。两家 provider 使用独立命名空间，Codex 继续读取原有
+存储地址，避免相互刷新时覆盖凭据。
 
 ## 本地登录与验证
 
@@ -96,18 +98,18 @@ Pi 会打开浏览器完成 ChatGPT 登录，并把凭证写入被 Git 忽略的
 `agent/auth.json`。也可以用 `JOJO_AGENT_AUTH_PATH` 指向一份由 Agent 独占、可回写的 Pi
 兼容凭证文件；不要指向 Codex 应用自身的 `~/.codex/auth.json`。
 
-向已部署项目上传凭据时，`credentials:push` 不是简单复制
-`agent/auth.json`：部署端会先刷新一次 OAuth 凭据，再把新生成的 rotating refresh
-token 写入加密 Store，从而把该 token 的所有权转移给部署端。上传成功后，本地文件中的
-refresh token 已被消费；如果还要在本地继续运行 Agent，必须再次执行
-`pnpm --filter @jojo/agent auth:codex`，为本地建立一份独立登录。不要把这次本地登录再次
-上传，除非确实要替换部署端凭据。
+向已部署项目上传凭据时，管理台的更新不是简单复制 `agent/auth.json`：部署端会先刷新一次
+OAuth 凭据，再把新生成的 rotating refresh token 写入加密 Store，从而把该 token 的所有权
+转移给部署端。上传成功后，本地文件中的 refresh token 已被消费；如果还要在本地继续运行
+Agent，必须再次执行 `pnpm --filter @jojo/agent auth:codex`，为本地建立一份独立登录。
+不要把这次本地登录再次上传，除非确实要替换部署端凭据。
 
-如果出现 `refresh_token_reused`，不要重试旧凭据。先重新登录，再重新上传：
+如果出现 `refresh_token_reused`，不要重试旧凭据。先重新登录，再到管理台 `/agent` 页面
+重新上传：
 
 ```powershell
 pnpm --filter @jojo/agent auth:codex
-pnpm --filter @jojo/agent credentials:push
+pnpm dev:admin
 ```
 
 上传后若仍需本地运行，再单独执行一次 `auth:codex`。
