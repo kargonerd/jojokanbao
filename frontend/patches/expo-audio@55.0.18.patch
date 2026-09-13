@@ -40,7 +40,7 @@ index 72a6e9e990bdc9bab549536981fc2e08eeb4837e..3e0102b10486bf1f9ce59209d377624a
          runOnMain {
            player.setSamplingEnabled(enabled)
 diff --git a/android/src/main/java/expo/modules/audio/AudioPlayer.kt b/android/src/main/java/expo/modules/audio/AudioPlayer.kt
-index f7c43641fc12b627c70759fb49bbe65e746c4c1d..0bc8b039b5e91b5ca8945e9d1ccf99dfb5af945e 100644
+index f7c43641fc12b627c70759fb49bbe65e746c4c1d..64a3465fbb71c1c8e7e9c9656dd5ff8a4f5ee75c 100644
 --- a/android/src/main/java/expo/modules/audio/AudioPlayer.kt
 +++ b/android/src/main/java/expo/modules/audio/AudioPlayer.kt
 @@ -17,6 +17,7 @@ import androidx.media3.exoplayer.source.MediaSource
@@ -71,12 +71,13 @@ index f7c43641fc12b627c70759fb49bbe65e746c4c1d..0bc8b039b5e91b5ca8945e9d1ccf99df
        serviceConnection.playbackServiceBinder?.service?.unregisterPlayer()
      }
    }
-@@ -156,11 +163,19 @@ class AudioPlayer(
+@@ -156,11 +163,20 @@ class AudioPlayer(
    }
  
    fun clearLockScreenControls() {
 +    lockScreenPlayer.updatePlayback(null)
      if (isActiveForLockScreen) {
++      isActiveForLockScreen = false
        serviceConnection.playbackServiceBinder?.service?.unregisterPlayer()
      }
    }
@@ -91,7 +92,7 @@ index f7c43641fc12b627c70759fb49bbe65e746c4c1d..0bc8b039b5e91b5ca8945e9d1ccf99df
    private fun startUpdating() {
      updateJob?.cancel()
      updateJob = flow {
-@@ -367,7 +382,7 @@ class AudioPlayer(
+@@ -367,7 +383,7 @@ class AudioPlayer(
        playerListener?.let { ref.removeListener(it) }
        playerScope.cancel()
        visualizer?.release()
@@ -513,10 +514,10 @@ index 6b933772051bcf360935fa09e9855ec99779d4df..d96f88017d016ba5f385317f635a9367
        service.playbackListener = null
 diff --git a/android/src/main/java/expo/modules/audio/service/LockScreenAudioPlayer.kt b/android/src/main/java/expo/modules/audio/service/LockScreenAudioPlayer.kt
 new file mode 100644
-index 0000000000000000000000000000000000000000..cca5b7f880016546710685672533a35c90ae3d8d
+index 0000000000000000000000000000000000000000..dc0a9f92e713ea0b8fa420f820dbbeeb127e3623
 --- /dev/null
 +++ b/android/src/main/java/expo/modules/audio/service/LockScreenAudioPlayer.kt
-@@ -0,0 +1,128 @@
+@@ -0,0 +1,147 @@
 +package expo.modules.audio.service
 +
 +import android.net.Uri
@@ -539,6 +540,7 @@ index 0000000000000000000000000000000000000000..cca5b7f880016546710685672533a35c
 +) : ForwardingSimpleBasePlayer(player) {
 +  private var chapter: LockScreenPlaybackState? = null
 +  private var metadata: MediaMetadata = MediaMetadata.EMPTY
++  private var chapterPosition: PositionSupplier = PositionSupplier.ZERO
 +
 +  val hasChapter: Boolean get() = chapter != null
 +
@@ -546,6 +548,16 @@ index 0000000000000000000000000000000000000000..cca5b7f880016546710685672533a35c
 +    chapter = value?.takeIf {
 +      it.chapterId.isNotBlank() && it.duration.isFinite() && it.position.isFinite() && it.duration >= 0
 +    }
++    chapterPosition = chapter?.let {
++      val durationMs = (it.duration.coerceIn(0.0, 86_400_000.0) * 1000).toLong()
++      val positionMs = (it.position.coerceIn(0.0, durationMs / 1000.0) * 1000).toLong()
++      val source = if (it.playing && !it.buffering) {
++        PositionSupplier.getExtrapolating(positionMs, player.playbackParameters.speed)
++      } else {
++        PositionSupplier.getConstant(positionMs)
++      }
++      PositionSupplier { source.get().coerceIn(0, durationMs) }
++    } ?: PositionSupplier.ZERO
 +    invalidateState()
 +  }
 +
@@ -562,9 +574,13 @@ index 0000000000000000000000000000000000000000..cca5b7f880016546710685672533a35c
 +
 +  override fun getState(): State {
 +    val original = super.getState()
-+    val value = chapter ?: return original
++    val value = chapter ?: return original.buildUpon().setAvailableCommands(
++      original.availableCommands.buildUpon()
++        .remove(Player.COMMAND_SEEK_TO_PREVIOUS).remove(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
++        .remove(Player.COMMAND_SEEK_TO_NEXT).remove(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
++        .build()
++    ).build()
 +    val durationMs = (value.duration.coerceIn(0.0, 86_400_000.0) * 1000).toLong()
-+    val positionMs = (value.position.coerceIn(0.0, durationMs / 1000.0) * 1000).toLong()
 +    val commands = original.availableCommands.buildUpon()
 +      .add(Player.COMMAND_PLAY_PAUSE)
 +      .add(Player.COMMAND_GET_CURRENT_MEDIA_ITEM)
@@ -573,6 +589,7 @@ index 0000000000000000000000000000000000000000..cca5b7f880016546710685672533a35c
 +      .add(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
 +      .remove(Player.COMMAND_SET_MEDIA_ITEM)
 +      .remove(Player.COMMAND_CHANGE_MEDIA_ITEMS)
++      .remove(Player.COMMAND_SEEK_TO_MEDIA_ITEM)
 +      .remove(Player.COMMAND_SEEK_BACK)
 +      .remove(Player.COMMAND_SEEK_FORWARD)
 +      .remove(Player.COMMAND_SEEK_TO_PREVIOUS)
@@ -606,11 +623,14 @@ index 0000000000000000000000000000000000000000..cca5b7f880016546710685672533a35c
 +      .setCurrentMediaItemIndex(currentIndex)
 +      .setCurrentAd(C.INDEX_UNSET, C.INDEX_UNSET)
 +      .clearPositionDiscontinuity()
-+      .setContentPositionMs(positionMs)
-+      .setContentBufferedPositionMs(positionMs)
-+      .setTotalBufferedDurationMs(0)
++      .setContentPositionMs(chapterPosition)
++      .setContentBufferedPositionMs(chapterPosition)
++      .setTotalBufferedDurationMs(PositionSupplier.ZERO)
 +      .setPlaybackState(if (waiting) Player.STATE_BUFFERING else Player.STATE_READY)
 +      .setIsLoading(waiting)
++      // Raw source failures are handled by the app's part loader. Media3 requires a
++      // playerError to have STATE_IDLE, which is not the virtual chapter's state.
++      .setPlayerError(null)
 +      .setPlayWhenReady(value.playing || value.buffering, Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST)
 +      // Previous always means previous chapter, even after listening for several minutes.
 +      .setMaxSeekToPreviousPositionMs(Long.MAX_VALUE)
@@ -647,15 +667,16 @@ index 0000000000000000000000000000000000000000..cca5b7f880016546710685672533a35c
 +}
 diff --git a/android/src/test/java/expo/modules/audio/service/LockScreenAudioPlayerTest.kt b/android/src/test/java/expo/modules/audio/service/LockScreenAudioPlayerTest.kt
 new file mode 100644
-index 0000000000000000000000000000000000000000..e4c75fb2559155bde8b1f6ff2be17065fa255e30
+index 0000000000000000000000000000000000000000..1205ad66b5ef7d07c8b4223826454d23bd8e226f
 --- /dev/null
 +++ b/android/src/test/java/expo/modules/audio/service/LockScreenAudioPlayerTest.kt
-@@ -0,0 +1,143 @@
+@@ -0,0 +1,170 @@
 +package expo.modules.audio.service
 +
 +import android.os.Looper
 +import androidx.media3.common.MediaItem
 +import androidx.media3.common.Player
++import androidx.media3.common.PlaybackException
 +import androidx.media3.common.SimpleBasePlayer
 +import androidx.media3.common.util.UnstableApi
 +import com.google.common.util.concurrent.Futures
@@ -663,11 +684,13 @@ index 0000000000000000000000000000000000000000..e4c75fb2559155bde8b1f6ff2be17065
 +import expo.modules.audio.LockScreenPlaybackState
 +import expo.modules.audio.Metadata
 +import java.net.URL
++import java.time.Duration
 +import org.junit.Assert.*
 +import org.junit.Test
 +import org.junit.runner.RunWith
 +import org.robolectric.RobolectricTestRunner
 +import org.robolectric.annotation.Config
++import org.robolectric.shadows.ShadowSystemClock
 +
 +@UnstableApi
 +@RunWith(RobolectricTestRunner::class)
@@ -677,6 +700,7 @@ index 0000000000000000000000000000000000000000..e4c75fb2559155bde8b1f6ff2be17065
 +    var seekCalls = 0
 +    var playingRequested = true
 +    var part = 0
++    var error: PlaybackException? = null
 +    override fun getState(): State = State.Builder()
 +      .setAvailableCommands(Player.Commands.Builder().addAll(
 +        Player.COMMAND_PLAY_PAUSE, Player.COMMAND_GET_CURRENT_MEDIA_ITEM,
@@ -688,10 +712,12 @@ index 0000000000000000000000000000000000000000..e4c75fb2559155bde8b1f6ff2be17065
 +        .setIsSeekable(true).setDurationUs(if (part == 0) 89_000_000 else 61_000_000).build()))
 +      .setCurrentMediaItemIndex(0)
 +      .setContentPositionMs(0)
-+      .setPlaybackState(Player.STATE_READY)
++      .setPlaybackState(if (error == null) Player.STATE_READY else Player.STATE_IDLE)
++      .setPlayerError(error)
 +      .setPlayWhenReady(playingRequested, Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST)
 +      .build()
 +    fun replacePart() { part += 1; invalidateState() }
++    fun failPart() { error = PlaybackException("network", null, PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED); invalidateState() }
 +    override fun handleSetPlayWhenReady(value: Boolean): ListenableFuture<*> {
 +      playingRequested = value
 +      return Futures.immediateVoidFuture()
@@ -791,6 +817,27 @@ index 0000000000000000000000000000000000000000..e4c75fb2559155bde8b1f6ff2be17065
 +    system.seekTo(12_000)
 +    assertEquals(1, part.seekCalls)
 +    assertTrue(requests.isEmpty())
++    system.release()
++  }
++
++  @Test fun `metadata updates do not rewind the extrapolated chapter position`() {
++    val system = LockScreenAudioPlayer(PartPlayer()) { _, _, _ -> }
++    system.updatePlayback(chapter(playing = true))
++    ShadowSystemClock.advanceBy(Duration.ofSeconds(3))
++    assertEquals(363_000L, system.currentPosition)
++    system.updateMetadata(Metadata("第二章", "书籍", null, null))
++    assertEquals(363_000L, system.currentPosition)
++    system.release()
++  }
++
++  @Test fun `a raw part failure does not crash the virtual chapter state`() {
++    val part = PartPlayer()
++    val system = LockScreenAudioPlayer(part) { _, _, _ -> }
++    system.updatePlayback(chapter(playing = true))
++    part.failPart()
++    assertEquals(1_260_000L, system.duration)
++    assertNull(system.playerError)
++    assertEquals(Player.STATE_BUFFERING, system.playbackState)
 +    system.release()
 +  }
 +}

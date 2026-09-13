@@ -8,6 +8,8 @@ Android presents that state through a Media3 player wrapper used only by the exi
 
 These native capabilities require a new Android/iOS binary. The app checks for the optional method before using it, so OTA updates to older binaries retain their standard system controls and can still receive book artwork. Desktop packaging is unrelated to this patch.
 
+`frontend/mobile/package.json` explicitly lists `expo-audio` in Android and iOS autolinking `buildFromSource`. Keep both entries while this patch is needed: Expo's precompiled native modules otherwise bypass the modified sources. Android regression tests are included in the patch and run with `:expo-audio:testDebugUnitTest` after generating the native project.
+
 Remove this patch when upstream Expo Audio supports an independent chapter timeline with play/pause, previous/next and absolute seek callbacks. When upgrading Expo Audio, review both native implementations and run the mobile lifecycle tests, Android native tests and iOS native build.
 
 ## pdfjs-dist 5.7.284

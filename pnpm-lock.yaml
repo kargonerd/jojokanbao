@@ -14,7 +14,7 @@ patchedDependencies:
     hash: nvqj2ep55o6kymeg6vnxt4dm5e
     path: frontend/patches/@react-native__gradle-plugin@0.83.10.patch
   expo-audio@55.0.18:
-    hash: 66t53wzorex5gsov4kq3rhl52y
+    hash: rri3x6nmurv7r7bll7o2qxz2vu
     path: frontend/patches/expo-audio@55.0.18.patch
   pdfjs-dist@5.7.284:
     hash: zahbskxuqcrzag4gobt5x7k26i
@@ -248,7 +248,7 @@ importers:
         version: 55.0.19(expo@55.0.31)
       expo-audio:
         specifier: ~55.0.18
-        version: 55.0.18(patch_hash=66t53wzorex5gsov4kq3rhl52y)(expo-asset@55.0.20(expo@55.0.31)(react-native@0.83.10(patch_hash=5dtbie6hwdh3ov3haesci2i5ha)(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0)(typescript@5.9.3))(expo@55.0.31)(react-native@0.83.10(patch_hash=5dtbie6hwdh3ov3haesci2i5ha)(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0)
+        version: 55.0.18(patch_hash=rri3x6nmurv7r7bll7o2qxz2vu)(expo-asset@55.0.20(expo@55.0.31)(react-native@0.83.10(patch_hash=5dtbie6hwdh3ov3haesci2i5ha)(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0)(typescript@5.9.3))(expo@55.0.31)(react-native@0.83.10(patch_hash=5dtbie6hwdh3ov3haesci2i5ha)(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0)
       expo-brightness:
         specifier: ~55.0.17
         version: 55.0.17(expo@55.0.31)(react-native@0.83.10(patch_hash=5dtbie6hwdh3ov3haesci2i5ha)(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))
@@ -3074,7 +3074,9 @@ packages:
   '@rolldown/binding-linux-x64-gnu@1.2.1':
     resolution: {integrity: sha512-/Orga1fZYkLc/56jBICcHrKchl8Z2UKdDSr3LG9ToWO1lQ6a4Livk9Xz+9WN91zsz5QR3XQz2NNoSDEvP6qadw==}
     engines: {node: ^20.19.0 || >=22.12.0}
+    cpu: [x64]
     os: [linux]
+    libc: [glibc]
 
   '@rolldown/binding-linux-x64-musl@1.2.1':
     resolution: {integrity: sha512-xxBJRL+0q0Kce7orznGWLuylHDY65vuARXZRpX+hPdv+DqK2c3NlCsVA98tlWzWNEE7yPqA/1NQ5nnCrj49Y5A==}
@@ -3486,6 +3488,7 @@ packages:
   '@tailwindcss/oxide-win32-x64-msvc@4.3.0':
     resolution: {integrity: sha512-Mvrf2kXW/yeW/OTezZlCGOirXRcUuLIBx/5Y12BaPM7wJoryG6dfS/NJL8aBPqtTEx/Vm4T4vKzFUcKDT+TKUA==}
     engines: {node: '>= 20'}
+    cpu: [x64]
     os: [win32]
 
   '@tailwindcss/oxide@4.3.0':
@@ -13389,7 +13392,7 @@ snapshots:
       - supports-color
       - typescript
 
-  expo-audio@55.0.18(patch_hash=66t53wzorex5gsov4kq3rhl52y)(expo-asset@55.0.20(expo@55.0.31)(react-native@0.83.10(patch_hash=5dtbie6hwdh3ov3haesci2i5ha)(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0)(typescript@5.9.3))(expo@55.0.31)(react-native@0.83.10(patch_hash=5dtbie6hwdh3ov3haesci2i5ha)(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0):
+  expo-audio@55.0.18(patch_hash=rri3x6nmurv7r7bll7o2qxz2vu)(expo-asset@55.0.20(expo@55.0.31)(react-native@0.83.10(patch_hash=5dtbie6hwdh3ov3haesci2i5ha)(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0)(typescript@5.9.3))(expo@55.0.31)(react-native@0.83.10(patch_hash=5dtbie6hwdh3ov3haesci2i5ha)(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0):
     dependencies:
       expo: 55.0.31(@babel/core@7.29.0)(@expo/dom-webview@55.0.6)(@expo/metro-runtime@55.0.12)(react-dom@19.2.0(react@19.2.0))(react-native-webview@13.16.0(patch_hash=ypvsfyjpeb46epqo2rovpsrtby)(react-native@0.83.10(patch_hash=5dtbie6hwdh3ov3haesci2i5ha)(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0))(react-native@0.83.10(patch_hash=5dtbie6hwdh3ov3haesci2i5ha)(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0)(typescript@5.9.3)
       expo-asset: 55.0.20(expo@55.0.31)(react-native@0.83.10(patch_hash=5dtbie6hwdh3ov3haesci2i5ha)(@babel/core@7.29.0)(@types/react@19.2.15)(react@19.2.0))(react@19.2.0)(typescript@5.9.3)

@@ -33,8 +33,8 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
   const [error, setError] = useState("");
   const [timer, setTimer] = useState<number | "chapter" | null>(null);
   const storageKey = `jojo-listening-v1:${props.userId}:${props.documentId}`;
-  const latest = useRef({ props, chapter, capabilities, voice, part, seconds, rate, timer });
-  latest.current = { props, chapter, capabilities, voice, part, seconds, rate, timer };
+  const latest = useRef({ props, chapter, capabilities, voice, part, seconds, rate, timer, durations });
+  latest.current = { props, chapter, capabilities, voice, part, seconds, rate, timer, durations };
   const mounted = useRef(true);
   const session = useRef(new AbortController());
   const epoch = useRef(0);
@@ -60,11 +60,6 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
     return { title: current.chapter?.title || current.props.title, artist: current.props.title,
       albumTitle: current.props.title, artworkUrl: current.props.artworkUrl };
   }
-
-  useEffect(() => {
-    if (!lockScreenActive.current || !latest.current.chapter) return;
-    try { player.updateLockScreenMetadata(lockScreenMetadata()); } catch { /* Artwork never blocks listening. */ }
-  }, [player, props.artworkUrl, props.title, chapter?.title]);
 
   function persist() {
     if (bookmark.current) void AsyncStorage.setItem(storageKey, JSON.stringify(bookmark.current)).catch(() => undefined);
@@ -177,7 +172,7 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
     prefetchedUrls.current.clear();
     ready.current = false; wanted.current = autoplay; player.pause(); setPlaying(false);
     mediaDeadline.current = 0; bookmark.current = undefined;
-    setChapter(undefined); latest.current.chapter = undefined;
+    setChapter(undefined); latest.current.chapter = undefined; latest.current.durations = {};
     setBusy(true); setError(""); setDurations({}); setVoice(choice);
     try {
       const original = retainedChapter ?? await latest.current.props.loadChapter(id);
@@ -289,7 +284,21 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
       // Metadata and system controls must not turn successfully loaded audio
       // into an error, e.g. if artwork is missing or the service is reconnecting.
       try {
-        const enhanced = Boolean(chapterMediaPlayer(player));
+        const enhanced = chapterMediaPlayer(player);
+        const current = latest.current;
+        if (enhanced && current.chapter) {
+          const lengths = current.chapter.segments.map((text, part) => part === index && audio.duration > 0
+            ? audio.duration : current.durations[part] ?? Math.max(1, text.length / 4.3));
+          const duration = lengths.reduce((sum, length) => sum + length, 0);
+          const chapterIndex = current.props.chapters.findIndex((item) => item.id === current.chapter?.id);
+          const state = { chapterId: current.chapter.id, duration,
+            position: Math.min(duration, lengths.slice(0, index).reduce((sum, length) => sum + length, 0) + time),
+            playing: false, buffering: wanted.current,
+            canGoPrevious: chapterIndex > 0, canGoNext: chapterIndex >= 0 && chapterIndex < current.props.chapters.length - 1 };
+          // Prime the virtual timeline before activating the native session so
+          // even its first notification describes the chapter, not a TTS part.
+          enhanced.updateLockScreenPlayback(state); lockScreenState.current = state;
+        }
         player.setActiveForLockScreen(true, lockScreenMetadata(), { showSeekBackward: !enhanced, showSeekForward: !enhanced });
         lockScreenActive.current = true;
       } catch { /* The player can still continue in the foreground. */ }
@@ -351,6 +360,10 @@ export function useSpeechPlayback(props: SpeechPlaybackProps) {
       if (state) { controls.updateLockScreenPlayback(state); lockScreenState.current = state; }
     } catch { /* Closing or native teardown can race the last status update. */ }
   }, [player, chapter, props.chapters, elapsed, duration, playing, busy]);
+  useEffect(() => {
+    if (!lockScreenActive.current || !latest.current.chapter) return;
+    try { player.updateLockScreenMetadata(lockScreenMetadata()); } catch { /* Artwork never blocks listening. */ }
+  }, [player, props.artworkUrl, props.title, chapter?.title]);
   function seek(value: number, autoplay = playing || wanted.current) {
     let remaining = Math.max(0, Math.min(duration - 0.1, value));
     let index = 0;

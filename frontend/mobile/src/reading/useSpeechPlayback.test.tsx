@@ -296,6 +296,14 @@ describe("native listening lifecycle", () => {
     expect(mocks.player.updateLockScreenPlayback).toHaveBeenLastCalledWith(expect.objectContaining({ position: 22, playing: false }));
   });
 
+  it("supplies a whole chapter timeline before the first system notification is activated", async () => {
+    await act(async () => state.open());
+    mocks.player.updateLockScreenPlayback.mockClear(); mocks.player.setActiveForLockScreen.mockClear();
+    await act(async () => state.toggle());
+    expect(mocks.player.updateLockScreenPlayback).toHaveBeenCalledWith(expect.objectContaining({ chapterId: "c1", duration: 40, position: 0, playing: false, buffering: true }));
+    expect(mocks.player.updateLockScreenPlayback.mock.invocationCallOrder[0]).toBeLessThan(mocks.player.setActiveForLockScreen.mock.invocationCallOrder[0]!);
+  });
+
   it("seeks across segments from the system slider and keeps a paused session paused", async () => {
     await act(async () => state.open()); await play();
     await remote("pause"); mocks.player.play.mockClear();
@@ -390,7 +398,7 @@ describe("native listening lifecycle", () => {
       try {
         await act(async () => state.setTimer(Date.now() + 500));
         await remote("next");
-        await act(async () => vi.advanceTimersByTimeAsync(1000));
+        await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
         expect(mocks.player.updateLockScreenPlayback).toHaveBeenLastCalledWith(expect.objectContaining({ playing: false, buffering: false }));
         expect(state.busy).toBe(false);
         mocks.player.play.mockClear();
