@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-\ir ../signup-fixture.sql
+\ir ../signup-fixture.inc
 select extensions.plan(4);
 create temporary table metadata_cleanup_state as
 select extensions.gen_random_uuid() as user_id, invitation.*

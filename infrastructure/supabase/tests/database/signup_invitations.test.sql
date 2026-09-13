@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-\ir ../signup-fixture.sql
+\ir ../signup-fixture.inc
 
 select extensions.plan(23);
 

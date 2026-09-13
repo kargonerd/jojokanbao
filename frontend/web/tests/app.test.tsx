@@ -361,6 +361,8 @@ describe("JOJO Web navigation", () => {
 
   it("uses the same About entry instead of the old feedback menu", async () => {
     renderAt("/archive");
+    // Finish the Archive redirect before exercising the next navigation.
+    await waitFor(() => expect(window.location.pathname).toBe("/library"));
     expect(screen.queryByRole("button", { name: "菜单" })).toBeNull();
     fireEvent.click(screen.getByRole("link", { name: "关于" }));
 

@@ -1,7 +1,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 select extensions.plan(8);
-\ir ../signup-fixture.sql
+\ir ../signup-fixture.inc
 
 select extensions.hasnt_table('private','feature_flags','PostHog configuration has no database copy');
 select extensions.is(public.hook_require_signup_invitation(jsonb_build_object('user',jsonb_build_object(
