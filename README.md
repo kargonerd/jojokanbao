@@ -51,7 +51,6 @@ pnpm dev:reader-search
 pnpm dev:admin
 pnpm --filter @jojo/agent auth:codex
 pnpm --filter @jojo/agent smoke -- "你好"
-pnpm push:credentials
 ```
 
 Python API 测试：

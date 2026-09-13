@@ -79,7 +79,15 @@ export async function readPostHogConfig(env, key) {
   });
   if (!response.ok) throw new Error(`PostHog configuration: HTTP ${response.status}`);
   const data = await response.json();
-  if (data.featureFlags?.[key] !== true) throw new Error(`PostHog configuration unavailable: ${key}`);
-  const payload = data.featureFlagPayloads?.[key];
+  // /flags/ reports every flag under `flags` with the payload in `metadata.payload`.
+  // The `featureFlags` / `featureFlagPayloads` pair is the older response, still
+  // served by /decide/, so both shapes are accepted here.
+  const current = data.flags?.[key];
+  const legacy = data.featureFlags?.[key] === true
+    ? { enabled: true, metadata: { payload: data.featureFlagPayloads?.[key] } }
+    : null;
+  const flag = current ?? legacy;
+  if (flag?.enabled !== true) throw new Error(`PostHog configuration unavailable: ${key}`);
+  const payload = flag.metadata?.payload;
   return typeof payload === 'string' ? JSON.parse(payload) : payload;
 }

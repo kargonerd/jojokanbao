@@ -131,10 +131,11 @@ Beta 上传暂缓；正式发布报错退出。完成运行环境配置与数据
 1. 在 PostHog 核对五份全局配置，保留部署目标的实际值；确保公开项目 Token 能读取完整 payload。
 2. 配置客户端构建变量。Python API、Agent 和邮件额度 SCF 的运行环境均设置
    `POSTHOG_PROJECT_TOKEN`、`POSTHOG_API_HOST`。GitHub 构建变量不会自动成为云函数运行环境变量。
-3. Python API 与 Agent 设置同一个 `JOJO_OPERATOR_TOKEN`，与 Supabase Operator 摘要匹配；
-   配置 Supabase URL 和 Publishable Key。服务端凭据只保存在服务端 Secret 中。
-4. 在受控发布窗口协调部署 API、Agent、客户端和 `202609130004_posthog_runtime.sql`。
-   迁移更新 Auth 校验和批注/配额 RPC 合约，发布前备份并核对业务数据与配置；
+3. Python API 与 Agent 设置同一个 `SUPABASE_SECRET_KEY`（Supabase secret key，service_role
+   等级），并配置 Supabase URL 和 Publishable Key。服务端凭据只保存在服务端 Secret 中。
+4. 在受控发布窗口协调部署 API、Agent、客户端和 `202609130004_posthog_runtime.sql`、
+   `202609130005_admin_api_auth.sql`、`202609130006_delete_own_annotation_comment.sql`。
+   迁移更新 Auth 校验、批注/配额 RPC 合约和管理员鉴权方式，发布前备份并核对业务数据与配置；
    新客户端依赖新的注册授权和批注 API，应与服务端一起验收。迁移保持已有账号、邀请码、批注、用量和租约。
 5. 邮件额度服务重新打包发布，使每次检查从 PostHog 读取参数。验证注册两种模式、批注隐私和 AI 限额后开放流量。
 6. 移动端使用包含所需原生依赖的正式安装包；OTA 必须满足项目 runtimeVersion 与原生模块兼容要求。

@@ -63,12 +63,14 @@ pnpm dev:admin
 
 运行参数在 [PostHog Remote config](../../docs/posthog.md#小型远程配置) 管理。
 
-评论审核页面位于 `http://127.0.0.1:4174/moderation`。它复用同一个
-`JOJO_OPERATOR_TOKEN`，读取读者举报并支持隐藏、恢复评论或驳回举报；每次操作
-必须填写理由，数据库会保留审核事件。管理员 token 始终只由同机 Flask 代理读取。
+评论审核页面位于 `http://127.0.0.1:4174/moderation`。它使用当前登录的 JOJO 管理员
+会话读取读者举报并支持隐藏、恢复评论或驳回举报；每次操作
+必须填写理由，数据库会保留审核事件。登录态由同机 Flask 代理校验，浏览器不持有服务端密钥。
 
 首次部署管理台时，需要在目标 Supabase 项目中执行已评审的迁移，并按
-`infrastructure/supabase/README.md` 将同一个 Operator Token 的摘要写入数据库。
+`infrastructure/supabase/README.md` 配置 `SUPABASE_SECRET_KEY`。审核权限由账号
+`app_metadata.jojo_roles` 中的角色决定：`admin` 可访问全部页面，`moderator` 仅审核，
+`librarian` 仅内容库。
 
 Agent 管理页面位于 `http://127.0.0.1:4174/agent`。设置
 `JOJO_CODEX_AUTH_PATH` 或 `JOJO_AGENT_AUTH_PATH` 时，本机 Flask 只读取指定路径
@@ -77,10 +79,11 @@ Codex CLI 或其他本地会话共享 refresh token。可先运行
 `pnpm --filter @jojo/agent auth:codex` 或 `pnpm --filter @jojo/agent auth:antigravity`
 生成专用文件，再由管理台选择 provider，将其 OAuth 凭据直接发送到
 `JOJO_CREDENTIAL_SERVICE_URL`。浏览器只接收
-就绪状态、来源提示和有效期，不会收到 Operator Token、access token 或 refresh token。
+就绪状态、来源提示和有效期，不会收到服务端密钥、access token 或 refresh token。
 管理台接受顶层为 `openai-codex` / `antigravity` 的 Agent OAuth 文件，
 Antigravity 必须包含 `projectId`；不接受 Codex CLI 原生
-`tokens` 格式。更新前必须确认部署端已配置同一个 `JOJO_OPERATOR_TOKEN`。Codex 更新成功会
+`tokens` 格式。更新前必须确认部署端 `JOJO_CREDENTIAL_SERVICE_URL` 指向正确的 Agent，
+且当前账号具备 `agent` 权限（`admin` 角色）。Codex 更新成功会
 把 rotating refresh token 的所有权交给部署端；该本地凭据不可重复上传，如需继续在
 本地运行 Agent，必须重新执行登录生成新的专用凭据。
 Antigravity 使用独立加密命名空间，更新时保留项目 ID，不替换 Codex 凭据。
@@ -89,7 +92,8 @@ Antigravity 使用独立加密命名空间，更新时保留项目 ID，不替�
 `JOJO_AGENT_PROVIDER`，并清空 `JOJO_AGENT_MODEL` 使用该 provider 默认模型或指定兼容模型。
 
 划线评论和审核使用 Supabase 表及 RPC。登录读者按内容可见性和数据权限访问，
-匿名角色没有表或用户 RPC 权限；管理台通过 Operator RPC 审核。
+匿名角色没有表或用户 RPC 权限；管理台经 Python API 以 `service_role` 调用
+`admin_*_annotation_*` RPC 审核。
 
 人民日报缺失正文工作台位于 `http://127.0.0.1:4174/rmrb-review`。它读取由
 Hugging Face Canonical 生成的 `indexes/missing-articles.jsonl.gz`，按日期升序展示
