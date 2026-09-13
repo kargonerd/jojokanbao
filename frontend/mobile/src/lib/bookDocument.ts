@@ -188,10 +188,10 @@ export function createBookDocument({ fragment, assetUrls, textScale, lineHeight,
     height: 100vh;
     max-width: none;
     margin: 0;
-    padding: 5rem 2rem;
+    padding: 72px 24px;
     column-count: 1;
     column-fill: auto;
-    column-gap: 4rem;
+    column-gap: 48px;
     overflow: visible;
     transform: translate3d(0, 0, 0);
     transform-origin: left top;
@@ -212,9 +212,9 @@ export function createBookDocument({ fragment, assetUrls, textScale, lineHeight,
   }
   @media (orientation: landscape) and (min-width: 900px) {
     article {
-      padding: 5rem 4rem;
+      padding: 72px 48px;
       column-count: 2;
-      column-gap: 8rem;
+      column-gap: 96px;
       column-rule: 1px solid ${gutter};
     }
   }

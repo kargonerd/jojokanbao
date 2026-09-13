@@ -6,10 +6,10 @@ import * as content from "@jojo/content";
 import { SPEECH_READER_FACTORY } from "@jojo/content/speech-dom-script";
 import { speechFromReadingPosition, speechSegments, SPEECH_EXCLUDED_ELEMENTS } from "@jojo/content";
 // Compile the native CommonJS package at this boundary; the browser executes its actual injected script.
-const continuousSource = ts.transpileModule(readFileSync(new URL("../../mobile/src/lib/continuousBookScroll.ts", import.meta.url), "utf8"), {
+const continuousSource = ts.transpileModule(readFileSync(new URL("../../mobile/src/lib/continuousBookScroll.generated.ts", import.meta.url), "utf8"), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
 }).outputText;
-const nativeContinuous = {} as typeof import("../../mobile/src/lib/continuousBookScroll");
+const nativeContinuous = {} as typeof import("../../mobile/src/lib/continuousBookScroll.generated");
 new Function("exports", continuousSource)(nativeContinuous);
 const nativeSource = ts.transpileModule(readFileSync(new URL("../../mobile/src/lib/bookReaderBridge.ts", import.meta.url), "utf8"), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
@@ -18,7 +18,7 @@ const nativeBridge = {} as typeof import("../../mobile/src/lib/bookReaderBridge"
 new Function("require", "exports", nativeSource)((id: string) => {
   if (id === "@jojo/content") return content;
   if (id === "@jojo/content/speech-dom-script") return { SPEECH_READER_FACTORY };
-  if (id === "./continuousBookScroll") return nativeContinuous;
+  if (id === "./continuousBookScroll.generated") return nativeContinuous;
   throw new Error(`Unsupported native bridge dependency: ${id}`);
 }, nativeBridge);
 const { createBookReaderBridgeScript, createBookReaderGoToSpreadScript, createBookReaderSpeechHighlightScript, createBookReaderSpeechPositionScript } = nativeBridge;
@@ -29,6 +29,67 @@ const nativeDocument = {} as typeof import("../../mobile/src/lib/bookDocument");
 new Function("exports", "require", documentSource)(nativeDocument,
   createRequire(new URL("../../mobile/src/lib/bookDocument.ts", import.meta.url)));
 const { createBookDocument } = nativeDocument;
+
+for (const mode of ["paged", "scroll"] as const) {
+  test(`native inline bootstrap initializes and resolves speech after reinjection in ${mode} mode`, async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 700 });
+    const paragraphs = Array.from({ length: 55 }, (_, i) => `<p>第${i + 1}段。为什么会有不如意的事？事物的发展和变化都有一定的条件。这是一段检查手机章节加载与当前位置朗读的正文。</p>`).join("");
+    const chapters = [{ id: "chapter-5" }, { id: "chapter-6" }, { id: "chapter-7" }];
+    const html = createBookDocument({
+      fragment: { formatVersion: "jojo-fragment/1", itemId: "大众哲学", fragmentId: "chapter-6", type: "chapter", order: 6,
+        title: "六 为什么会有不如意的事——辩证唯物论", body: { format: "html", value: paragraphs }, assetRefs: [], annotations: [] },
+      assetUrls: {}, textScale: 1.12, lineHeight: 1.95, firstLineIndent: true, eInk: false, readingMode: mode, paperColor: "ivory",
+    });
+    const bootstrap = `window.__jojoReaderSessionId = "native-session";\n${createBookReaderBridgeScript("start", false, [], undefined, undefined, undefined, {
+      initialChapterId: "chapter-6", chapters,
+    })}`;
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    const channel = '<script>window.readerMessages=[];window.ReactNativeWebView={postMessage:function(value){window.readerMessages.push(JSON.parse(value));}};</script>';
+    await page.setContent(html.replace("<head>", `<head>${channel}`).replace("</body>", () => `<script>${bootstrap.replace(/<\/script/gi, "<\\/script")}</script></body>`));
+    const messages = () => page.evaluate(() => (window as unknown as { readerMessages: Array<{ type: string; readerSessionId?: string; position?: { text: string; offset: number } }> }).readerMessages);
+    await expect.poll(async () => (await messages()).filter((message) => message.type === "reader-ready").length).toBe(1);
+    await expect.poll(async () => (await messages()).some((message) => message.type === "reader-page")).toBe(true);
+    // onLoadEnd and the watchdog inject the same script again in native WebView.
+    await page.addScriptTag({ content: bootstrap });
+    if (mode === "paged") await page.addScriptTag({ content: createBookReaderGoToSpreadScript(3) });
+    else await page.addScriptTag({ content: nativeBridge.createBookReaderGoToScrollProgressScript(.45, "chapter-6") });
+    await page.addScriptTag({ content: createBookReaderSpeechPositionScript(99) });
+    await expect.poll(async () => (await messages()).find((message) => message.type === "reader-speech-position")?.position?.offset ?? 0).toBeGreaterThan(200);
+    expect((await messages()).every((message) => message.readerSessionId === "native-session")).toBe(true);
+    expect(errors).toEqual([]);
+    if (mode === "scroll") await expect(page.locator('[data-reader-chapter-slot="chapter-6"]')).toHaveCount(1);
+  });
+}
+
+for (const viewport of [{ width: 390, height: 700 }, { width: 1200, height: 700 }]) {
+  for (const textScale of [0.9, 1.12]) {
+    test(`native page margins stay symmetric at ${viewport.width}px and ${textScale} text scale`, async ({ page }) => {
+      await page.setViewportSize(viewport);
+      const paragraphs = Array.from({ length: 8 }, (_, i) => `<p id="column-${i}" style="height:calc(100vh - 144px);margin:0;">第${i + 1}页。${"这是检查翻页后左右留白的完整正文。".repeat(4)}</p>`).join("");
+      await page.setContent(createBookDocument({
+        fragment: { formatVersion: "jojo-fragment/1", itemId: "test", fragmentId: "c1", type: "chapter", order: 1, title: "封面",
+          body: { format: "html", value: paragraphs }, assetRefs: [], annotations: [] },
+        assetUrls: {}, textScale, lineHeight: 1.95, firstLineIndent: true, eInk: false, readingMode: "paged", paperColor: "white",
+      }));
+      await page.addScriptTag({ content: createBookReaderBridgeScript("start") });
+      const columns = viewport.width >= 900 ? 2 : 1;
+      const margin = columns === 2 ? 48 : 24;
+      for (const spread of [0, 1, 8 / columns - 1]) {
+        await page.addScriptTag({ content: createBookReaderGoToSpreadScript(spread) });
+        for (let column = 0; column < columns; column++) {
+          const rect = await page.locator(`[data-reader-anchor-id="column-${spread * columns + column}"]`).boundingBox();
+          expect(rect!.x).toBeCloseTo(column * viewport.width / columns + margin, 1);
+          expect(rect!.width).toBeCloseTo(viewport.width / columns - 2 * margin, 1);
+          expect(rect!.y).toBeGreaterThanOrEqual(72);
+        }
+      }
+      await expect(page.locator("article")).toHaveCSS("padding-top", "72px");
+      await expect(page.locator("article")).toHaveCSS("padding-bottom", "72px");
+      await expect(page.locator("#jojo-page-footer span").nth(columns - 1)).toHaveText("8 / 8");
+    });
+  }
+}
 
 for (const mode of ["paged", "scroll"] as const) {
   test(`listening reveals visible text without highlighting in actual ${mode} layout`, async ({ page }) => {

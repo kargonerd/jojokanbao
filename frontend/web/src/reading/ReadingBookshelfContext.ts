@@ -8,6 +8,7 @@ export interface ReadingBookshelfControls {
   toggle: () => void;
   speechLauncherTarget?: HTMLElement | null;
   chromeHidden?: boolean;
+  paperColor?: "white" | "ivory" | "dark";
   getSpeechPosition?: () => SpeechReadingPosition | null;
   showSpeechLocation?: (location: SpeechLocation | null, reveal?: boolean) => void;
 }

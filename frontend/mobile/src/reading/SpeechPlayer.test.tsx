@@ -3,11 +3,14 @@ import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BookReaderScreen } from "../screens/BookReaderScreen";
 import { NativeSpeechPlayer } from "./SpeechPlayer";
+import { editorialTheme, eInkTheme } from "../theme/tokens";
 import type { AnnotationSubject, TextAnchor, AnnotationThread, AnnotationVisibility } from "@jojo/content/annotations";
 
 const mocks = vi.hoisted(() => ({
   eInk: false, focused: true, user: { id: "reader" } as { id: string } | null,
   enabled: true, flagUserId: "reader", playbackUnmount: vi.fn(),
+  setBrightness: vi.fn(async (_value: number) => undefined),
+  materializeArtwork: vi.fn(), playbackProps: vi.fn(),
   annotationThreads: vi.fn(async () => [] as AnnotationThread[]),
   personalNotes: vi.fn(async () => [] as AnnotationThread[]),
   createAnnotation: vi.fn(),
@@ -55,7 +58,11 @@ vi.mock("react-native-webview", async () => {
     return createElement("article", { ...props, testID: "reader-webview" });
   }) };
 });
-vi.mock("expo-brightness", () => ({ getBrightnessAsync: async () => 0.6 }));
+vi.mock("expo-brightness", () => ({ getBrightnessAsync: async () => 0.6, setBrightnessAsync: mocks.setBrightness }));
+vi.mock("expo-status-bar", async () => {
+  const { createElement } = await import("react");
+  return { StatusBar: (props: object) => createElement("div", { ...props, testID: "native-status-bar" }) };
+});
 vi.mock("expo-clipboard", () => ({ setStringAsync: vi.fn() }));
 vi.mock("../config/appVariant", () => ({ get IS_EINK_RELEASE() { return mocks.eInk; } }));
 vi.mock("../theme/tokens", async (importOriginal) => {
@@ -68,11 +75,13 @@ vi.mock("./featureFlag", () => ({ useSpeechFlagStore: (select?: (state: unknown)
 } }));
 vi.mock("./useSpeechPlayback", async () => {
   const { useEffect } = await import("react");
-  return { useSpeechPlayback: () => {
+  return { useSpeechPlayback: (props: object) => {
+    mocks.playbackProps(props);
     useEffect(() => () => mocks.playbackUnmount(), []);
     return mocks.playback;
   } };
 });
+vi.mock("./speechArtwork", () => ({ materializeSpeechArtwork: mocks.materializeArtwork }));
 vi.mock("./SpeechLoading", async () => {
   const { createElement } = await import("react");
   return { SpeechLoading: () => createElement("span", { "data-testid": "speech-loading-bars" }) };
@@ -151,13 +160,118 @@ beforeEach(() => {
     comments: note ? [{ id: "comment-1", annotationId: "cloud-annotation", parentCommentId: null, authorId: "reader", authorName: "我", body: note, visibility, createdAt: "2026-09-12T00:00:00Z", reportedByMe: false }] : [],
   }));
   mocks.state.bookReadingMode = "paged";
+  mocks.state.bookPaperColor = "white";
   mocks.playback.part = 0; mocks.playback.playing = true; mocks.playback.elapsed = 12; mocks.playback.busy = false;
   mocks.playback.chapter = { id: "c1", title: "第一章", segments: ["第一段。这里还有一句。", "第二段。接着朗读。"] };
+  mocks.materializeArtwork.mockReset().mockImplementation(async (uri: string) => ({ uri, release: vi.fn() }));
   mocks.shelfContains.mockResolvedValue(false); mocks.setShelf.mockResolvedValue(undefined);
   mocks.loadChapter.mockReset().mockImplementation(async (_loaded, id: string) => ({ assetUrls: { portrait: "data:image/png;base64,test" },
     fragment: { fragmentId: id, title: id === "c1" ? "第一章" : "第二章", body: { format: "html", value: "<p>正文</p>" } } }));
 });
 afterEach(async () => { if (view) await act(async () => view.unmount()); vi.useRealTimers(); });
+
+describe("lock-screen artwork integration", () => {
+  const props = { documentId: "book:cover", title: "测试书", chapterId: "c1",
+    chapters: [{ id: "c1", title: "第一章" }], loadChapter: vi.fn(), onRead: vi.fn() };
+  const latestArtwork = () => mocks.playbackProps.mock.lastCall?.[0].artworkUrl;
+
+  it("starts listening immediately and passes the prepared image to the existing session later", async () => {
+    let finish!: (value: { uri: string; release: () => void }) => void;
+    mocks.materializeArtwork.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    await act(async () => { view = create(<NativeSpeechPlayer {...props} cover={{ uri: "data:image/png;base64,YWJj" }} />); });
+    expect(mocks.materializeArtwork).not.toHaveBeenCalled();
+    await press("打开听读播放器");
+    expect(mocks.playback.open).toHaveBeenCalledWith(true);
+    expect(latestArtwork()).toBeUndefined();
+    const release = vi.fn();
+    await act(async () => finish({ uri: "file:///cache/cover.png", release }));
+    expect(latestArtwork()).toBe("file:///cache/cover.png");
+    expect(mocks.playback.open).toHaveBeenCalledOnce();
+    await press("收起播放器"); await press("关闭听读");
+    expect(release).toHaveBeenCalledOnce();
+    expect(latestArtwork()).toBeUndefined();
+  });
+
+  it("ignores a late cover from the previous document after the next book has started", async () => {
+    let finishFirst!: (value: { uri: string; release: () => void }) => void;
+    mocks.materializeArtwork.mockImplementationOnce(() => new Promise((resolve) => { finishFirst = resolve; }))
+      .mockResolvedValueOnce({ uri: "file:///cache/second.png", release: vi.fn() });
+    await act(async () => { view = create(<NativeSpeechPlayer {...props} cover={{ uri: "data:image/png;base64,YWJj" }} />); });
+    await press("打开听读播放器");
+    await act(async () => view.update(<NativeSpeechPlayer {...props} documentId="book:next" cover={{ uri: "data:image/png;base64,ZGVm" }} />));
+    await press("打开听读播放器");
+    expect(latestArtwork()).toBe("file:///cache/second.png");
+    const release = vi.fn();
+    await act(async () => finishFirst({ uri: "file:///cache/first.png", release }));
+    expect(release).toHaveBeenCalledOnce();
+    expect(latestArtwork()).toBe("file:///cache/second.png");
+  });
+
+  it("discards a prepared image when the user leaves before it finishes", async () => {
+    let finish!: (value: { uri: string; release: () => void }) => void;
+    mocks.materializeArtwork.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    await act(async () => { view = create(<NativeSpeechPlayer {...props} cover={{ uri: "data:image/png;base64,YWJj" }} />); });
+    await press("打开听读播放器");
+    const signal = mocks.materializeArtwork.mock.lastCall![2] as AbortSignal;
+    mocks.user = null;
+    await act(async () => view.update(<NativeSpeechPlayer {...props} />));
+    expect(signal.aborted).toBe(true);
+    const release = vi.fn();
+    await act(async () => finish({ uri: "file:///cache/old-user.png", release }));
+    expect(release).toHaveBeenCalledOnce();
+  });
+
+  it("follows the visible news cover fallback after a failed primary image", async () => {
+    await act(async () => { view = create(<NativeSpeechPlayer {...props} news cover={{ uri: "https://example.test/photo.jpg" }} coverFallback={{ uri: "https://example.test/logo.png" }} />); });
+    await press("打开听读播放器");
+    expect(latestArtwork()).toBe("https://example.test/photo.jpg");
+    await act(async () => view.root.findAllByType("img").find((image) => !image.props.blurRadius)!.props.onError());
+    expect(latestArtwork()).toBe("https://example.test/logo.png");
+  });
+});
+
+describe("listening appearance", () => {
+  const flattened = (style: unknown) => Object.assign({}, ...[style].flat(Infinity).filter(Boolean));
+  const props = { documentId: "book:theme", title: "测试书", chapterId: "c1", cover: { uri: "https://example.test/cover.jpg" },
+    chapters: [{ id: "c1", title: "第一章" }], loadChapter: vi.fn(), onRead: vi.fn() };
+  const darkTheme = { ...editorialTheme, paper: "#202321", paperSoft: "#181a19", ink: "#deded8", muted: "#a8aaa6", rule: "#393d3a", red: "#d46666", inverse: "#202321" };
+
+  it.each([
+    ["white", editorialTheme, "light"],
+    ["ivory", { ...editorialTheme, paper: "#fbfaf6" }, "light"],
+    ["dark", darkTheme, "dark"],
+    ["eink", eInkTheme, "light"],
+  ] as const)("keeps the %s reader colors across full player, settings and mini player", async (_name, theme, colorScheme) => {
+    await act(async () => { view = create(<NativeSpeechPlayer {...props} theme={theme} colorScheme={colorScheme} />); });
+    await press("打开听读播放器");
+    const full = view.root.findByType("main");
+    expect(flattened(full.props.style).backgroundColor).toBe(theme.paper);
+    expect(view.root.findByProps({ testID: "native-status-bar" }).props.style).toBe(colorScheme === "dark" ? "light" : "dark");
+    expect(flattened(view.root.findAllByType("span").find((node) => node.props.children === "第一章")!.props.style).color).toBe(theme.ink);
+    expect(view.root.findByProps({ accessibilityLabel: "收起播放器" }).findByType("i").props.color).toBe(theme.ink);
+    expect(view.root.findAllByType("img").some((image) => image.props.blurRadius > 0)).toBe(false);
+    await act(async () => view.root.findAllByType("button").find((button) => button.findAllByType("span").some((text) => text.props.children === "语速 1.0×"))!.props.onPress());
+    expect(view.root.findAllByType("main")).toHaveLength(2);
+    expect(flattened(view.root.findAllByType("main")[1]!.props.style).backgroundColor).toBe(theme.paper);
+    expect(view.root.findAllByType("i").find((icon) => icon.props.name === "checkmark")!.props.color).toBe(theme.red);
+    await act(async () => view.root.findAllByType("button").find((button) => button.findAllByType("span").some((text) => text.props.children === "1.25×"))!.props.onPress());
+    await press("收起播放器");
+    const mini = view.root.findByProps({ accessibilityLabel: "展开听读播放器" }).parent!;
+    expect(flattened(mini.props.style).backgroundColor).toBe(theme.paper);
+    expect(view.root.findByProps({ accessibilityLabel: "暂停听读" }).findByType("i").props.color).toBe(theme.ink);
+    expect(view.root.findAllByProps({ testID: "native-status-bar" })).toHaveLength(0);
+  });
+
+  it("updates an existing mini player when the reader theme changes without interrupting listening", async () => {
+    await act(async () => { view = create(<NativeSpeechPlayer {...props} theme={editorialTheme} />); });
+    await press("打开听读播放器"); await press("收起播放器");
+    await act(async () => view.update(<NativeSpeechPlayer {...props} theme={darkTheme} colorScheme="dark" />));
+    expect(flattened(view.root.findByProps({ accessibilityLabel: "展开听读播放器" }).parent!.props.style).backgroundColor).toBe(darkTheme.paper);
+    expect(mocks.playback.open).toHaveBeenCalledOnce();
+    expect(mocks.playback.close).not.toHaveBeenCalled();
+    expect(mocks.playbackUnmount).not.toHaveBeenCalled();
+  });
+});
 
 describe("book thought integration", () => {
   const composer = () => view.root.findByProps({ testID: "thought-composer" });
@@ -628,6 +742,39 @@ describe.each([false, true])("reader listening visibility (eInk=%s)", (eInk) => 
     expect(view.root.findAllByProps({ accessibilityLabel: "收起播放器" })).toHaveLength(1);
     expect(mocks.playback.open).toHaveBeenCalledExactlyOnceWith(true);
     expect(mocks.playback.close).not.toHaveBeenCalled();
+  });
+
+  it("hides reader controls for a scroll gesture but keeps them visible for position updates", async () => {
+    mocks.state.bookReadingMode = "scroll";
+    await renderReader();
+    await readerMessage({ type: "reader-page", chapterId: "c1", paged: false, scrollProgress: 0.25 });
+    expect(readerTool("目录")).toBeDefined();
+    expect(view.root.findAllByProps({ accessibilityLabel: "返回书籍" })).toHaveLength(1);
+    await readerMessage({ type: "reader-scroll-gesture" });
+    expect(readerTool("目录")).toBeUndefined();
+    expect(view.root.findAllByProps({ accessibilityLabel: "返回书籍" })).toHaveLength(0);
+    await readerTap();
+    expect(readerTool("目录")).toBeDefined();
+  });
+
+  it("applies brightness during dragging and closes settings only after the slider is released", async () => {
+    await renderReader(); await act(async () => readerTool("文字").props.onPress());
+    const slider = () => view.root.findByProps({ accessibilityLabel: "屏幕亮度" });
+    await act(async () => slider().props.onValueChange(0.8));
+    expect(mocks.setBrightness).toHaveBeenCalledWith(0.8);
+    expect(slider()).toBeDefined();
+    await act(async () => slider().props.onSlidingComplete(0.9));
+    expect(mocks.setBrightness).toHaveBeenLastCalledWith(0.9);
+    expect(view.root.findAllByProps({ accessibilityLabel: "屏幕亮度" })).toHaveLength(0);
+  });
+
+  it("passes the active reading theme to listening and changes system icons for night reading", async () => {
+    mocks.state.bookPaperColor = "dark";
+    await renderReader();
+    const player = view.root.findByType(NativeSpeechPlayer);
+    expect(player.props.theme).toMatchObject(mocks.eInk ? { paper: "#ffffff", ink: "#000000" } : { paper: "#202321", ink: "#deded8" });
+    expect(player.props.colorScheme).toBe(mocks.eInk ? "light" : "dark");
+    expect(view.root.findByProps({ testID: "native-status-bar" }).props.style).toBe(mocks.eInk ? "dark" : "light");
   });
 
   it("hides and restores the reader mini player with the toolbar and tool panels without closing playback", async () => {

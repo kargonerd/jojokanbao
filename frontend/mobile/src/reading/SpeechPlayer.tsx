@@ -2,20 +2,23 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { ReaderSlider } from "../components/ReaderSlider";
 import { useIsFocused } from "@react-navigation/native";
-import { useEffect, useRef, useState, type ComponentProps } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import type { SpeechLocation } from "@jojo/content";
 import { speechVoiceLabel } from "@jojo/content/speech";
 import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, View, type ImageSourcePropType } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { StatusBar } from "expo-status-bar";
 import { useMobileAuthStore } from "../account/auth";
-import { mobileTheme as theme } from "../theme/tokens";
+import { mobileTheme, type MobileTheme } from "../theme/tokens";
 import { useSpeechFlagStore } from "./featureFlag";
 import { speechTime } from "./speech";
 import { useSpeechPlayback, type SpeechPlaybackProps } from "./useSpeechPlayback";
 import { SpeechLoading } from "./SpeechLoading";
+import { materializeSpeechArtwork } from "./speechArtwork";
 
 type Props = Omit<SpeechPlaybackProps, "userId"> & {
   hidden?: boolean; bottom?: number; cover?: ImageSourcePropType; news?: boolean;
+  theme?: MobileTheme; colorScheme?: "light" | "dark";
   coverFallback?: ImageSourcePropType; sourceName?: string;
   onRead: (chapterId: string, location?: SpeechLocation) => void; onBookshelf?: () => void; onShelf?: boolean; bookshelfBusy?: boolean;
   onSpeechLocation?: (location: SpeechLocation | null, reveal: boolean) => void;
@@ -31,12 +34,29 @@ export function NativeSpeechPlayer(props: Props) {
 }
 
 function ActiveSpeechPlayer(props: Props & { userId: string }) {
-  const playback = useSpeechPlayback(props);
+  const theme = props.theme ?? mobileTheme;
+  const appearance = useMemo(() => ({ theme, styles: createSpeechStyles(theme) }), [theme]);
+  const { styles } = appearance;
   const [opened, setOpened] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [sheet, setSheet] = useState<"timer" | "voice" | "rate" | "chapters" | null>(null);
   const [failedCovers, setFailedCovers] = useState<string[]>([]);
   const cover = [props.cover, props.coverFallback].find((image) => image && !failedCovers.includes(JSON.stringify(image)));
+  const coverUri = resolveArtworkUri(cover);
+  const artworkKey = JSON.stringify([props.userId, props.documentId, coverUri]);
+  const [artwork, setArtwork] = useState<{ key: string; uri: string }>();
+  useEffect(() => {
+    if (!opened || !coverUri) return;
+    const controller = new AbortController();
+    let release: (() => void) | undefined;
+    void materializeSpeechArtwork(coverUri, `${props.userId}:${props.documentId}`, controller.signal).then((result) => {
+      if (controller.signal.aborted) { result?.release(); return; }
+      release = result?.release;
+      setArtwork(result ? { key: artworkKey, uri: result.uri } : undefined);
+    }).catch(() => undefined);
+    return () => { controller.abort(); release?.(); };
+  }, [opened, coverUri, artworkKey, props.userId, props.documentId]);
+  const playback = useSpeechPlayback({ ...props, artworkUrl: opened && artwork?.key === artworkKey ? artwork.uri : undefined });
   const publisherCover = Boolean(props.news && (!cover || cover === props.coverFallback));
   const rejectCover = () => cover && setFailedCovers((failed) => [...failed, JSON.stringify(cover)]);
   useEffect(() => { if (props.hidden) { setExpanded(false); setSheet(null); } }, [props.hidden]);
@@ -49,7 +69,7 @@ function ActiveSpeechPlayer(props: Props & { userId: string }) {
       ? { chapterId: playback.chapter.id, segments: playback.chapter.segments, index: playback.part } : null, playback.playing);
   }, [opened, expanded, playback.chapter, playback.part, playback.playing]);
   useEffect(() => () => locationCallback.current?.(null, false), []);
-  const background = theme.eInk ? theme.paper : "#f1ede6";
+  const background = props.theme || theme.eInk ? theme.paper : "#f1ede6";
   function open() { setOpened(true); setExpanded(true); void playback.open(!opened); }
   function chapterStep(step: number) { const next = props.chapters[currentIndex + step]; if (next) void playback.selectChapter(next.id, playback.playing); }
   function art(backdrop = false) {
@@ -59,21 +79,22 @@ function ActiveSpeechPlayer(props: Props & { userId: string }) {
     </View>;
     return cover ? <Image accessible={false} source={cover} resizeMode={backdrop || props.news ? "cover" : "contain"} onError={rejectCover} blurRadius={backdrop && !theme.eInk ? 32 : 0} style={backdrop ? styles.backdropImage : [styles.cover, props.news && styles.newsCover]} /> : <View style={[styles.fallbackCover, { backgroundColor: theme.paper }]}><Text style={styles.fallbackTitle}>{props.title}</Text></View>;
   }
-  return <>
+  return <SpeechAppearanceContext.Provider value={appearance}>
     {!props.hidden && !expanded ? opened ? (
       <View style={[styles.mini, { bottom: props.bottom ?? 0, backgroundColor: background, borderColor: theme.rule }]}>
-        {cover && !theme.eInk ? art(true) : null}
+        {props.news && cover && !theme.eInk ? art(true) : null}
         <Pressable accessibilityRole="button" accessibilityLabel="展开听读播放器" onPress={open} style={styles.miniTitle}>
           {cover ? <Image source={cover} resizeMode="contain" onError={rejectCover} style={[styles.miniCover, publisherCover && styles.miniLogo]} /> : null}
           <View style={styles.flex}><Text numberOfLines={1} style={styles.miniHeading}>{playback.chapter?.title || props.title}</Text><Text style={styles.subtle}>{playback.error || (playback.busy ? "加载中" : `${voiceLabel} · ${speechTime(playback.elapsed)}`)}</Text></View>
         </Pressable>
-        {playback.busy ? <Pressable accessibilityRole="button" accessibilityLabel="取消加载" onPress={playback.halt} style={styles.icon}><SpeechLoading /></Pressable> : <IconButton icon={playback.playing ? "pause" : "play"} label={playback.playing ? "暂停听读" : "继续听读"} onPress={playback.toggle} />}
-        <IconButton icon="close" label="关闭听读" onPress={() => { playback.close(); setOpened(false); }} />
+        {playback.busy ? <Pressable accessibilityRole="button" accessibilityLabel="取消加载" onPress={playback.halt} style={styles.icon}><SpeechLoading color={theme.red} /></Pressable> : <IconButton icon={playback.playing ? "pause" : "play"} label={playback.playing ? "暂停听读" : "继续听读"} onPress={playback.toggle} />}
+        <IconButton icon="close" label="关闭听读" onPress={() => { playback.close(); setOpened(false); setArtwork(undefined); }} />
       </View>
     ) : <Pressable accessibilityRole="button" accessibilityLabel="打开听读播放器" onPress={open} style={[styles.launcher, { bottom: (props.bottom ?? 0) + 16, backgroundColor: theme.red }]}><Text style={styles.listen}>听</Text></Pressable> : null}
     <Modal visible={expanded && !props.hidden} animationType={theme.eInk ? "none" : "slide"} onRequestClose={() => sheet ? setSheet(null) : setExpanded(false)}>
       <SafeAreaView style={[styles.full, { backgroundColor: background }]}>
-        {cover && !theme.eInk ? art(true) : null}
+        {props.news && cover && !theme.eInk ? art(true) : null}
+        {expanded && !props.hidden ? <StatusBar style={props.colorScheme === "dark" && !theme.eInk ? "light" : "dark"} /> : null}
         <View style={styles.header}><IconButton icon="chevron-down" label="收起播放器" onPress={() => setExpanded(false)} /><Text style={styles.eyebrow}>{props.news ? "听新闻" : "听书"}</Text><View style={styles.icon} /></View>
         <ScrollView contentContainerStyle={styles.content}>
           {art()}
@@ -112,7 +133,7 @@ function ActiveSpeechPlayer(props: Props & { userId: string }) {
               {sheet === "voice" ? playback.capabilities
                 ? playback.capabilities.providers.flatMap((provider) => provider.voices.map((voice) => <Choice key={`${provider.id}:${voice.id}`} label={voice.label} description={voice.description} selected={provider.id === playback.voice.provider && voice.id === playback.voice.voice} onPress={() => { void playback.changeVoice(provider.id, voice.id); setSheet(null); }} />))
                 : playback.error ? <Choice label="重试" description={playback.error} selected={false} onPress={() => { void playback.open(true); }} />
-                  : <View style={styles.progress}><SpeechLoading /><Text style={styles.subtle}>正在加载声音</Text></View>
+                  : <View style={styles.progress}><SpeechLoading color={theme.red} /><Text style={styles.subtle}>正在加载声音</Text></View>
                 : null}
               {sheet === "rate" ? [0.75, 1, 1.25, 1.5, 1.75, 2].map((value) => <Choice key={value} label={`${value}×`} selected={playback.rate === value} onPress={() => { playback.changeRate(value); setSheet(null); }} />) : null}
               {sheet === "chapters" ? props.chapters.map((chapter) => <Choice key={chapter.id} label={chapter.title} selected={chapter.id === playback.chapter?.id} onPress={() => { void playback.selectChapter(chapter.id, true); setSheet(null); }} />) : null}
@@ -121,16 +142,25 @@ function ActiveSpeechPlayer(props: Props & { userId: string }) {
         </View> : null}
       </SafeAreaView>
     </Modal>
-  </>;
+  </SpeechAppearanceContext.Provider>;
+}
+
+function resolveArtworkUri(source: ImageSourcePropType | undefined): string | undefined {
+  if (!source) return undefined;
+  try {
+    if (typeof source === "number") return Image.resolveAssetSource(source)?.uri;
+    return Array.isArray(source) ? source.find((image) => image.uri)?.uri : source.uri;
+  } catch { return undefined; }
 }
 
 type IconProps = { icon: ComponentProps<typeof Ionicons>["name"]; label: string; onPress: () => void; disabled?: boolean };
-function IconButton({ icon, label, onPress, disabled }: IconProps) { return <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={disabled} onPress={onPress} style={[styles.icon, disabled && { opacity: 0.3 }]}><Ionicons name={icon} size={24} color={theme.ink} /></Pressable>; }
-function Option({ icon, label, onPress, disabled }: IconProps) { return <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={styles.option}><Ionicons name={icon} size={23} color={theme.muted} /><Text numberOfLines={1} style={styles.optionLabel}>{label}</Text></Pressable>; }
-function SeekButton({ direction, onPress }: { direction: "back" | "forward"; onPress: () => void }) { return <Pressable accessibilityRole="button" accessibilityLabel={direction === "back" ? "后退15秒" : "前进15秒"} onPress={onPress} style={styles.seek}><MaterialCommunityIcons name={direction === "back" ? "rewind-15" : "fast-forward-15"} size={27} color={theme.muted} /></Pressable>; }
-function Choice({ label, description, selected, onPress }: { label: string; description?: string; selected?: boolean; onPress: () => void }) { return <Pressable accessibilityRole="button" accessibilityState={{ selected: Boolean(selected) }} onPress={onPress} style={styles.choice}><View style={styles.flex}><Text style={[styles.choiceLabel, selected && { color: theme.red }]}>{label}</Text>{description ? <Text style={styles.subtle}>{description}</Text> : null}</View>{selected ? <Ionicons name="checkmark" size={20} color={theme.red} /> : null}</Pressable>; }
+const SpeechAppearanceContext = createContext<{ theme: MobileTheme; styles: ReturnType<typeof createSpeechStyles> } | null>(null);
+function IconButton({ icon, label, onPress, disabled }: IconProps) { const { theme, styles } = useContext(SpeechAppearanceContext)!; return <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={disabled} onPress={onPress} style={[styles.icon, disabled && { opacity: 0.3 }]}><Ionicons name={icon} size={24} color={theme.ink} /></Pressable>; }
+function Option({ icon, label, onPress, disabled }: IconProps) { const { theme, styles } = useContext(SpeechAppearanceContext)!; return <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={styles.option}><Ionicons name={icon} size={23} color={theme.muted} /><Text numberOfLines={1} style={styles.optionLabel}>{label}</Text></Pressable>; }
+function SeekButton({ direction, onPress }: { direction: "back" | "forward"; onPress: () => void }) { const { theme, styles } = useContext(SpeechAppearanceContext)!; return <Pressable accessibilityRole="button" accessibilityLabel={direction === "back" ? "后退15秒" : "前进15秒"} onPress={onPress} style={styles.seek}><MaterialCommunityIcons name={direction === "back" ? "rewind-15" : "fast-forward-15"} size={27} color={theme.muted} /></Pressable>; }
+function Choice({ label, description, selected, onPress }: { label: string; description?: string; selected?: boolean; onPress: () => void }) { const { theme, styles } = useContext(SpeechAppearanceContext)!; return <Pressable accessibilityRole="button" accessibilityState={{ selected: Boolean(selected) }} onPress={onPress} style={styles.choice}><View style={styles.flex}><Text style={[styles.choiceLabel, selected && { color: theme.red }]}>{label}</Text>{description ? <Text style={styles.subtle}>{description}</Text> : null}</View>{selected ? <Ionicons name="checkmark" size={20} color={theme.red} /> : null}</Pressable>; }
 
-const styles = StyleSheet.create({
+function createSpeechStyles(theme: MobileTheme) { return StyleSheet.create({
   flex: { flex: 1, minWidth: 0 }, full: { flex: 1 }, header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 12, minHeight: 56 },
   icon: { width: 44, height: 44, alignItems: "center", justifyContent: "center" }, eyebrow: { color: theme.muted, fontFamily: theme.sans, fontSize: 13 },
   content: { flexGrow: 1, alignItems: "center", paddingHorizontal: 16, paddingBottom: 32, paddingTop: 12, maxWidth: 620, width: "100%", alignSelf: "center" },
@@ -147,4 +177,4 @@ const styles = StyleSheet.create({
   launcher: { position: "absolute", zIndex: 5, right: 16, width: 44, height: 44, justifyContent: "center", alignItems: "center" }, listen: { color: theme.inverse, fontFamily: theme.serif, fontSize: 21 },
   mini: { position: "absolute", zIndex: 5, left: 0, right: 0, minHeight: 64, flexDirection: "row", alignItems: "center", borderTopWidth: 1, paddingHorizontal: 8, overflow: "hidden" }, miniTitle: { flex: 1, flexDirection: "row", alignItems: "center", gap: 10, padding: 4 }, miniCover: { width: 34, height: 46 }, miniHeading: { color: theme.ink, fontFamily: theme.serif, fontSize: 13 }, subtle: { color: theme.muted, fontSize: 11, marginTop: 5 },
   sheetLayer: { ...StyleSheet.absoluteFillObject, justifyContent: "flex-end" }, scrim: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,.35)" }, sheet: { maxHeight: "72%", borderTopWidth: 1, borderColor: theme.rule }, sheetTitle: { fontSize: 19, color: theme.ink, fontFamily: theme.serif, marginLeft: 10 }, choice: { minHeight: 56, paddingHorizontal: 24, paddingVertical: 15, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: theme.rule, flexDirection: "row", alignItems: "center" }, choiceLabel: { color: theme.ink, fontFamily: theme.sans, fontSize: 15 },
-});
+}); }

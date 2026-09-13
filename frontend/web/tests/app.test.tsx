@@ -182,10 +182,10 @@ describe("JOJO Web navigation", () => {
 
   it("shows AI and Times only to signed-in readers and keeps Support immediately before About", () => {
     expect(buildAppNavigationItems(false).map((item) => item.label)).toEqual([
-      "首页", "资料库", "搜索", "支持 JOJO 看报", "关于",
+      "首页", "资料库", "搜索", "支持我们", "关于",
     ]);
     expect(buildAppNavigationItems(true).map((item) => item.label)).toEqual([
-      "首页", "资料库", "搜索", "AI", "时事", "支持 JOJO 看报", "关于",
+      "首页", "资料库", "搜索", "AI", "时事", "支持我们", "关于",
     ]);
     expect(buildAppNavigationItems(true).find((item) => item.href === "/rag")).toMatchObject({
       label: "AI",
@@ -398,7 +398,7 @@ describe("JOJO Web navigation", () => {
 describe("Support page", () => {
   it("exposes Support above About when login services are unavailable", () => {
     renderAt("/account");
-    const support = screen.getByRole("link", { name: /支持 JOJO 看报/ });
+    const support = screen.getByRole("link", { name: /支持我们/ });
     expect(support.getAttribute("href")).toBe("/donate");
     expect(support.nextElementSibling).toBe(screen.getByRole("link", { name: /关于 JOJO 看报/ }));
   });
@@ -425,12 +425,12 @@ describe("Support page", () => {
   it("opens the independent Support page from its sibling navigation entry", async () => {
     renderAt("/support");
     const navigation = screen.getByRole("navigation", { name: "主导航" });
-    const support = within(navigation).getByRole("link", { name: "支持 JOJO 看报" });
+    const support = within(navigation).getByRole("link", { name: "支持我们" });
     expect(support.nextElementSibling).toBe(within(navigation).getByRole("link", { name: "关于" }));
     fireEvent.click(support);
 
     await waitFor(() => expect(window.location.pathname).toBe("/donate"));
-    expect(screen.getByRole("heading", { name: "支持 JOJO 看报" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "支持我们" })).toBeTruthy();
     expect(support.className).toContain("is-active");
     expect(within(navigation).getByRole("link", { name: "关于" }).className).not.toContain("is-active");
     expect(screen.getByRole("img", { name: "微信捐助收款码" })).toBeTruthy();
@@ -443,7 +443,7 @@ describe("Support page", () => {
   it("preserves old donation section links by opening the independent page", async () => {
     renderAt(`/support#${encodeURIComponent("捐助")}`);
     await waitFor(() => expect(window.location.pathname).toBe("/donate"));
-    expect(screen.getByRole("heading", { name: "支持 JOJO 看报" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "支持我们" })).toBeTruthy();
     expect(screen.getByRole("img", { name: "微信捐助收款码" })).toBeTruthy();
   });
 

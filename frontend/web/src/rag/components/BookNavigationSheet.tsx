@@ -21,7 +21,8 @@ export function BookNavigationSheet({ tab, onTabChange, title, label, compact = 
   const [expanded, setExpanded] = useState(!compact);
   const [drag, setDrag] = useState(0);
   const [viewport, setViewport] = useState(visibleViewport);
-  const gesture = useRef<{ y: number; moved: boolean } | undefined>(undefined);
+  const sheet = useRef<HTMLElement>(null);
+  const gesture = useRef<{ y: number; height: number; moved: boolean } | undefined>(undefined);
   const suppressPointerClick = useRef(false);
 
   useLayoutEffect(() => {
@@ -53,9 +54,9 @@ export function BookNavigationSheet({ tab, onTabChange, title, label, compact = 
 
   return <div className="book-navigation-viewport" style={viewportStyle}>
     <button type="button" aria-hidden="true" tabIndex={-1} onClick={onClose} className="book-navigation-backdrop" />
-    <aside aria-label={label ?? (tab === "toc" ? "目录面板" : "全书搜索")} className={`book-navigation-sheet ${mobile ? "book-navigation-sheet--mobile" : "book-navigation-sheet--desktop"} ${compact ? "book-navigation-sheet--compact" : ""} ${panelClass}`} style={mobile ? { height: `calc(${expanded ? "100% - 48px - var(--book-navigation-bottom)" : compact ? "min(460px, 66%)" : "66%"} - ${drag}px)` } : undefined}>
+    <aside ref={sheet} aria-label={label ?? (tab === "toc" ? "目录面板" : "全书搜索")} className={`book-navigation-sheet ${mobile ? "book-navigation-sheet--mobile" : "book-navigation-sheet--desktop"} ${compact ? "book-navigation-sheet--compact" : ""} ${panelClass}`} style={mobile ? { height: drag && gesture.current ? Math.max(0, gesture.current.height - drag) : expanded ? "calc(100% - 48px - var(--book-navigation-bottom))" : compact ? "auto" : "66%" } : undefined}>
       {mobile && <button type="button" aria-label="调整书内导航高度" aria-expanded={expanded} className="book-navigation-handle"
-        onPointerDown={(event) => { suppressPointerClick.current = false; gesture.current = { y: event.clientY, moved: false }; event.currentTarget.setPointerCapture(event.pointerId); }}
+        onPointerDown={(event) => { suppressPointerClick.current = false; gesture.current = { y: event.clientY, height: sheet.current?.getBoundingClientRect().height ?? 0, moved: false }; event.currentTarget.setPointerCapture(event.pointerId); }}
         onPointerMove={(event) => {
           if (!gesture.current) return;
           const distance = event.clientY - gesture.current.y;

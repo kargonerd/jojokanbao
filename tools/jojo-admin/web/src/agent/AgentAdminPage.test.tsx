@@ -54,9 +54,12 @@ describe("AgentAdminPage", () => {
     });
     render(<AgentAdminPage />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "更新 Agent 凭据" }));
+    const updateButton = screen.getByRole("button", { name: "更新 Agent 凭据" });
+    await waitFor(() => expect(updateButton).toBeEnabled());
+    fireEvent.click(updateButton);
     expect(screen.getByText(/上传会消费本地 rotating refresh token/)).toBeInTheDocument();
     expect(screen.getByText(/请重新登录/)).toBeInTheDocument();
+    expect(api.pushCredential).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "确认更新" }));
 
     await waitFor(() => expect(api.pushCredential).toHaveBeenCalledTimes(1));

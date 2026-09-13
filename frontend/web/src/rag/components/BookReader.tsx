@@ -244,7 +244,7 @@ export function BookReader({
   const [chromeHidden, setChromeHidden] = useState(false);
   const mobileChromeHidden = mobileViewport && chromeHidden;
   const chromeProps = { "data-reader-chrome": true, "aria-hidden": mobileChromeHidden || undefined, inert: mobileChromeHidden };
-  const readerTapRef = useRef<{ x: number; y: number; started: number; cancelled: boolean } | null>(null);
+  const readerTapRef = useRef<{ x: number; y: number; started: number; cancelled: boolean; canHideChrome: boolean } | null>(null);
   const [speechLauncherTarget, setSpeechLauncherTarget] = useState<HTMLDivElement | null>(null);
   const [pageMetrics, setPageMetrics] = useState<PageMetrics>(DEFAULT_PAGE_METRICS);
   const [trailingBlankPage, setTrailingBlankPage] = useState(false);
@@ -796,17 +796,30 @@ export function BookReader({
     if (!mobileViewport) return;
     if (event.isPrimary === false) {
       cancelReaderTap();
+      if (readerTapRef.current) readerTapRef.current.canHideChrome = false;
       return;
     }
     readerTapRef.current = {
       x: event.clientX, y: event.clientY, started: Date.now(),
       cancelled: Boolean(window.getSelection()?.toString()),
+      canHideChrome: mode === "scroll" && event.pointerType !== "mouse" && !readerOverlayOpen && !textSelection
+        && !window.getSelection()?.toString() && !(event.target as Element).closest("button,input,textarea,select,label,[role='button'],[contenteditable='true']"),
     };
   }
 
-  function moveReaderTap(event: ReactPointerEvent<HTMLElement>): void {
+  function trackReaderMovement(x: number, y: number): void {
     const tap = readerTapRef.current;
-    if (tap && Math.hypot(event.clientX - tap.x, event.clientY - tap.y) > 10) tap.cancelled = true;
+    if (!tap) return;
+    const dx = Math.abs(x - tap.x);
+    const dy = Math.abs(y - tap.y);
+    if (Math.hypot(dx, dy) > 10) tap.cancelled = true;
+    if (mobileViewport && mode === "scroll" && tap.canHideChrome && dy > 10 && dy > dx && !readerOverlayOpen && !textSelection && !window.getSelection()?.toString()) {
+      setChromeHidden(true);
+    }
+  }
+
+  function moveReaderTap(event: ReactPointerEvent<HTMLElement>): void {
+    trackReaderMovement(event.clientX, event.clientY);
     const swipe = swipeRef.current;
     if (!swipe || !flowRef.current) return;
     const dx = event.clientX - swipe.x;
@@ -1183,6 +1196,7 @@ export function BookReader({
     busy: bookshelfBusy,
     toggle: () => void toggleBookshelf(),
     speechLauncherTarget,
+    paperColor,
     getSpeechPosition,
     showSpeechLocation,
     chromeHidden: mobileChromeHidden || readerOverlayOpen,
@@ -1275,7 +1289,7 @@ export function BookReader({
 
     {readerNotice && <button type="button" onClick={() => setReaderNotice("")} className={`fixed bottom-20 left-1/2 z-[66] -translate-x-1/2 border px-4 py-2 font-sans text-xs shadow-lg md:bottom-6 ${panelClass}`}>{readerNotice}</button>}
 
-    <header className={`relative z-20 h-12 border-b backdrop-blur-md ${chromeClass}`}>
+    <header {...chromeProps} className={`relative z-20 h-12 border-b backdrop-blur-md ${chromeClass}`}>
       <div className="mx-auto flex h-full max-w-[1180px] items-center gap-3 px-4 font-sans text-xs md:px-10">
         <Link to={backHref} className="flex h-7 w-6 shrink-0 items-center justify-start text-current no-underline hover:text-red focus-visible:outline-2 focus-visible:outline-red" aria-label="返回上一页">
           <svg viewBox="0 0 20 20" className="h-4 w-4" aria-hidden="true">
@@ -1312,15 +1326,19 @@ export function BookReader({
       </button>
     </div>}
 
-    {mode === "scroll" ? <div ref={scrollRef} data-book-reading-surface onScroll={updateScrollProgress} onClick={handleReaderClick} onPointerDown={startReaderTap} onPointerMove={moveReaderTap} onPointerCancel={cancelReaderTap} onPointerUp={finishReaderPointer} onKeyUp={captureTextSelection} className="book-scroll-surface h-[calc(100%-48px)] overflow-y-auto">
+    {mode === "scroll" ? <div ref={scrollRef} data-book-reading-surface onScroll={updateScrollProgress} onClick={handleReaderClick} onPointerDown={startReaderTap} onPointerMove={moveReaderTap} onPointerCancel={cancelReaderTap} onPointerUp={finishReaderPointer} onTouchMove={(event) => {
+      // Native scrolling can cancel pointer events before the finger has moved far enough.
+      if (event.touches.length === 1) trackReaderMovement(event.touches[0]!.clientX, event.touches[0]!.clientY);
+      else if (readerTapRef.current) readerTapRef.current.canHideChrome = false;
+    }} onKeyUp={captureTextSelection} className="book-scroll-surface h-[calc(100%-48px)] overflow-y-auto">
       <main className="mx-auto max-w-[920px] px-0 py-0 md:px-5 md:py-8">
-        <article className={`relative min-h-full border-0 px-6 pb-32 pt-10 shadow-none sm:px-12 md:min-h-[calc(100vh-96px)] md:border-x md:px-20 md:py-20 md:shadow-[0_16px_50px_rgba(32,32,28,.10)] ${pageClass} ${paperTexture ? "book-page-texture" : ""} ${isDark ? "md:border-[#2d312e]" : "md:border-[#ddddd6]"}`} style={{ fontSize: `${fontSize}px`, lineHeight: 2.05 }}>
+        <article className={`relative min-h-full border-0 px-6 pb-32 pt-4 shadow-none sm:px-12 md:min-h-[calc(100vh-96px)] md:border-x md:px-20 md:py-20 md:shadow-[0_16px_50px_rgba(32,32,28,.10)] ${pageClass} ${paperTexture ? "book-page-texture" : ""} ${isDark ? "md:border-[#2d312e]" : "md:border-[#ddddd6]"}`} style={{ fontSize: `${fontSize}px`, lineHeight: 2.05 }}>
           <div className="mx-auto max-w-[730px]">{error && <p className="border-l-4 border-red bg-red/5 px-4 py-3 text-sm text-red">{error}</p>}<>{loadChapter ? <ContinuousBookContent key={`${datasetId}:${itemId}:${currentUserId ?? "guest"}`} ref={continuousRef} chapters={chapters} initialChapterId={activeChapterId} loadChapter={loadChapter} scrollRef={scrollRef} onPosition={continuousPosition} onReady={continuousContentReady} /> : <div data-speech-content>{children}</div>}</></div>
         </article>
       </main>
     </div> : <main className="relative h-[calc(100%-48px)] px-0 py-0 md:px-20 md:py-6">
       <div className="relative mx-auto h-full max-w-[1180px]">
-        <article onClick={handleReaderClick} onPointerDown={startReaderTap} onPointerMove={moveReaderTap} onPointerCancel={cancelReaderTap} onPointerUp={finishReaderPointer} onKeyUp={captureTextSelection} className={`relative h-full overflow-hidden border-0 px-6 pb-32 pt-10 shadow-none sm:px-10 md:border md:px-16 md:py-14 md:shadow-[0_16px_55px_rgba(32,32,28,.14)] ${pageClass} ${paperTexture ? "book-page-texture" : ""} ${isDark ? "md:border-[#2d312e]" : "md:border-[#d8d8d1]"}`}>
+        <article onClick={handleReaderClick} onPointerDown={startReaderTap} onPointerMove={moveReaderTap} onPointerCancel={cancelReaderTap} onPointerUp={finishReaderPointer} onKeyUp={captureTextSelection} className={`relative h-full overflow-hidden border-0 px-6 pb-32 pt-4 shadow-none sm:px-10 md:border md:px-16 md:py-14 md:shadow-[0_16px_55px_rgba(32,32,28,.14)] ${pageClass} ${paperTexture ? "book-page-texture" : ""} ${isDark ? "md:border-[#2d312e]" : "md:border-[#d8d8d1]"}`}>
           {columnsPerSpread === 2 && <div className={`pointer-events-none absolute inset-y-0 left-1/2 z-10 w-10 -translate-x-1/2 ${isDark ? "bg-[linear-gradient(90deg,transparent,rgba(0,0,0,.22),transparent)]" : "bg-[linear-gradient(90deg,transparent,rgba(77,75,66,.09),transparent)]"}`} aria-hidden="true" />}
           <div ref={flowRef} data-book-page-flow data-book-reading-surface className={`relative h-full overflow-hidden [column-fill:auto] [&_img]:cursor-zoom-in [&_figure]:break-inside-avoid [&_h1]:[break-after:avoid-column] [&_h2]:[break-after:avoid-column] [&_li]:break-inside-avoid `} style={{ touchAction: "pan-y", columnCount: columnsPerSpread, columnGap: columnsPerSpread === 2 ? "80px" : "48px", fontSize: `${fontSize}px`, lineHeight: 1.95 }}>
             {error && <p className="border-l-4 border-red bg-red/5 px-4 py-3 text-sm text-red">{error}</p>}<div data-speech-content style={{ display: "contents" }}>{children}</div>

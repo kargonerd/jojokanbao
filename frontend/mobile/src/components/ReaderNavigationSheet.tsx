@@ -2,7 +2,7 @@ import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react
 import { BackHandler, Keyboard, PanResponder, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import type { MobileTheme } from "../theme/tokens";
 
-export function ReaderNavigationSheet({ tab, onTabChange, onClose, bottom, top, theme, children, compact = false }: {
+export function ReaderNavigationSheet({ tab, onTabChange, onClose, bottom, top, theme, children, compact = false, contentHeight }: {
   tab?: "toc" | "search";
   onTabChange?: (tab: "toc" | "search") => void;
   onClose: () => void;
@@ -11,6 +11,8 @@ export function ReaderNavigationSheet({ tab, onTabChange, onClose, bottom, top, 
   theme: MobileTheme;
   children: ReactNode;
   compact?: boolean;
+  /** Measured scroll content, excluding the drag handle. */
+  contentHeight?: number;
 }) {
   const { height } = useWindowDimensions();
   const [expanded, setExpanded] = useState(!compact);
@@ -32,8 +34,9 @@ export function ReaderNavigationSheet({ tab, onTabChange, onClose, bottom, top, 
     },
     onPanResponderTerminate: () => setDrag(0),
   }), [dismiss]);
-  const availableHeight = height - bottom - top;
-  const sheetHeight = Math.max(120, Math.min(availableHeight, (expanded ? availableHeight : Math.min(390, height * .6)) - drag));
+  const availableHeight = Math.max(0, height - bottom - top);
+  const collapsedHeight = contentHeight === undefined ? Math.min(390, height * .6) : contentHeight + 36;
+  const sheetHeight = Math.min(availableHeight, Math.max(120, (expanded ? availableHeight : collapsedHeight) - drag));
 
   return <>
     <Pressable accessibilityRole="button" accessibilityLabel="关闭阅读工具" onPress={dismiss} style={[styles.backdrop, { bottom }]} />

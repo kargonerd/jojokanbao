@@ -60,4 +60,24 @@ describe("book navigation sheet", () => {
     fireEvent.click(handle, { detail: 0 });
     expect(handle.getAttribute("aria-expanded")).toBe("false");
   });
+
+  it("starts compact tools at their content height and returns there after expansion or a cancelled drag", () => {
+    render(<BookNavigationSheet mobile compact title="文字设置" label="文字设置面板" onClose={vi.fn()} panelClass=""><div className="book-tool-sheet-body">字号和纸张颜色</div></BookNavigationSheet>);
+    const sheet = screen.getByRole("complementary", { name: "文字设置面板" });
+    const handle = screen.getByRole("button", { name: "调整书内导航高度" });
+    handle.setPointerCapture = vi.fn();
+    vi.spyOn(sheet, "getBoundingClientRect").mockReturnValue({ height: 320 } as DOMRect);
+    expect(sheet.style.height).toBe("auto");
+    fireEvent(handle, new MouseEvent("pointerdown", { bubbles: true, clientY: 300 }));
+    fireEvent(handle, new MouseEvent("pointermove", { bubbles: true, clientY: 340 }));
+    expect(sheet.style.height).toBe("280px");
+    fireEvent.pointerCancel(handle);
+    expect(sheet.style.height).toBe("auto");
+    fireEvent.click(handle);
+    expect(handle.getAttribute("aria-expanded")).toBe("true");
+    expect(sheet.style.height).toContain("100%");
+    fireEvent.click(handle);
+    expect(handle.getAttribute("aria-expanded")).toBe("false");
+    expect(sheet.style.height).toBe("auto");
+  });
 });

@@ -3,16 +3,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useSpeechPlayback } from "./useSpeechPlayback";
 import { NativeSpeechPlayer } from "./SpeechPlayer";
 import { SpeechLoading } from "./SpeechLoading";
+import type { LockScreenPlaybackRequest } from "./nativeSpeechSession";
 
 const mocks = vi.hoisted(() => ({
   listeners: new Set<(status: Record<string, unknown>) => void>(),
+  remoteListeners: new Set<(request: LockScreenPlaybackRequest) => void>(),
   getItem: vi.fn(), setItem: vi.fn(), request: vi.fn(), providers: vi.fn(),
   preload: vi.fn(async () => undefined), clearPreloadedSource: vi.fn(async () => undefined),
-  player: { pause: vi.fn(), play: vi.fn(), replace: vi.fn(), seekTo: vi.fn(), setPlaybackRate: vi.fn(), setActiveForLockScreen: vi.fn(), addListener: vi.fn() },
+  player: { pause: vi.fn(), play: vi.fn(), replace: vi.fn(), seekTo: vi.fn(), setPlaybackRate: vi.fn(), setActiveForLockScreen: vi.fn(), updateLockScreenMetadata: vi.fn(), updateLockScreenPlayback: vi.fn(), addListener: vi.fn() },
 }));
 vi.mock("@react-native-async-storage/async-storage", () => ({ default: { getItem: mocks.getItem, setItem: mocks.setItem } }));
 vi.mock("expo-audio", () => ({ useAudioPlayer: () => mocks.player, setAudioModeAsync: async () => undefined,
   preload: mocks.preload, clearPreloadedSource: mocks.clearPreloadedSource }));
+vi.mock("expo-status-bar", () => ({ StatusBar: () => null }));
 vi.mock("react-native", async () => {
   const { createElement } = await import("react");
   return { ActivityIndicator: "progress", Image: "img", Pressable: "button", ScrollView: "section", Text: "span", View: "div",
@@ -29,6 +32,7 @@ vi.mock("react-native-safe-area-context", () => ({ SafeAreaView: "main" }));
 vi.mock("../account/auth", () => ({ useMobileAuthStore: (select: (state: unknown) => unknown) => select({ user: { id: "reader" } }) }));
 vi.mock("./featureFlag", () => ({ useSpeechFlagStore: () => ({ userId: "reader", enabled: true }) }));
 vi.mock("./SpeechLoading", () => ({ SpeechLoading: "speech-loading-bars" }));
+vi.mock("./speechArtwork", () => ({ materializeSpeechArtwork: async () => undefined }));
 vi.mock("expo-crypto", async () => { const { createHash } = await import("node:crypto"); return { CryptoDigestAlgorithm: { SHA256: "sha256" }, digestStringAsync: async (_: string, text: string) => createHash("sha256").update(text).digest("hex") }; });
 vi.mock("./speech", () => ({ speechTime: (value: number) => String(value), mobileSpeechClient: {
   loadSpeechProviders: mocks.providers,
@@ -44,6 +48,9 @@ async function emit(values: Record<string, unknown> = {}) {
   await act(async () => { for (const listener of mocks.listeners) listener({ isLoaded: true, playing: false, currentTime: 0, duration: 20, didJustFinish: false, ...values }); });
 }
 async function play() { await act(async () => state.toggle()); await emit(); await emit({ playing: true }); }
+async function remote(action: LockScreenPlaybackRequest["action"], position?: number, chapterId = state.chapter?.id ?? "c1") {
+  await act(async () => { for (const listener of mocks.remoteListeners) listener({ chapterId, action, position }); });
+}
 
 describe("native listening lifecycle", () => {
   it("autoplays when the visible retry button reloads failed voices", async () => {
@@ -189,7 +196,7 @@ describe("native listening lifecycle", () => {
   });
   beforeEach(async () => {
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
-    vi.clearAllMocks(); mocks.listeners.clear();
+    vi.clearAllMocks(); mocks.listeners.clear(); mocks.remoteListeners.clear();
     mocks.providers.mockReset().mockResolvedValue({ defaultProvider: "auto", defaultVoice: "male", cdnBase: "https://blacknews.jojokanbao.cn", providers: [{ id: "auto", cacheVersion: "test", available: true, streaming: true, voices: [{ id: "male" }, { id: "female" }] }] });
     mocks.getItem.mockResolvedValue(null); mocks.setItem.mockResolvedValue(undefined);
     mocks.player.seekTo.mockResolvedValue(undefined);
@@ -197,7 +204,10 @@ describe("native listening lifecycle", () => {
     mocks.player.replace.mockImplementation((source: { uri: string } | null) => {
       if (!source) throw new Error("Cannot convert null to AudioSource");
     });
-    mocks.player.addListener.mockImplementation((_event, listener) => { mocks.listeners.add(listener); return { remove: () => mocks.listeners.delete(listener) }; });
+    mocks.player.addListener.mockImplementation((event, listener) => {
+      const listeners = event === "lockScreenPlaybackRequest" ? mocks.remoteListeners : mocks.listeners;
+      listeners.add(listener); return { remove: () => listeners.delete(listener) };
+    });
     mocks.request.mockReset().mockImplementation(async (text: string) => ({ url: `https://blacknews.jojokanbao.cn/audio/${encodeURIComponent(text)}.mp3`, duration: 20 }));
     await act(async () => { view = create(<Harness />); });
   });
@@ -250,7 +260,7 @@ describe("native listening lifecycle", () => {
     expect(mocks.request).not.toHaveBeenCalled();
     await play();
     expect(mocks.player.play).toHaveBeenCalledTimes(1);
-    expect(mocks.player.setActiveForLockScreen).toHaveBeenCalledWith(true, expect.objectContaining({ title: "c1" }));
+    expect(mocks.player.setActiveForLockScreen).toHaveBeenCalledWith(true, expect.objectContaining({ title: "c1" }), { showSeekBackward: false, showSeekForward: false });
     await emit({ playing: true, currentTime: 12 });
     expect(state.elapsed).toBe(12);
     expect(state.duration).toBe(40);
@@ -272,6 +282,162 @@ describe("native listening lifecycle", () => {
     expect(mocks.clearPreloadedSource).not.toHaveBeenCalledWith({ uri: nextUrl });
     await act(async () => state.close());
     expect(mocks.clearPreloadedSource).toHaveBeenCalledWith({ uri: nextUrl });
+  });
+
+  it("publishes the chapter timeline without resetting the system position at segment boundaries", async () => {
+    await act(async () => state.open(true)); await emit({ playing: true });
+    await emit({ playing: true, currentTime: 12 });
+    expect(mocks.player.updateLockScreenPlayback).toHaveBeenLastCalledWith({ chapterId: "c1", duration: 40, position: 12,
+      playing: true, buffering: false, canGoPrevious: false, canGoNext: true });
+    await emit({ didJustFinish: true, currentTime: 20 }); await emit();
+    await emit({ playing: true, currentTime: 2 });
+    expect(mocks.player.updateLockScreenPlayback).toHaveBeenLastCalledWith(expect.objectContaining({ duration: 40, position: 22, playing: true }));
+    await remote("pause");
+    expect(mocks.player.updateLockScreenPlayback).toHaveBeenLastCalledWith(expect.objectContaining({ position: 22, playing: false }));
+  });
+
+  it("supplies a whole chapter timeline before the first system notification is activated", async () => {
+    await act(async () => state.open());
+    mocks.player.updateLockScreenPlayback.mockClear(); mocks.player.setActiveForLockScreen.mockClear();
+    await act(async () => state.toggle());
+    expect(mocks.player.updateLockScreenPlayback).toHaveBeenCalledWith(expect.objectContaining({ chapterId: "c1", duration: 40, position: 0, playing: false, buffering: true }));
+    expect(mocks.player.updateLockScreenPlayback.mock.invocationCallOrder[0]).toBeLessThan(mocks.player.setActiveForLockScreen.mock.invocationCallOrder[0]!);
+  });
+
+  it("seeks across segments from the system slider and keeps a paused session paused", async () => {
+    await act(async () => state.open()); await play();
+    await remote("pause"); mocks.player.play.mockClear();
+    await remote("seek", 27); await emit();
+    expect(state.part).toBe(1);
+    expect(mocks.player.seekTo).toHaveBeenLastCalledWith(7);
+    expect(mocks.player.play).not.toHaveBeenCalled();
+    await remote("play");
+    expect(mocks.player.play).toHaveBeenCalledOnce();
+    await emit({ playing: true, currentTime: 7 });
+    expect(state.elapsed).toBe(27);
+    await remote("seek", 5); await emit();
+    expect(state.part).toBe(0);
+    expect(mocks.player.seekTo).toHaveBeenLastCalledWith(5);
+    expect(mocks.player.play).toHaveBeenCalledTimes(2);
+  });
+
+  it("routes system chapter buttons through the same chapter loading and autoplay policy", async () => {
+    await act(async () => state.open()); await play();
+    const replacements = mocks.player.replace.mock.calls.length;
+    await remote("previous");
+    expect(mocks.player.replace).toHaveBeenCalledTimes(replacements);
+    await remote("next"); await emit(); await emit({ playing: true });
+    expect(state.chapter?.id).toBe("c2");
+    expect(mocks.player.updateLockScreenMetadata).toHaveBeenLastCalledWith(expect.objectContaining({ title: "c2", artist: "书" }));
+    expect(mocks.player.updateLockScreenPlayback).toHaveBeenLastCalledWith(expect.objectContaining({ chapterId: "c2", canGoPrevious: true, canGoNext: false }));
+    await remote("pause"); mocks.player.play.mockClear();
+    await remote("previous");
+    expect(state.chapter?.id).toBe("c1");
+    expect(mocks.player.play).not.toHaveBeenCalled();
+    await remote("play"); await emit();
+    expect(mocks.player.play).toHaveBeenCalledOnce();
+  });
+
+  it("ignores invalid, old-chapter and closed-session system commands", async () => {
+    await act(async () => state.open()); await play();
+    const calls = mocks.player.seekTo.mock.calls.length;
+    await remote("seek", Number.NaN); await remote("seek", 8, "old-chapter");
+    expect(mocks.player.seekTo).toHaveBeenCalledTimes(calls);
+    await remote("next", undefined, "old-chapter");
+    expect(state.chapter?.id).toBe("c1");
+    const lateListener = [...mocks.remoteListeners][0]!;
+    await act(async () => state.close());
+    expect(mocks.player.updateLockScreenPlayback).toHaveBeenLastCalledWith(null);
+    mocks.player.play.mockClear(); mocks.player.replace.mockClear();
+    await remote("play"); await remote("next");
+    await act(async () => view.unmount());
+    await act(async () => lateListener({ chapterId: "c1", action: "play" }));
+    expect(mocks.remoteListeners.size).toBe(0);
+    expect(mocks.player.play).not.toHaveBeenCalled();
+    expect(mocks.player.replace).not.toHaveBeenCalled();
+  });
+
+  it("keeps the chapter card and accepts system pause while the next chapter loads", async () => {
+    await act(async () => state.open()); await play();
+    await emit({ playing: true, currentTime: 12 });
+    let complete!: (chapter: { id: string; title: string; segments: string[] }) => void;
+    const load = vi.spyOn(props, "loadChapter").mockImplementationOnce(() => new Promise((resolve) => { complete = resolve; }));
+    try {
+      await remote("next");
+      expect(mocks.player.updateLockScreenPlayback).toHaveBeenLastCalledWith(expect.objectContaining({ chapterId: "c1", duration: 40, position: 12, buffering: true }));
+      await remote("pause", undefined, "c1");
+      mocks.player.play.mockClear(); mocks.player.replace.mockClear();
+      await act(async () => complete({ id: "c2", title: "第二章", segments: ["新的正文。"] }));
+      expect(state.chapter?.id).toBe("c2");
+      expect(mocks.player.play).not.toHaveBeenCalled();
+      expect(mocks.player.replace).not.toHaveBeenCalled();
+      await remote("play"); await emit();
+      expect(mocks.player.play).toHaveBeenCalledOnce();
+    } finally { load.mockRestore(); }
+  });
+
+  it("does not restart listening when an EOF event arrives after a system pause", async () => {
+    await act(async () => state.open()); await play();
+    await remote("pause");
+    mocks.player.play.mockClear(); mocks.player.replace.mockClear();
+    await emit({ didJustFinish: true, currentTime: 20 });
+    expect(mocks.player.play).not.toHaveBeenCalled();
+    expect(mocks.player.replace).not.toHaveBeenCalled();
+    expect(state.chapter?.id).toBe("c1");
+    expect(state.playing).toBe(false);
+  });
+
+  it("clears system buffering when the sleep timer expires during a chapter load", async () => {
+    await act(async () => view.unmount());
+    vi.useFakeTimers();
+    let complete!: (chapter: { id: string; title: string; segments: string[] }) => void;
+    try {
+      await act(async () => { view = create(<Harness />); });
+      await act(async () => state.open()); await play();
+      const load = vi.spyOn(props, "loadChapter").mockImplementationOnce(() => new Promise((resolve) => { complete = resolve; }));
+      try {
+        await act(async () => state.setTimer(Date.now() + 500));
+        await remote("next");
+        await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+        expect(mocks.player.updateLockScreenPlayback).toHaveBeenLastCalledWith(expect.objectContaining({ playing: false, buffering: false }));
+        expect(state.busy).toBe(false);
+        mocks.player.play.mockClear();
+        await act(async () => complete({ id: "c2", title: "第二章", segments: ["正文。"] }));
+        expect(mocks.player.play).not.toHaveBeenCalled();
+      } finally { load.mockRestore(); }
+      await act(async () => view.unmount());
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("updates a late book cover without replacing or restarting the playing audio", async () => {
+    await act(async () => view.unmount());
+    function ArtworkHarness({ artworkUrl }: { artworkUrl?: string }) { state = useSpeechPlayback({ ...props, artworkUrl }); return null; }
+    await act(async () => { view = create(<ArtworkHarness />); });
+    await act(async () => state.open()); await play();
+    const replacements = mocks.player.replace.mock.calls.length;
+    mocks.player.play.mockClear();
+    await act(async () => view.update(<ArtworkHarness artworkUrl="file:///cache/book-cover.jpg" />));
+    expect(mocks.player.updateLockScreenMetadata).toHaveBeenLastCalledWith({ title: "c1", artist: "书", albumTitle: "书", artworkUrl: "file:///cache/book-cover.jpg" });
+    expect(mocks.player.replace).toHaveBeenCalledTimes(replacements);
+    expect(mocks.player.play).not.toHaveBeenCalled();
+    mocks.player.updateLockScreenMetadata.mockImplementationOnce(() => { throw new Error("Artwork unavailable"); });
+    await act(async () => view.update(<ArtworkHarness />));
+    expect(state.error).toBe("");
+    expect(state.playing).toBe(true);
+  });
+
+  it("keeps installed binaries without chapter controls working with standard system controls", async () => {
+    await act(async () => view.unmount());
+    const enhanced = mocks.player.updateLockScreenPlayback;
+    Object.assign(mocks.player, { updateLockScreenPlayback: undefined });
+    try {
+      await act(async () => { view = create(<Harness />); });
+      await act(async () => state.open()); await play();
+      expect(mocks.player.setActiveForLockScreen).toHaveBeenLastCalledWith(true, expect.objectContaining({ title: "c1" }), { showSeekBackward: true, showSeekForward: true });
+      expect(state.playing).toBe(true);
+      expect(mocks.remoteListeners.size).toBe(0);
+      await act(async () => state.close());
+    } finally { Object.assign(mocks.player, { updateLockScreenPlayback: enhanced }); }
   });
 
   it("resumes the saved chapter and time, without autoplaying after reopening", async () => {
