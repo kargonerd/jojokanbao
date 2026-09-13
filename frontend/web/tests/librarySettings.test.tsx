@@ -21,6 +21,15 @@ it("requires both login and explicit opt-in, updates immediately and persists th
   expect(useLibraryPreferencesStore.getState().enabledSources).toContain("community");
   fireEvent.click(screen.getByRole("switch", { name: "共享书库" }));
   expect(screen.queryByText("分享示例书")).toBeNull();
+  expect(screen.getByRole<HTMLButtonElement>("switch", { name: "JOJO书库" }).disabled).toBe(true);
   fireEvent.click(screen.getByRole("switch", { name: "JOJO书库" }));
-  expect(screen.queryByText("JOJO 示例书")).toBeNull();
+  expect(screen.getByText("JOJO 示例书")).toBeTruthy();
+});
+
+it("restores JOJO from saved disabled preferences and refuses to turn it off", async () => {
+  localStorage.setItem("jojo-library-preferences", JSON.stringify({ state: { enabledSources: ["community"] }, version: 0 }));
+  await useLibraryPreferencesStore.persist.rehydrate();
+  expect(useLibraryPreferencesStore.getState().enabledSources).toEqual(["jojo", "community"]);
+  useLibraryPreferencesStore.getState().setSourceEnabled("jojo", false);
+  expect(useLibraryPreferencesStore.getState().enabledSources).toEqual(["jojo", "community"]);
 });

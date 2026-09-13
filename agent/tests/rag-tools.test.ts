@@ -64,6 +64,10 @@ function seriesFixture(scope: RagScope, librarySource?: "jojo" | "community") {
 }
 
 describe("RAG content tools", () => {
+  it("keeps JOJO books available with an old empty source preference", async () => {
+    const { tool } = seriesFixture({ contentType: "book", librarySources: [] }, "jojo");
+    expect(JSON.stringify((await tool("list_library_books").execute("list", {}, undefined)).details)).toContain("分卷测试");
+  });
   it("keeps community books out of default and empty scopes, including direct manifest access", async () => {
     for (const librarySources of [undefined, [], ["jojo"]]) {
       const { tool, manifestObjects } = seriesFixture({ contentType: "book", librarySources }, "community");

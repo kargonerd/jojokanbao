@@ -89,6 +89,7 @@ describe('Desktop shell routes', () => {
 
     expect(screen.getByRole('heading', { name: '资料库设置' })).toBeInTheDocument();
     expect(screen.getByRole('switch', { name: 'JOJO书库' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('switch', { name: 'JOJO书库' })).toBeDisabled();
     expect(screen.getByRole('switch', { name: '共享书库' })).toHaveAttribute('aria-checked', 'false');
     expect(screen.getByRole('link', { name: '← 返回设置' })).toHaveAttribute('href', '/settings');
   });

@@ -1,4 +1,4 @@
-import { DEFAULT_LIBRARY_SOURCES, type LibrarySourceId } from "@jojo/content";
+import { DEFAULT_LIBRARY_SOURCES, normalizeLibrarySources, type LibrarySourceId } from "@jojo/content";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
@@ -138,7 +138,7 @@ export const useMobileStore = create<MobileState>()(
       timesReadArticleIds: [],
       timesDisabledSourceIds: [],
       librarySources: [...DEFAULT_LIBRARY_SOURCES],
-      setLibrarySourceEnabled: (source, enabled) => set((state) => ({ librarySources: enabled ? [...new Set([...state.librarySources, source])] : state.librarySources.filter((id) => id !== source) })),
+      setLibrarySourceEnabled: (source, enabled) => set((state) => ({ librarySources: normalizeLibrarySources(enabled ? [...state.librarySources, source] : state.librarySources.filter((id) => id !== source)) })),
       setHapticsEnabled: (hapticsEnabled) => set({ hapticsEnabled }),
       setTextScale: (textScale) => set({ textScale }),
       setBookLineHeight: (bookLineHeight) => set({ bookLineHeight }),
@@ -262,6 +262,10 @@ export const useMobileStore = create<MobileState>()(
     {
       name: "jojo-mobile-preferences-v1",
       storage: createJSONStorage(() => AsyncStorage),
+      merge: (saved, current) => {
+        const persisted = saved as Partial<MobileState> | undefined;
+        return { ...current, ...persisted, librarySources: normalizeLibrarySources(persisted?.librarySources ?? current.librarySources) };
+      },
       partialize: ({ hapticsEnabled, textScale, bookLineHeight, bookReadingMode, bookPaperColor, bookFirstLineIndent, keepScreenAwake, allowLandscape, leftTapNext, recentIssues, recentBooks, historyOwnerId, historyClearedAt, historyAccounts, bookReadingSeconds, bookAnnotations, aiConversations, timesLanguage, timesReadArticleIds, timesDisabledSourceIds, librarySources }) => ({
         historyOwnerId, historyClearedAt, historyAccounts,
         hapticsEnabled,

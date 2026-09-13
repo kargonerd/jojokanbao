@@ -1,4 +1,4 @@
-import { LIBRARY_SOURCES, DEFAULT_LIBRARY_SOURCES } from "@jojo/content";
+import { LIBRARY_SOURCES, DEFAULT_LIBRARY_SOURCES, isLibrarySourceEnabled } from "@jojo/content";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { ARCHIVE_WEB_ORIGIN, FEEDBACK_BILIBILI_URL, FEEDBACK_QQ_GROUP, PROJECT_COPYRIGHT_NOTICES, type TimesSourceRef } from "@jojo/content";
 import { useNavigation, useRoute, type NavigationProp, type RouteProp } from "@react-navigation/native";
@@ -171,7 +171,7 @@ export function SettingsScreen() {
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} overScrollMode={IS_EINK_RELEASE ? "never" : "always"}>
         {!section || section === "library" ? <View>
           <SectionTitle title="资料库设置" />
-          {LIBRARY_SOURCES.map((source) => <SettingRow key={source.id} title={source.title} description={source.description} value={librarySources.includes(source.id)} onValueChange={(enabled) => setLibrarySourceEnabled(source.id, enabled)} />)}
+          {LIBRARY_SOURCES.map((source) => <SettingRow key={source.id} title={source.title} description={source.description} value={isLibrarySourceEnabled(source.id, librarySources)} disabled={source.id === "jojo"} onValueChange={(enabled) => setLibrarySourceEnabled(source.id, enabled)} />)}
         </View> : null}
         {!section || section === "reading" ? (
           <>

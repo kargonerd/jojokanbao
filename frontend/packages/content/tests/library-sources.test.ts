@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isLibraryBookVisible, libraryBookPolicy } from "../src/library-sources";
+import { isLibraryBookVisible, libraryBookPolicy, normalizeLibrarySources } from "../src/library-sources";
 
 describe("library source visibility", () => {
   it("defaults legacy books to JOJO and keeps community opt-in even after login", () => {
@@ -12,7 +12,14 @@ describe("library source visibility", () => {
     expect(isLibraryBookVisible({ access: "authenticated" }, false)).toBe(false);
     expect(isLibraryBookVisible({ access: "authenticated" }, true)).toBe(true);
     expect(isLibraryBookVisible({ librarySource: "community", publicationStatus: "draft" }, true, ["community"])).toBe(false);
-    expect(isLibraryBookVisible({}, true, [])).toBe(false);
+    expect(isLibraryBookVisible({}, true, [])).toBe(true);
+    expect(isLibraryBookVisible({ publicationStatus: "draft" }, true, [])).toBe(false);
+    expect(isLibraryBookVisible({ access: "authenticated" }, false, [])).toBe(false);
+  });
+  it("restores JOJO in older preferences while preserving community opt-in", () => {
+    expect(normalizeLibrarySources([])).toEqual(["jojo"]);
+    expect(normalizeLibrarySources(["community", "unknown"])).toEqual(["jojo", "community"]);
+    expect(normalizeLibrarySources(null)).toEqual(["jojo"]);
   });
   it("does not let an old public child override a restricted parent", () => {
     const policy = libraryBookPolicy({ librarySource: "community", publicationStatus: "draft" }, { librarySource: "jojo", access: "public", publicationStatus: "published" });

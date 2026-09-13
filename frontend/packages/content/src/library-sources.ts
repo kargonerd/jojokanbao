@@ -3,10 +3,15 @@ import type { JojoContentAccess, JojoPublicationStatus } from "./types";
 export type LibrarySourceId = "jojo" | "community";
 
 export const LIBRARY_SOURCES = [
-  { id: "jojo", title: "JOJO书库", description: "JOJO 整理收录的书籍。" },
+  { id: "jojo", title: "JOJO书库", description: "JOJO 整理收录的书籍，始终开启。" },
   { id: "community", title: "共享书库", description: "书友分享的电子书，开启后需登录阅读。" },
 ] as const;
 export const DEFAULT_LIBRARY_SOURCES: readonly LibrarySourceId[] = ["jojo"];
+
+/** Restore the mandatory source when loading older device preferences. */
+export function normalizeLibrarySources(enabled: unknown): LibrarySourceId[] {
+  return Array.isArray(enabled) && enabled.includes("community") ? ["jojo", "community"] : ["jojo"];
+}
 
 export interface LibraryBookPolicy {
   librarySource?: LibrarySourceId;
@@ -16,7 +21,8 @@ export interface LibraryBookPolicy {
 
 /** Missing source metadata is the legacy JOJO collection; unknown IDs stay hidden. */
 export function isLibrarySourceEnabled(source: string | undefined, enabled: readonly string[] = DEFAULT_LIBRARY_SOURCES): boolean {
-  return LIBRARY_SOURCES.some(({ id }) => id === (source ?? "jojo") && enabled.includes(id));
+  const id = source ?? "jojo";
+  return id === "jojo" || (id === "community" && enabled.includes(id));
 }
 
 /** Restrictions on a parent cannot be relaxed by an item or an old cached manifest. */
