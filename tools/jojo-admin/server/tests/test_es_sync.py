@@ -1,3 +1,4 @@
+from copy import deepcopy
 import json
 from pathlib import Path
 import sys
@@ -29,12 +30,15 @@ class UnifiedDocumentTest(unittest.TestCase):
 
     def test_book_is_one_document_per_chapter(self):
         rows = list(book_documents(
-            {"datasetId": "book-a", "title": "测试文集", "language": "zh-CN"},
+            {"datasetId": "book-a", "title": "测试文集", "language": "zh-CN",
+             "librarySource": "community", "access": "authenticated"},
             {
                 "datasetId": "book-a",
                 "itemId": "book-a:volume-1",
                 "title": "测试文集 第一卷",
                 "language": "zh-CN",
+                "librarySource": "jojo",
+                "access": "public",
                 "metadata": {
                     "authors": ["作者甲"],
                     "publisher": "测试社",
@@ -68,6 +72,8 @@ class UnifiedDocumentTest(unittest.TestCase):
         self.assertEqual(rows[0].document["itemId"], "book-a:volume-1")
         self.assertEqual(rows[0].document["metadata"]["itemTitle"], "测试文集 第一卷")
         self.assertEqual(rows[0].document["metadata"]["chapterId"], "chapter:1")
+        self.assertNotIn("librarySource", rows[0].document["metadata"])
+        self.assertNotIn("access", rows[0].document["metadata"])
         self.assertNotEqual(rows[0].document_id, rows[1].document_id)
 
     def test_newspaper_indexes_only_available_body(self):
@@ -214,6 +220,7 @@ class FakeClient:
     def __init__(self, mapping=None, existing=None):
         self.mapping = mapping or UNIFIED_MAPPING
         self.existing = existing or {}
+        self.last_bulk = ""
 
     def request(self, method, path, body=None):
         if path.endswith("/_mapping") and method == "GET":
@@ -240,6 +247,59 @@ class FakeClient:
 
 
 class AppendOnlySyncTest(unittest.TestCase):
+    def book_row(self):
+        return next(book_documents(
+            {"datasetId": "book-a", "title": "测试书"},
+            {"datasetId": "book-a", "itemId": "book-a:full", "title": "测试书",
+             "librarySource": "jojo", "access": "public",
+             "content": {"chapters": [{"id": "c1", "title": "一", "body": {"format": "text", "value": "正文"}}]}},
+            canonical_object="books/collections/test/items/full.json.gz",
+        ))
+
+    def test_book_policy_changes_reuse_original_and_repaired_documents_without_writes(self):
+        row = self.book_row()
+        for repaired in (False, True):
+            for policy in ({}, {"access": "authenticated"}, {"librarySource": "community"},
+                           {"access": "public", "librarySource": "jojo"}):
+                with self.subTest(repaired=repaired, policy=policy):
+                    active_id = "repair-id" if repaired else row.document_id
+                    existing = {**row.document, "metadata": {**row.document["metadata"], **policy}}
+                    snapshot = deepcopy(existing)
+                    client = FakeClient(existing={active_id: existing})
+                    result = AppendOnlySync(client, "test", revision_heads={row.document_id: active_id}).run([row])
+                    self.assertEqual((result.unchanged, result.created, result.conflicts, result.failed), (1, 0, 0, 0))
+                    self.assertEqual(client.last_bulk, "")
+                    self.assertEqual(existing, snapshot)
+
+    def test_book_content_and_other_metadata_changes_still_conflict(self):
+        row = self.book_row()
+        changes = ({"title": "新标题"}, {"content": "修订正文"},
+                   {"metadata": {**row.document["metadata"], "chapterOrder": 2}},
+                   {"metadata": {**row.document["metadata"], "authors": ["新作者"]}})
+        for repaired in (False, True):
+            for change in changes:
+                with self.subTest(repaired=repaired, change=change):
+                    active_id = "repair-id" if repaired else row.document_id
+                    legacy = {**row.document, "metadata": {**row.document["metadata"], "access": "authenticated", "librarySource": "community"}}
+                    client = FakeClient(existing={active_id: legacy})
+                    result = AppendOnlySync(client, "test", revision_heads={row.document_id: active_id}).run([
+                        IndexedDocument(row.document_id, {**row.document, **change}),
+                    ])
+                    self.assertEqual((result.conflicts, result.created), (1, 0))
+                    self.assertEqual(result.conflict_ids, [active_id])
+                    self.assertEqual(client.last_bulk, "")
+
+    def test_policy_field_compatibility_is_limited_to_books(self):
+        row = self.book_row()
+        for document_type in ("news", "newspaper"):
+            with self.subTest(document_type=document_type):
+                document = {**row.document, "type": document_type}
+                existing = {**document, "metadata": {**document["metadata"], "access": "authenticated"}}
+                client = FakeClient(existing={row.document_id: existing})
+                result = AppendOnlySync(client, "test").run([IndexedDocument(row.document_id, document)])
+                self.assertEqual(result.conflicts, 1)
+                self.assertEqual(client.last_bulk, "")
+
     def test_mapping_accepts_only_the_strict_unified_contract(self):
         client = FakeClient(mapping=UNIFIED_MAPPING)
         result = ensure_unified_mapping(client, "test")

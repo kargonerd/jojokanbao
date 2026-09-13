@@ -90,10 +90,13 @@ def update_publication(build_root: Path, publication_status: str, access: str, *
     dataset_ids = {item["datasetId"] for item in report["itemsBuilt"]}
     for item in report["itemsBuilt"]:
         original = json.loads(gzip.decompress(local(item["canonicalObject"]).read_bytes()))
-        provenance = original.get("provenance") or {}
-        is_epub = provenance.get("source") == "epub" or provenance.get("sourceFormat") == "epub" or original.get("librarySource") == "community"
+        source = original.get("librarySource", "jojo")
+        if source not in ("jojo", "community"):
+            raise ValueError("无效的书源设置")
         previous = source_by_dataset.get(item["datasetId"])
-        source_by_dataset[item["datasetId"]] = "community" if is_epub or previous == "community" else "jojo"
+        if previous is not None and previous != source:
+            raise ValueError("同一本书的书源设置不一致")
+        source_by_dataset[item["datasetId"]] = source
     for item in report["itemsBuilt"]:
         current_dataset = item["datasetId"]
         canonical_path = local(item["canonicalObject"])

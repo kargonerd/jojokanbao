@@ -55,7 +55,7 @@ describe("approved B2 layout", () => {
     const source = path.join(sourceDirectory, "undefined.epub");
     await writeFile(source, await zip.generateAsync({ type: "uint8array" }));
 
-    const report = await buildContentPipeline({
+    const report = await buildContentPipeline({ librarySource: "jojo",
       inputPaths: [source],
       outputDirectory: output,
       fetchAssets: false,

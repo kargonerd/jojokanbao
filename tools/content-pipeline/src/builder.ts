@@ -21,6 +21,7 @@ import {
   type JojoDatasetIndex,
   type JojoFragment,
   type JojoItemManifest,
+  type LibrarySourceId,
 } from "@jojo/content";
 import { buildEpub } from "./epub";
 import { isCopyrightChapterTitle, removeCopyrightToc } from "./copyright-chapters";
@@ -46,6 +47,7 @@ import { decodeWereadFile, inspectWereadCompleteness, isWereadExport } from "./w
 export interface BuildPipelineOptions {
   inputPaths: string[];
   outputDirectory: string;
+  librarySource: LibrarySourceId;
   fetchAssets?: boolean;
   allowPartial?: boolean;
   publicationStatus?: "draft" | "published";
@@ -416,6 +418,7 @@ async function buildItem(
   roots: { canonical: string; delivery: string; huggingface: string },
   publicationStatus: "draft" | "published",
   access: "public" | "authenticated",
+  librarySource: LibrarySourceId,
 ): Promise<{
   summary: BuiltItemSummary;
   itemSummary: NonNullable<JojoDatasetIndex["items"]>[number];
@@ -494,7 +497,7 @@ async function buildItem(
     language: part.source.language,
     publicationStatus,
     access,
-    librarySource: part.source.sourceKind === "epub" ? "community" : "jojo",
+    librarySource,
     identifiers: { isbn: part.source.isbn || null },
     metadata: {
       authors: authors(part.source),
@@ -549,7 +552,7 @@ async function buildItem(
     language: part.source.language,
     publicationStatus,
     access,
-    librarySource: part.source.sourceKind === "epub" ? "community" : "jojo",
+    librarySource,
     identifiers: canonical.identifiers,
     metadata: canonical.metadata,
     content: {
@@ -622,7 +625,7 @@ async function buildItem(
       manifestObject: `items/${part.itemKey}/manifest.jox`,
       publicationStatus,
       access,
-    librarySource: part.source.sourceKind === "epub" ? "community" : "jojo",
+      librarySource,
     },
     search,
   };
@@ -652,7 +655,11 @@ export async function buildContentPipeline(
 ): Promise<PipelineReport> {
   const outputDirectory = path.resolve(options.outputDirectory);
   const publicationStatus = options.publicationStatus ?? "draft";
-  const access = options.access ?? "public";
+  const librarySource = options.librarySource;
+  if (librarySource !== "jojo" && librarySource !== "community") {
+    throw new Error("请选择书源：jojo（JOJO书库）或 community（共享书库）");
+  }
+  const access = librarySource === "community" ? "authenticated" : options.access ?? "public";
   await ensureFreshDirectory(outputDirectory);
   const roots = {
     raw: path.join(outputDirectory, "raw"),
@@ -932,7 +939,7 @@ export async function buildContentPipeline(
           itemId: part.itemId,
         });
       }
-      const result = await buildItem(part, roots, publicationStatus, part.source.sourceKind === "epub" ? "authenticated" : access);
+      const result = await buildItem(part, roots, publicationStatus, access, librarySource);
       builtItems.push(result.summary);
       allSearch.push(...result.search);
       const state = datasets.get(part.datasetId) ?? {
@@ -958,8 +965,6 @@ export async function buildContentPipeline(
   };
   for (const dataset of [...datasets.values()].sort((left, right) => left.title.localeCompare(right.title, "zh-CN"))) {
     dataset.itemSummaries.sort((left, right) => left.order - right.order || left.title.localeCompare(right.title, "zh-CN"));
-    const librarySource = dataset.itemSummaries.some((item) => item.librarySource === "community") ? "community" : "jojo";
-    const datasetAccess = librarySource === "community" ? "authenticated" : access;
     const index: JojoDatasetIndex = {
       formatVersion: "jojo-delivery-index/1",
       revision: 1,
@@ -970,7 +975,7 @@ export async function buildContentPipeline(
       description: dataset.description,
       aiEnabled: true,
       publicationStatus,
-      access: datasetAccess,
+      access,
       librarySource,
       items: dataset.itemSummaries,
     };
@@ -983,7 +988,7 @@ export async function buildContentPipeline(
       description: dataset.description,
       aiEnabled: true,
       publicationStatus,
-      access: datasetAccess,
+      access,
       librarySource,
       itemPath: "items/{itemKey}/item.json.gz",
     };
@@ -1018,7 +1023,7 @@ export async function buildContentPipeline(
       indexObject: `content/books/${dataset.datasetId}/index.jox`,
       aiEnabled: true,
       publicationStatus,
-      access: datasetAccess,
+      access,
       librarySource,
     });
   }

@@ -62,7 +62,7 @@ class WorkspaceRoutesTest(unittest.TestCase):
             for name in ("book.json", "book.epub", "book.azw", "ignore.txt"):
                 (root / name).write_bytes(b"test")
             with patch("content_routes._new_job", return_value={"jobId": "test"}) as create:
-                response = self.client.post("/api/content/import-paths", json={"paths": [directory]})
+                response = self.client.post("/api/content/import-paths", json={"paths": [directory], "librarySource": "jojo"})
 
         self.assertEqual(response.status_code, 200)
         suffixes = {Path(value).suffix for value in create.call_args.args[0]}
@@ -75,6 +75,7 @@ class WorkspaceRoutesTest(unittest.TestCase):
                 patch("content_routes._new_job", return_value={"jobId": "test"}) as create,
             ):
                 response = self.client.post("/api/content/import-files", data={
+                    "librarySource": "jojo",
                     "files": [
                         (BytesIO(b"epub"), "example.epub"),
                         (BytesIO(b"mobi"), "example.mobi"),
@@ -93,6 +94,7 @@ class WorkspaceRoutesTest(unittest.TestCase):
                 patch("content_routes._new_job", return_value={"jobId": "test"}) as create,
             ):
                 response = self.client.post("/api/content/import-files", data={
+                    "librarySource": "jojo",
                     "files": [
                         (BytesIO(b"first"), "../朝花夕拾（鲁迅）.epub"),
                         (BytesIO(b"second"), "C:\\fakepath\\朝花夕拾（鲁迅）.epub"),

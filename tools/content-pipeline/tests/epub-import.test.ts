@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { bookSearchIndex, buildContentPipeline, convertWereadChapter, decodeEbookFile } from "../src";
 import { buildEpub } from "../src/epub";
 import { validatePipelineOutput } from "../src/validate-output";
-import type { JojoCanonicalItem } from "@jojo/content";
+import { gunzipJoxJson, type JojoCanonicalItem, type JojoCatalog, type JojoDatasetIndex, type JojoItemManifest } from "@jojo/content";
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -50,6 +50,61 @@ async function fixture(options: {
 }
 
 describe("EPUB import compatibility and integrity", () => {
+  it("places an unlisted opening cover before the authored TOC without changing its hierarchy", async () => {
+    const { file } = await fixture({
+      entries: [
+        { id: "cover", file: "cover.xhtml", body: '<img src="cover.png"/>' },
+        { id: "c1", file: "text/ch1.xhtml", body: '<h1>正文</h1><h2 id="section">第一节</h2><p>正文内容</p>' },
+        { id: "image", file: "cover.png", mediaType: "image/png" },
+      ],
+      files: { "OPS/cover.png": new Uint8Array([137, 80, 78, 71]) },
+      nav: '<li><span>第一部分</span><ol><li><a href="text/ch1.xhtml">正文</a><ol><li><a href="text/ch1.xhtml#section">第一节</a></li></ol></li></ol></li>',
+    });
+    const decoded = await decodeEbookFile(file);
+    expect(decoded.toc.map((node) => node.title)).toEqual(["封面", "第一部分"]);
+    expect(decoded.toc[0]).toMatchObject({ order: 1, targetId: decoded.chapters[0]!.id });
+    expect(decoded.toc[1]).toMatchObject({ order: 2, children: [{ title: "正文", children: [{ title: "第一节", anchorId: "section" }] }] });
+    expect(decoded.chapters.map((chapter) => chapter.title)).toEqual(["封面", "正文"]);
+  });
+
+  it("converts numbered Calibre footnote styles into annotations instead of extra chapters", async () => {
+    const { file, directory } = await fixture({ entries: [
+      { id: "c1", file: "text/ch1.xhtml", body: '<h1>正文</h1><p>正文<a id="back_note_336" href="notes.xhtml#note_336"><sup>[336]</sup></a></p>' },
+      { id: "notes", file: "text/notes.xhtml", body: '<dl id="note_336" class="footnote1"><dt>[<a href="ch1.xhtml#back_note_336">←336</a>]</dt><dd><p>第336条注释内容。</p></dd></dl>' },
+    ], nav: '<li><a href="text/ch1.xhtml">正文</a></li>' });
+    const output = path.join(directory, "build");
+    const report = await buildContentPipeline({ librarySource: "jojo", inputPaths: [file], outputDirectory: output });
+    expect(report).toMatchObject({ chapters: 1, annotations: 1 });
+    const item = JSON.parse(gunzipSync(await readFile(path.join(output, report.itemsBuilt[0]!.canonicalObject))).toString("utf8")) as JojoCanonicalItem;
+    expect(item.annotations).toEqual([expect.objectContaining({ label: "336", body: { format: "text", value: "第336条注释内容。" } })]);
+    expect(item.content).toMatchObject({ chapters: [{ title: "正文" }], toc: [{ title: "正文" }] });
+    expect((await validatePipelineOutput(output)).errors).toEqual([]);
+  });
+
+  it.each(["jojo", "community"] as const)("carries the chosen %s source through every publication copy", async (librarySource) => {
+    const { file, directory } = await fixture();
+    const output = path.join(directory, "build");
+    const report = await buildContentPipeline({ librarySource, inputPaths: [file], outputDirectory: output, access: "public" });
+    const built = report.itemsBuilt[0]!;
+    const item = JSON.parse(gunzipSync(await readFile(path.join(output, built.canonicalObject))).toString("utf8")) as JojoCanonicalItem;
+    const mirror = JSON.parse(gunzipSync(await readFile(path.join(output, `huggingface/${built.datasetId}/data/${built.itemKey}.json.gz`))).toString("utf8"));
+    const dataset = JSON.parse(await readFile(path.join(output, `canonical/books/${built.datasetId}/dataset.json`), "utf8"));
+    const hfDataset = JSON.parse(await readFile(path.join(output, `huggingface/${built.datasetId}/dataset.json`), "utf8"));
+    const catalog = await gunzipJoxJson<JojoCatalog>(await readFile(path.join(output, "delivery/catalog.jox")), "catalog.jox");
+    const indexKey = catalog.datasets[0]!.indexObject;
+    const index = await gunzipJoxJson<JojoDatasetIndex>(await readFile(path.join(output, "delivery", indexKey)), indexKey);
+    const manifest = await gunzipJoxJson<JojoItemManifest>(await readFile(path.join(output, "delivery", built.manifestObject)), built.manifestObject);
+    for (const value of [item, mirror, dataset, hfDataset, hfDataset.items[0], catalog.datasets[0], index, index.items![0], manifest]) {
+      expect(value).toMatchObject({ librarySource, access: librarySource === "community" ? "authenticated" : "public" });
+    }
+    expect(item.provenance.source).toBe("epub");
+  });
+
+  it.each([undefined, "unknown"])("rejects a missing or invalid library choice (%s)", async (librarySource) => {
+    const { file, directory } = await fixture();
+    await expect(buildContentPipeline({ inputPaths: [file], outputDirectory: path.join(directory, "build"), librarySource: librarySource as "jojo" })).rejects.toThrow("请选择书源");
+  });
+
   it("preserves linked and imported CSS bold through canonical and regenerated EPUB", async () => {
     const { file, directory } = await fixture({ entries: [
       { id: "c1", file: "text/ch1.xhtml", body: '<link rel="stylesheet" href="../styles/book.css"/><h1>第一章</h1><p class="content-c1">1报告</p><p>普通正文</p>' },
@@ -60,10 +115,10 @@ describe("EPUB import compatibility and integrity", () => {
       "OPS/styles/plain.css": ".content-c1 {font-weight: normal}",
     } });
     const output = path.join(directory, "build");
-    const report = await buildContentPipeline({ inputPaths: [file], outputDirectory: output, fetchAssets: false });
+    const report = await buildContentPipeline({ librarySource: "jojo", inputPaths: [file], outputDirectory: output, fetchAssets: false });
     expect(report).toMatchObject({ acceptedFiles: 1, chapters: 2 });
     const item = JSON.parse(gunzipSync(await readFile(path.join(output, report.itemsBuilt[0]!.canonicalObject))).toString("utf8")) as JojoCanonicalItem;
-    expect(item).toMatchObject({ librarySource: "community", access: "authenticated" });
+    expect(item).toMatchObject({ librarySource: "jojo", access: "public" });
     if (item.content.schema !== "jojo-content/book/1") throw new Error("Expected book");
     expect(cheerio.load(item.content.chapters[0]!.body.value)("p strong").text()).toBe("1报告");
     expect(cheerio.load(item.content.chapters[1]!.body.value)("strong")).toHaveLength(0);
@@ -83,7 +138,7 @@ describe("EPUB import compatibility and integrity", () => {
       { id: "c2", file: "text/ch2.xhtml", body: '<p id="note">注释内容</p>' },
     ] });
     const output = path.join(directory, "build");
-    const report = await buildContentPipeline({ inputPaths: [file], outputDirectory: output, fetchAssets: false });
+    const report = await buildContentPipeline({ librarySource: "jojo", inputPaths: [file], outputDirectory: output, fetchAssets: false });
     expect(report).toMatchObject({ acceptedFiles: 1, rejectedFiles: 0, chapters: 2 });
     expect(report.diagnostics).toContainEqual(expect.objectContaining({ code: "internal-links-unresolved", level: "warning" }));
     expect((await validatePipelineOutput(output)).errors).toEqual([]);
@@ -150,21 +205,21 @@ describe("EPUB import compatibility and integrity", () => {
 
   it("rejects unknown spine references instead of silently importing an incomplete book", async () => {
     const { file, directory } = await fixture({ spine: ["c1", "missing-id"] });
-    const report = await buildContentPipeline({ inputPaths: [file], outputDirectory: path.join(directory, "build") });
+    const report = await buildContentPipeline({ librarySource: "jojo", inputPaths: [file], outputDirectory: path.join(directory, "build") });
     expect(report).toMatchObject({ acceptedFiles: 0, rejectedFiles: 1, items: 0 });
     expect(report.diagnostics).toContainEqual(expect.objectContaining({ level: "error", message: expect.stringMatching(/missing-id/) }));
   });
 
   it.each(["text/missing.xhtml", "text/ch1.xhtml#missing-anchor"])("reports a broken TOC target: %s", async (target) => {
     const { file, directory } = await fixture({ nav: `<li><a href="${target}">丢失章节</a></li>` });
-    const report = await buildContentPipeline({ inputPaths: [file], outputDirectory: path.join(directory, "build") });
+    const report = await buildContentPipeline({ librarySource: "jojo", inputPaths: [file], outputDirectory: path.join(directory, "build") });
     expect(report).toMatchObject({ acceptedFiles: 0, rejectedFiles: 1 });
     expect(report.diagnostics).toContainEqual(expect.objectContaining({ level: "error", code: "source-toc-truncated" }));
   });
 
   it("reports a missing embedded image instead of silently dropping it", async () => {
     const { file, directory } = await fixture({ entries: [{ id: "c1", file: "text/ch1.xhtml", body: '<p>有插图的正文</p><img src="../images/missing.png" alt="重要图示"/>' }] });
-    const report = await buildContentPipeline({ inputPaths: [file], outputDirectory: path.join(directory, "build") });
+    const report = await buildContentPipeline({ librarySource: "jojo", inputPaths: [file], outputDirectory: path.join(directory, "build") });
     expect(report).toMatchObject({ acceptedFiles: 0, rejectedFiles: 1 });
     expect(report.diagnostics).toContainEqual(expect.objectContaining({ level: "error", code: "epub-assets-unresolved" }));
   });
@@ -186,9 +241,9 @@ describe("EPUB import compatibility and integrity", () => {
 
   it("rejects a missing spine file by default and reports an explicit partial import", async () => {
     const { file, directory } = await fixture({ entries: [{ id: "c1", file: "text/ch1.xhtml", body: "<p>现存正文</p>" }, { id: "missing", file: "missing.xhtml" }], spine: ["c1", "missing"] });
-    const strict = await buildContentPipeline({ inputPaths: [file], outputDirectory: path.join(directory, "strict") });
+    const strict = await buildContentPipeline({ librarySource: "jojo", inputPaths: [file], outputDirectory: path.join(directory, "strict") });
     expect(strict).toMatchObject({ acceptedFiles: 0, rejectedFiles: 1 });
-    const partial = await buildContentPipeline({ inputPaths: [file], outputDirectory: path.join(directory, "partial"), allowPartial: true });
+    const partial = await buildContentPipeline({ librarySource: "jojo", inputPaths: [file], outputDirectory: path.join(directory, "partial"), allowPartial: true });
     expect(partial).toMatchObject({ acceptedFiles: 1, chapters: 1 });
     expect(partial.diagnostics).toContainEqual(expect.objectContaining({ level: "warning", code: "source-chapters-missing" }));
   });
@@ -196,7 +251,7 @@ describe("EPUB import compatibility and integrity", () => {
   it("rejects corrupt ZIP input with a source diagnostic", async () => {
     const { file, directory } = await fixture();
     await writeFile(file, "not a ZIP archive");
-    const report = await buildContentPipeline({ inputPaths: [file], outputDirectory: path.join(directory, "build") });
+    const report = await buildContentPipeline({ librarySource: "jojo", inputPaths: [file], outputDirectory: path.join(directory, "build") });
     expect(report).toMatchObject({ acceptedFiles: 0, rejectedFiles: 1 });
     expect(report.diagnostics).toContainEqual(expect.objectContaining({ level: "error", code: "invalid-source" }));
   });
@@ -235,7 +290,7 @@ describe("EPUB import compatibility and integrity", () => {
       { id: "chapter", file: "chapter.xhtml", body: '<h1>正文</h1><p>可阅读正文</p>' },
     ] });
     const output = path.join(directory, "build");
-    expect(await buildContentPipeline({ inputPaths: [file], outputDirectory: output })).toMatchObject({ acceptedFiles: 1, chapters: 2 });
+    expect(await buildContentPipeline({ librarySource: "jojo", inputPaths: [file], outputDirectory: output })).toMatchObject({ acceptedFiles: 1, chapters: 2 });
     expect((await validatePipelineOutput(output)).errors).toEqual([]);
   });
 
@@ -264,7 +319,7 @@ describe("EPUB import compatibility and integrity", () => {
       files: { "OPS/images/插图.png": png },
     });
     const output = path.join(directory, "build");
-    const report = await buildContentPipeline({ inputPaths: [file], outputDirectory: output });
+    const report = await buildContentPipeline({ librarySource: "jojo", inputPaths: [file], outputDirectory: output });
     expect(report).toMatchObject({ acceptedFiles: 1, rejectedFiles: 0, chapters: 1, annotations: 1, diagnostics: [] });
     expect((await validatePipelineOutput(output)).errors).toEqual([]);
     const summary = report.itemsBuilt[0]!;

@@ -1,3 +1,5 @@
+import type { LibrarySourceId } from "@jojo/content";
+
 export interface ContentDiagnostic {
   level: "warning" | "error";
   code: string;
@@ -28,6 +30,7 @@ export interface ContentReport {
 }
 
 export interface ContentPublication {
+  librarySource?: LibrarySourceId;
   status: string;
   completedAt?: string;
   failedAt?: string;
@@ -39,7 +42,7 @@ export interface ContentPublication {
 }
 
 export interface ContentJob {
-  librarySource?: "jojo" | "community";
+  librarySource?: LibrarySourceId;
   jobId: string;
   newerJobId?: string | null;
   status: string;
@@ -73,12 +76,13 @@ export const contentApi = {
   status: () => fetch("/api/content/status").then((response) => json<{ success: true; publishers: PublisherStatus }>(response)),
   jobs: () => fetch("/api/content/jobs").then((response) => json<{ success: true; jobs: ContentJob[] }>(response)),
   job: (jobId: string) => fetch(`/api/content/jobs/${jobId}`).then((response) => json<{ success: true; job: ContentJob }>(response)),
-  importFile: (file: File, fetchAssets: boolean, publicationStatus: "draft" | "published", access: "public" | "authenticated") => {
+  importFile: (file: File, fetchAssets: boolean, publicationStatus: "draft" | "published", access: "public" | "authenticated", librarySource: LibrarySourceId) => {
     const body = new FormData();
     body.append("files", file);
     body.append("fetchAssets", String(fetchAssets));
     body.append("publicationStatus", publicationStatus);
     body.append("access", access);
+    body.append("librarySource", librarySource);
     return fetch("/api/content/import-files", { method: "POST", body })
       .then((response) => json<{ success: true; job: ContentJob }>(response));
   },
