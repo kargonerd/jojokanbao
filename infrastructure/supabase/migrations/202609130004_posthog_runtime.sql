@@ -28,7 +28,7 @@ alter policy reader_bookshelf_own on public.reader_bookshelf
 -- Deployment checks this contract before publishing clients that require it.
 create function public.get_reader_runtime_contract()
 returns text language sql immutable set search_path = '' as $$
-  select '202609130002'::text;
+  select '202609130004'::text;
 $$;
 revoke all on function public.get_reader_runtime_contract() from public;
 grant execute on function public.get_reader_runtime_contract() to anon, authenticated;

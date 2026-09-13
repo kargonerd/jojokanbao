@@ -13,7 +13,7 @@ and one synthetic book ID. It uses actual password authentication and HTTP RPCs
 to test public/private visibility, reply notifications, authorization, reports,
 and moderation. It does not send confirmation emails or touch real books.
 
-Apply the repository migrations through `202609130002_posthog_runtime.sql` before running this
+Apply the repository migrations through `202609130004_posthog_runtime.sql` before running this
 test. Notification checks also cover explicitly marking displayed IDs, duplicate
 and empty batches, ownership, and a new reply arriving after the displayed
 snapshot. That later reply must remain unread.
@@ -26,7 +26,7 @@ an email domain. This is an operator test and is intentionally not scheduled.
 
 ## AI usage limits
 
-After the reviewed migrations through `202609130002_posthog_runtime.sql` are applied,
+After the reviewed migrations through `202609130004_posthog_runtime.sql` are applied,
 run against an authorized project with the same environment as the comment test,
 plus `POSTHOG_PROJECT_TOKEN` and `POSTHOG_API_HOST`:
 

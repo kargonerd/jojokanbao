@@ -39,7 +39,7 @@ export async function migrationDatabase({ beforeMigration } = {}) {
   `);
   const dir = new URL('../../infrastructure/supabase/migrations/', import.meta.url);
   for (const file of (await readdir(dir)).filter(f => f.endsWith('.sql')).sort()) {
-    if (file === '202609130002_posthog_runtime.sql') await beforeMigration?.(db);
+    if (file === '202609130004_posthog_runtime.sql') await beforeMigration?.(db);
     let sql = await readFile(new URL(file, dir), 'utf8');
     sql = sql.replace(/create extension if not exists pgcrypto with schema extensions;/gi, '');
     try {

@@ -133,7 +133,7 @@ Beta 上传暂缓；正式发布报错退出。完成运行环境配置与数据
    `POSTHOG_PROJECT_TOKEN`、`POSTHOG_API_HOST`。GitHub 构建变量不会自动成为云函数运行环境变量。
 3. Python API 与 Agent 设置同一个 `JOJO_OPERATOR_TOKEN`，与 Supabase Operator 摘要匹配；
    配置 Supabase URL 和 Publishable Key。服务端凭据只保存在服务端 Secret 中。
-4. 在受控发布窗口协调部署 API、Agent、客户端和 `202609130002_posthog_runtime.sql`。
+4. 在受控发布窗口协调部署 API、Agent、客户端和 `202609130004_posthog_runtime.sql`。
    迁移更新 Auth 校验和批注/配额 RPC 合约，发布前备份并核对业务数据与配置；
    新客户端依赖新的注册授权和批注 API，应与服务端一起验收。迁移保持已有账号、邀请码、批注、用量和租约。
 5. 邮件额度服务重新打包发布，使每次检查从 PostHog 读取参数。验证注册两种模式、批注隐私和 AI 限额后开放流量。
