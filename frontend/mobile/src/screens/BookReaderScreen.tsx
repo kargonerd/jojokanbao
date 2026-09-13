@@ -76,7 +76,8 @@ import type { RootStackParamList } from "../navigation/types";
 import { useMobileStore, type BookAnnotation, type BookPaperColor } from "../store/mobileStore";
 import { mobileTheme, type MobileTheme } from "../theme/tokens";
 
-const useCursorPages = createUseCursorPages({ useCallback, useEffect, useRef, useState });
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const useCursorPages = createUseCursorPages({ useCallback, useEffect, useRef, useState } as any);
 
 type Props = NativeStackScreenProps<RootStackParamList, "BookReader">;
 type ReaderTool = "toc" | "search" | "ai" | "progress" | "notes" | "text";
@@ -880,14 +881,41 @@ export function BookReaderScreen({ route, navigation }: Props) {
   }
   async function deleteCloudUnderline(thread: AnnotationThread) {
     const context = noteContext;
-    const changed = await cloudAnnotations.removeMark(thread);
-    if (noteContextRef.current !== context) return;
-    publicNotes.refresh();
+    const willRemainVisible = Boolean(
+      thread.publiclyVisible
+      || (thread.underlineCount ?? 0) > 1
+      || thread.comments?.some((comment) => comment.visibility === "public")
+    );
     clearSelection({ chapterId: thread.sectionId, start: thread.startOffset ?? -1, end: thread.endOffset ?? -1, quote: thread.quote, prefix: thread.prefix, suffix: thread.suffix });
-    if (!changed?.underlinedByMe && !changed?.publiclyVisible) webViewRef.current?.injectJavaScript(createBookReaderRemoveAnnotationScript(thread.id));
+    if (!willRemainVisible) {
+      webViewRef.current?.injectJavaScript(createBookReaderRemoveAnnotationScript(thread.id));
+    }
     setActiveAnnotationId((id) => id === thread.id ? undefined : id);
     setReaderNotice("已删除自己的划线");
     void selectionHaptic(hapticsEnabled);
+    try {
+      const changed = await cloudAnnotations.removeMark(thread);
+      if (noteContextRef.current !== context) return;
+      publicNotes.refresh();
+      const isVisible = Boolean(
+        changed?.underlinedByMe
+        || changed?.publiclyVisible
+        || (changed?.underlineCount ?? 0) > 0
+        || changed?.comments?.some((comment) => comment.visibility === "public")
+      );
+      if (!willRemainVisible && isVisible) {
+        webViewRef.current?.injectJavaScript(createBookReaderApplyAnnotationScript(asReaderAnnotation(changed!)));
+      } else if (willRemainVisible && !isVisible) {
+        webViewRef.current?.injectJavaScript(createBookReaderRemoveAnnotationScript(thread.id));
+      }
+    } catch (reason) {
+      if (noteContextRef.current === context) {
+        setReaderNotice(annotationError(reason));
+        if (!willRemainVisible) {
+          webViewRef.current?.injectJavaScript(createBookReaderApplyAnnotationScript(asReaderAnnotation(thread)));
+        }
+      }
+    }
   }
   function deleteNoteUnderline(thread: AnnotationThread) {
     const context = noteContext;
@@ -964,19 +992,20 @@ export function BookReaderScreen({ route, navigation }: Props) {
   async function toggleBookshelf() {
     if (!user) { navigation.navigate("Account"); return; }
     if (!loaded || bookshelfBusy) return;
+    const currentOnShelf = onBookshelf ?? false;
+    const next = !currentOnShelf;
+    setOnBookshelf(next);
+    setReaderNotice(next ? "已加入我的书架" : "已移出我的书架");
     setBookshelfBusy(true);
-    setReaderNotice("");
     try {
-      const next = !(onBookshelf ?? await mobileBookshelfContains(datasetId, loaded.volume.itemId));
       await setMobileBookshelf({
         datasetId,
         itemId: loaded.volume.itemId,
         title: loaded.volume.title,
         added: next,
       });
-      setOnBookshelf(next);
-      setReaderNotice(next ? "已加入我的书架" : "已移出我的书架");
     } catch (reason) {
+      setOnBookshelf(currentOnShelf);
       setReaderNotice(reason instanceof Error ? reason.message : "书架状态更新失败");
     } finally {
       setBookshelfBusy(false);

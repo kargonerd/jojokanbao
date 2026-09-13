@@ -51,7 +51,8 @@ import {
   type ReusableExplanation,
 } from "../readerData";
 
-const useCursorPages = createUseCursorPages({ useCallback, useEffect, useRef, useState });
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const useCursorPages = createUseCursorPages({ useCallback, useEffect, useRef, useState } as any);
 
 export type BookReaderPaperColor = "ivory" | "white" | "dark";
 export type BookReaderMode = "paged" | "scroll";
@@ -1009,9 +1010,18 @@ export function BookReader({
   }
 
   async function removeUnderline(thread: AnnotationThread): Promise<void> {
-    await annotations.removeMark(thread.id);
+    const root = chapterRoot(thread.sectionId);
+    if (root) clearTextAnchorMarks(root, "mark[data-content-annotation]", thread);
     clearAnnotationSelection(thread, thread.sectionId);
     setSelectedMark(undefined);
+    setReaderNotice("已删除划线");
+    try {
+      await annotations.removeMark(thread.id);
+    } catch (reason) {
+      setReaderNotice(reason instanceof Error ? reason.message : "删除划线失败，请重试。");
+      void annotations.refresh();
+      throw reason;
+    }
   }
 
   function composeThought(): void {
@@ -1050,13 +1060,26 @@ export function BookReader({
     if (!currentUserId || annotationSaving) return;
     const anchor = selectionAnchor();
     if (!anchor) return;
+    const savedSelection = textSelection;
+    const savedRange = window.getSelection()?.rangeCount
+      ? window.getSelection()?.getRangeAt(0).cloneRange()
+      : undefined;
+    clearSelection();
+    setReaderNotice("已划线");
     setAnnotationSaving(true);
     try {
       await annotations.create(anchor);
       clearAnnotationSelection(anchor, annotationChapterId);
-      setReaderNotice("已划线");
-    } catch (reason) { setReaderNotice(reason instanceof Error ? reason.message : String(reason)); }
-    finally { setAnnotationSaving(false); }
+    } catch (reason) {
+      if (savedSelection) setTextSelection(savedSelection);
+      if (savedRange) {
+        window.getSelection()?.removeAllRanges();
+        window.getSelection()?.addRange(savedRange);
+      }
+      setReaderNotice(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setAnnotationSaving(false);
+    }
   }
 
   async function saveThought(): Promise<void> {
@@ -1130,13 +1153,15 @@ export function BookReader({
 
   async function toggleBookshelf(): Promise<void> {
     if (!currentUserId || bookshelfBusy) return;
-    const nextValue = !onBookshelf;
+    const previous = onBookshelf;
+    const nextValue = !previous;
+    setOnBookshelf(nextValue);
+    setReaderNotice(nextValue ? "已加入书架" : "已从书架移除");
     setBookshelfBusy(true);
     try {
       await setBookshelf({ datasetId, itemId, title: bookTitle, added: nextValue });
-      setOnBookshelf(nextValue);
-      setReaderNotice(nextValue ? "已加入书架" : "已从书架移除");
     } catch (reason) {
+      setOnBookshelf(previous);
       setReaderNotice(reason instanceof Error ? reason.message : String(reason));
     } finally {
       setBookshelfBusy(false);
