@@ -315,13 +315,6 @@ describe("BookReader", () => {
     expect(screen.getByRole("button", { name: "打开听本章播放器" })).toBeTruthy();
   });
 
-  it.each([390, 1200])("respects the listening feature flag at %spx", (width) => {
-    window.innerWidth = width;
-    useFeatureFlagStore.setState({ flags: { ...useFeatureFlagStore.getState().flags, "reader.speech": false } });
-    renderReader();
-    expect(screen.queryByRole("button", { name: "打开听本章播放器" })).toBeNull();
-  });
-
   it.each([390, 1200])("keeps tool panels draggable only on mobile at %spx", (width) => {
     window.innerWidth = width;
     renderReader();

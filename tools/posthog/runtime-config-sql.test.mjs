@@ -1,170 +1,122 @@
 import { before, after, beforeEach, afterEach, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
-import { PGlite } from '@electric-sql/pglite';
+import { createHash, createHmac, randomUUID } from 'node:crypto';
+import { migrationDatabase } from './db-fixture.mjs';
 
-const db = new PGlite();
 const token = 'fixture-operator-token-with-at-least-32-characters';
-const user = '10000000-0000-4000-8000-000000000001';
-const request = '20000000-0000-4000-8000-000000000001';
-const migration = name => readFile(new URL(`../../infrastructure/supabase/migrations/${name}.sql`, import.meta.url), 'utf8');
-const queryValue = async (sql, args = []) => (await db.query(sql, args)).rows[0].value;
-const snapshot = key => queryValue('select private.feature_flag_snapshot($1) as value', [key]);
-const sync = (updates, credential = token) => queryValue('select public.operator_sync_posthog_configs($1, $2::jsonb) as value', [credential, JSON.stringify(updates)]);
-const update = (key, config, extra = {}) => ({key, config, expectedRevision: 1, remoteId: 100, remoteVersion: 2, ...extra});
-const ai = {requestsPerMinute: 4, requestsPerDay: 150, maxRunSeconds: 240};
-let beforeMigration, beforeUsage;
-async function isolatedFailure(run, matcher) {
-  await db.exec('savepoint invalid_request');
-  try { await assert.rejects(run, matcher); }
-  finally { await db.exec('rollback to savepoint invalid_request; release savepoint invalid_request'); }
+const users = [randomUUID(), randomUUID(), randomUUID()];
+let db, oldState;
+const value = async (sql, args = []) => (await db.query(sql, args)).rows[0]?.value;
+const actor = user => db.query("select set_config('request.jwt.claim.sub',$1,false)", [user || '']);
+async function rejectQuery(sql, args, pattern) {
+  await db.exec('savepoint rejected');
+  try { await assert.rejects(db.query(sql, args), pattern); }
+  finally { await db.exec('rollback to savepoint rejected; release savepoint rejected'); }
 }
+function receipt(email, code = '', required = false, expires = Math.floor(Date.now()/1000)+120) {
+  const encoded = Buffer.from(JSON.stringify({email, code, required, expires})).toString('base64url');
+  return `${encoded}.${createHmac('sha256', createHash('sha256').update(token).digest()).update(`jojo.signup.v1.${encoded}`).digest('hex')}`;
+}
+const metadata = (email, code = '', required = false) => ({ invitation_code: code, signup_authorization: receipt(email, code, required), keep: 'yes' });
+const annotation = (operation, params, threshold = 2, credential = token) => value(
+  'select public.annotation_request($1,$2,$3,$4::jsonb) as value', [credential, threshold, operation, JSON.stringify(params)]);
+const subject = {p_content_type:'book',p_content_id:'book:test',p_section_id:'chapter:one'};
+const anchor = {...subject,p_content_title:'Book',p_content_url:'/library/test',p_quote:'Shared anchor',p_prefix:'',p_suffix:''};
 
 before(async () => {
-  // Run the real feature/config/usage SQL. Only unrelated Auth infrastructure
-  // and pgcrypto entry points are fixtures (PGlite has PostgreSQL sha256).
-  await db.exec(`create role anon; create role authenticated; create role service_role;
-    create schema auth; create schema extensions;
-    create function auth.uid() returns uuid language sql as $$ select null::uuid $$;
-    create table auth.users(id uuid primary key);
-    create function extensions.digest(text, text) returns bytea language sql as $$ select sha256(convert_to($1, 'UTF8')) $$;
-    create function extensions.gen_random_uuid() returns uuid language sql as $$ select pg_catalog.gen_random_uuid() $$;`);
-  const base = await migration('202608150001_feature_flags');
-  await db.exec(base.replace('create extension if not exists pgcrypto with schema extensions;', '').split('drop policy if exists "reader_bookshelf_own"')[0]);
-  await db.exec('create table private.annotation_settings(singleton boolean, public_mark_threshold integer);');
-  await db.exec((await migration('202608290002_annotation_threshold_feature_config')).split('create or replace function private.annotation_snapshot')[0]);
-  await db.exec(await migration('202609080003_agent_usage_limits'));
-  await db.exec(await migration('202609080004_agent_usage_feature_config'));
-  await db.exec((await migration('202609090001_optional_signup_invitations')).split('-- Expose only this public boolean')[0]);
-  await db.exec(await migration('202609090002_email_quota_monitor_config'));
-  await db.query('insert into private.feature_flag_operator_secret(token_digest) values (extensions.digest($1, \'sha256\'))', [token]);
-  await db.query('insert into auth.users(id) values ($1)', [user]);
-  await db.query(`update private.feature_flags set config = config || $1::jsonb where key='ai.usage_limits'`, [JSON.stringify({...ai, reserved: 'retain'})]);
-  await db.query(`insert into private.agent_usage_state(user_id, usage_day, day_count, active_request_id, active_until)
-    values ($1, (clock_timestamp() at time zone 'Asia/Shanghai')::date, 50, $2, clock_timestamp() + interval '1 hour')`, [user, request]);
-  await db.exec(await migration('202609050001_reader_speech_flag'));
-  // These retired keys exist in production, but are no longer seeded on fresh databases.
-  await db.exec("insert into private.feature_flags(key,description,rules) select key,'Legacy workspace','[{\"conditionType\":\"global\",\"serve\":false,\"enabled\":true,\"isFallback\":true}]'::jsonb from unnest(array['rag.workspace','olds.workspace']) key");
-  beforeMigration = await queryValue('select jsonb_agg(to_jsonb(f) order by key) as value from private.feature_flags f');
-  beforeUsage = await queryValue('select to_jsonb(s) as value from private.agent_usage_state s');
-  await db.exec(await migration('202609110001_posthog_product_flags'));
-  await db.exec(await migration('202609120001_posthog_runtime_config'));
-  await db.exec(await migration('202609120002_retire_product_flags'));
+  db = await migrationDatabase({beforeMigration: async database => {
+    await database.query("insert into private.feature_flag_operator_secret(token_digest) values (extensions.digest($1,'sha256'))", [token]);
+    for (const id of users) await database.query('insert into auth.users(id,email) values ($1,$2)', [id,`${id}@example.invalid`]);
+    await database.query(`insert into private.agent_usage_state(user_id,usage_day,day_count,active_request_id,active_until)
+      values($1,current_date,50,$2,now()+interval '1 hour')`, [users[2],randomUUID()]);
+    oldState = (await database.query('select to_jsonb(s) as value from private.agent_usage_state s')).rows[0].value;
+  }});
 });
-after(async () => db.close());
-beforeEach(async () => {
-  await db.exec('begin');
-  const flags = await queryValue('select public.operator_list_feature_flags($1) as value', [token]);
-  await sync(flags.filter(flag => flag.configProvider === 'posthog').map(flag =>
-    update(flag.key, flag.config, {remoteVersion: 1, expectedRevision: flag.revision})));
-});
+after(async () => db?.close());
+beforeEach(async () => db.exec('begin'));
 afterEach(async () => db.exec('rollback'));
 
-test('migration preserves every live value, rule, revision, history, counter and running lease', async () => {
-  const afterMigration = await queryValue(`select jsonb_agg(to_jsonb(f) - array['config_provider','config_remote_id','config_remote_version','config_synced_at'] order by key) as value from private.feature_flags f`);
-  assert.deepEqual(afterMigration, beforeMigration);
-  assert.deepEqual(await queryValue('select to_jsonb(s) as value from private.agent_usage_state s'), beforeUsage);
-  assert.equal((await snapshot('ai.usage_limits')).configProvider, 'posthog');
-  assert.equal((await snapshot('library.bookshelf')).configProvider, 'supabase');
+test('all migrations remove the flag system and preserve operator credentials, readers and running usage', async () => {
+  assert.equal(await value("select to_regclass('private.feature_flags') as value"), null);
+  assert.equal(await value("select count(*)::integer as value from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in ('public','private') and (p.proname like '%feature_flag%' or p.prosrc like '%private.feature_flags%')"), 0);
+  assert.equal(await value('select private.operator_authorized($1) as value',[token]), true);
+  assert.deepEqual(await value('select to_jsonb(s) as value from private.agent_usage_state s'), oldState);
+  assert.equal(await value('select count(*)::integer as value from auth.users'), 3);
 });
 
-test('publishes once with audit, preserves rules and unknown fields, retries idempotently, and rolls forward an old payload', async () => {
-  const before = await snapshot('ai.usage_limits');
-  const data = update('ai.usage_limits', {...ai, requestsPerDay: 200});
-  assert.deepEqual(await sync([data]), {checked: 1, changed: ['ai.usage_limits']});
-  const first = await snapshot('ai.usage_limits');
-  assert.equal(first.revision, 2);
-  assert.equal(first.config.reserved, 'retain');
-  assert.deepEqual(first.rules, before.rules);
-  assert.deepEqual(first.history.slice(0, -1), before.history);
-  assert.equal(first.history.at(-1).requestId, 'posthog:100:2');
-  assert.ok(first.configSyncedAt);
-  assert.deepEqual(await sync([data]), {checked: 1, changed: []});
-  assert.deepEqual((await snapshot('ai.usage_limits')).history, first.history);
-  await sync([update('ai.usage_limits', ai, {remoteVersion: 3, expectedRevision: 2})]);
-  assert.equal((await snapshot('ai.usage_limits')).revision, 3);
-  assert.deepEqual(await queryValue('select to_jsonb(s) as value from private.agent_usage_state s'), beforeUsage);
+test('open registration uses server authorization and removes its metadata without consuming an invite', async () => {
+  const email='open@example.invalid', id=randomUUID();
+  const data=metadata(email);
+  assert.deepEqual(await value('select public.hook_require_signup_invitation($1::jsonb) as value',[JSON.stringify({user:{email,user_metadata:data}})]), {});
+  await db.query('insert into auth.users(id,email,raw_user_meta_data) values($1,$2,$3)',[id,email,JSON.stringify(data)]);
+  assert.deepEqual(await value('select raw_user_meta_data as value from auth.users where id=$1',[id]),{keep:'yes'});
+  assert.equal(await value('select count(*)::integer as value from private.signup_invitation_redemptions where user_id=$1',[id]),0);
 });
 
-test('rejects stale versions, identity replacement and same-version payload changes', async () => {
-  await sync([update('ai.usage_limits', ai, {remoteVersion: 2})]);
-  for (const extra of [{remoteVersion: 1}, {remoteVersion: 3, remoteId: 101}, {remoteVersion: 2}]) {
-    await isolatedFailure(async () => {
-      await db.query('select public.operator_sync_posthog_configs($1, $2::jsonb)', [token,
-        JSON.stringify([update('ai.usage_limits', {...ai, requestsPerDay: 199}, extra)])]);
-    });
-  }
-  assert.equal((await snapshot('ai.usage_limits')).config.requestsPerDay, 150);
+test('client policy values, forged signatures, changed email/code, missing and expired authorizations cannot open registration', async () => {
+  const email='denied@example.invalid';
+  const good=metadata(email,'ABC234',true);
+  const cases=[{}, {invitationRequired:false}, {...good,signup_authorization:good.signup_authorization+'0'},
+    {...good,invitation_code:'ZZZ999'}, metadata('other@example.invalid'),
+    {signup_authorization:receipt(email,'',false,Math.floor(Date.now()/1000)-60)}];
+  for(const data of cases) await rejectQuery('insert into auth.users(id,email,raw_user_meta_data) values($1,$2,$3)',
+    [randomUUID(),email,JSON.stringify(data)],/Registration authorization is invalid/);
 });
 
-test('first synchronization cannot overwrite a live value changed since export', async () => {
-  await db.exec("update private.feature_flags set config_remote_id=null, config_remote_version=0 where key='ai.usage_limits'");
-  const before = await snapshot('ai.usage_limits');
-  await isolatedFailure(() => sync([update('ai.usage_limits', {...ai, requestsPerDay: 199})]), /must match current server values/);
-  assert.deepEqual(await snapshot('ai.usage_limits'), before);
+test('required invitations are redeemed atomically once, including when a client skips the Auth hook', async () => {
+  await db.exec("insert into private.signup_invitations(code,max_uses,kind) values('ABC234',1,'admin')");
+  const email='invited@example.invalid';
+  await db.query('insert into auth.users(id,email,raw_user_meta_data) values($1,$2,$3)',[randomUUID(),email,JSON.stringify(metadata(email,'ABC234',true))]);
+  const other='second@example.invalid';
+  await rejectQuery('insert into auth.users(id,email,raw_user_meta_data) values($1,$2,$3)',[randomUUID(),other,JSON.stringify(metadata(other,'ABC234',true))],/Invitation code could not be redeemed/);
+  assert.equal(await value("select use_count as value from private.signup_invitations where code='ABC234'"),1);
 });
 
-test('a later revision conflict rolls back the entire batch, including earlier rows', async () => {
-  const before = await snapshot('ai.usage_limits');
-  await isolatedFailure(async () => {
-    await db.query('select public.operator_sync_posthog_configs($1, $2::jsonb)', [token, JSON.stringify([
-      update('ai.usage_limits', {...ai, requestsPerDay: 199}),
-      update('auth.signup', {invitationRequired: true}, {expectedRevision: 999}),
-    ])]);
-  }, /revision conflict/);
-  assert.deepEqual(await snapshot('ai.usage_limits'), before);
+test('annotation thresholds come from trusted server parameters while private comments and ownership remain enforced', async () => {
+  await actor(users[0]);
+  const created=await annotation('create_content_annotation',anchor);
+  await annotation('add_annotation_comment',{p_annotation_id:created.id,p_body:'Private note',p_visibility:'private'});
+  await actor(users[1]);
+  assert.deepEqual(await annotation('get_annotation_threads',subject),[]);
+  const shared=await annotation('create_content_annotation',anchor);
+  assert.equal(shared.underlineCount,2);
+  assert.deepEqual(shared.comments,[]);
+  await actor(users[2]);
+  assert.equal((await annotation('get_annotation_threads',subject,2)).length,1);
+  assert.equal((await annotation('get_annotation_threads',subject,3)).length,0);
+  // Client payload cannot override the separately authenticated threshold.
+  assert.equal((await annotation('get_annotation_threads',{...subject,p_public_mark_threshold:1},3)).length,0);
+  await actor(users[1]);
+  await annotation('add_annotation_comment',{p_annotation_id:created.id,p_body:'Public note'});
+  await actor(users[2]);
+  const visible=await annotation('get_annotation_threads',subject,100);
+  assert.deepEqual(visible[0].comments.map(c=>c.body),['Public note']);
+  const report=await annotation('report_annotation_comment',{p_comment_id:visible[0].comments[0].id,p_reason:'spam'});
+  assert.ok(report.id);
+  assert.equal(await value('select count(*)::integer as value from public.annotation_comment_reports where id=$1',[report.id]),1);
+  await actor(users[0]);
+  await annotation('delete_my_annotation_mark',{p_annotation_id:created.id});
+  assert.equal(await value('select count(*)::integer as value from public.content_annotation_marks where annotation_id=$1',[created.id]),1);
+  assert.equal(await value('select count(*)::integer as value from public.annotation_comments where annotation_id=$1',[created.id]),2);
 });
 
-test('database rejects invalid parameters independently of the importer and keeps the local cache', async () => {
-  const invalid = [
-    update('ai.usage_limits', {...ai, requestsPerDay: 0}),
-    update('ai.usage_limits', {requestsPerDay: 100}),
-    update('auth.signup', {invitationRequired: 'false'}, {expectedRevision: 2}),
-    ...[0, 101, 1.5, '2', null].map(publicMarkThreshold => update('reader.annotations', {publicMarkThreshold})),
-    update('ops.email_quota', {warningPercent: 90, criticalPercent: 80, usageSource: 'records', dailyLimit: 100, monthlyLimit: 3000}),
-  ];
-  for (const item of invalid) {
-    await isolatedFailure(async () => {
-      await db.query('select public.operator_sync_posthog_configs($1, $2::jsonb)', [token, JSON.stringify([item])]);
-    });
-  }
-  assert.equal((await snapshot('ai.usage_limits')).config.requestsPerDay, 150);
-  assert.equal((await snapshot('reader.annotations')).config.publicMarkThreshold, 2);
+test('unauthenticated readers and clients without the server credential cannot provide annotation parameters', async () => {
+  await rejectQuery('select public.annotation_request($1,2,$2,$3)',[token,'get_annotation_threads',JSON.stringify(subject)],/Authentication is required/);
+  await actor(users[0]);
+  await rejectQuery('select public.annotation_request($1,1,$2,$3)',['untrusted','get_annotation_threads',JSON.stringify(subject)],/Operator token is invalid/);
+  assert.equal(await value("select to_regprocedure('public.get_annotation_threads(text,text,text)') as value"),null);
+  assert.equal(await value("select has_function_privilege('authenticated','public.add_annotation_comment(uuid,text,uuid,text)','execute') as value"),false);
 });
 
-test('requires operator authentication and blocks legacy config publication after migration', async () => {
-  const before = await snapshot('ai.usage_limits');
-  await isolatedFailure(async () => {
-    await db.exec('set local role anon');
-    await db.query('select public.operator_sync_posthog_configs($1, $2::jsonb)', ['wrong-token', JSON.stringify([update('ai.usage_limits', ai)])]);
-  }, /operator token is invalid/);
-  await isolatedFailure(async () => {
-    await db.query('select public.operator_publish_feature_flag($1,$2,$3::jsonb,$4::jsonb,$5,$6)',
-      [token, 'ai.usage_limits', JSON.stringify(before.rules), JSON.stringify({...ai, requestsPerDay: 199}), before.revision, 'legacy edit']);
-  }, /managed in PostHog/);
-});
-
-test('server admission reads new limits immediately but retains existing counters and concurrency protection', async () => {
-  await sync([update('ai.usage_limits', {...ai, requestsPerDay: 40})]);
-  let result = await queryValue('select public.acquire_agent_usage($1,$2,$3) as value', [token, user, request]);
-  assert.equal(result.allowed, false); assert.equal(result.reason, 'concurrent');
-  await db.query('select public.release_agent_usage($1,$2,$3)', [token, user, request]);
-  result = await queryValue('select public.acquire_agent_usage($1,$2,$3) as value', [token, user, request]);
-  assert.equal(result.allowed, false); assert.equal(result.reason, 'daily'); assert.equal(result.limit, 40);
-  assert.equal(await queryValue('select day_count as value from private.agent_usage_state where user_id=$1', [user]), 50);
-});
-
-test('retired rollouts disappear from management while config, history and old client RPCs remain', async () => {
-  const flags = await queryValue('select public.operator_list_feature_flags($1) as value', [token]);
-  const retired = ['library.bookshelf', 'reader.speech', 'rag.workspace', 'olds.workspace'];
-  assert.ok(retired.every(key => !flags.some(flag => flag.key === key)));
-  assert.ok(flags.some(flag => flag.key === 'reader.annotations' && flag.configProvider === 'posthog'));
-  for (const key of [...retired, 'reader.annotations']) {
-    const current = await snapshot(key);
-    assert.equal(current.rolloutProvider, 'retired');
-    assert.deepEqual(current.rules, beforeMigration.find(flag => flag.key === key).rules);
-    assert.deepEqual(current.history, beforeMigration.find(flag => flag.key === key).history);
-  }
-  const legacy = await queryValue("select jsonb_agg(row_to_json(f)) as value from public.get_my_feature_flags(array['library.bookshelf','reader.annotations','reader.speech'], null) f");
-  assert.equal(legacy.length, 3);
+test('AI limits use trusted request values and preserve atomic per-user concurrency and counts', async () => {
+  const request=randomUUID();
+  const acquire=(id,minute=1,day=2,seconds=60)=>value('select public.acquire_agent_usage($1,$2,$3,$4,$5,$6) as value',[token,users[0],id,minute,day,seconds]);
+  assert.deepEqual(await acquire(request),{allowed:true,maxRunSeconds:60});
+  assert.equal((await acquire(randomUUID())).reason,'concurrent');
+  await value('select public.release_agent_usage($1,$2,$3) as value',[token,users[0],request]);
+  assert.equal((await acquire(randomUUID())).reason,'minute');
+  assert.equal((await acquire(randomUUID(),2,1)).reason,'daily');
+  await rejectQuery('select public.acquire_agent_usage($1,$2,$3,0,2,60)',[token,users[0],randomUUID()],/parameters are invalid/);
+  await rejectQuery('select public.acquire_agent_usage($1,$2,$3,1,2,60)',['untrusted',users[0],randomUUID()],/Operator token is invalid/);
+  assert.equal(await value("select to_regprocedure('public.acquire_agent_usage(text,uuid,uuid)') as value"),null);
 });

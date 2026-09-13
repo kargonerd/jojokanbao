@@ -5,7 +5,6 @@ const items = [
   { to: "/pdf", label: "PDF 数据", note: "导入与发布" },
   { to: "/content", label: "书籍内容", note: "JSON 与 Jox" },
   { to: "/es", label: "ES 数据", note: "搜索与修复" },
-  { to: "/features", label: "功能开关", note: "灰度与规则" },
   { to: "/moderation", label: "评论审核", note: "举报与处置" },
   { to: "/agent", label: "Agent 管理", note: "凭据与连接" },
   { to: "/rmrb-review", label: "人民日报复核", note: "缺失正文" },

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { handle, parseUsage, parsePolicy, parseSource, recordUsage, signals, run, SLUG, PERIODS, LEVELS } from './monitor.mjs';
 const now = Date.parse('2026-09-09T12:00:00Z');
-const env = { RESEND_QUOTA_API_KEY: 're_test', HEALTHCHECKS_API_KEY: 'test', SUPABASE_URL: 'https://test.supabase.co', SUPABASE_PUBLISHABLE_KEY: 'test' };
+const env = { RESEND_QUOTA_API_KEY: 're_test', HEALTHCHECKS_API_KEY: 'test', POSTHOG_PROJECT_TOKEN: 'phc_test', POSTHOG_API_HOST: 'https://us.i.posthog.com' };
 const usage = (daily = 43, monthly = 64) => ({ object: 'usage', generated_at: new Date(now).toISOString(), emails: {
   daily: { used: daily, limit: 100, resets_at: '2026-09-10T00:00:00Z' }, monthly: { used: monthly, limit: 3000, resets_at: '2026-10-01T00:00:00Z' },
 } });
@@ -15,7 +15,7 @@ function fixture() {
     data.seen.push({ url, init });
     if (url === 'https://api.resend.com/usage') return Response.json(data.raw, { status: data.usageStatus });
     if (url.startsWith('https://api.resend.com/emails')) return Response.json({ object: 'list', has_more: false, data: [] }, { status: data.usageStatus });
-    if (url.includes('/rpc/')) return Response.json(data.config);
+    if (url.startsWith('https://us.i.posthog.com/flags/')) return Response.json({ featureFlags: {ops_email_quota_config:true}, featureFlagPayloads: {ops_email_quota_config:JSON.stringify(data.config)} });
     if (url === 'https://healthchecks.io/api/v3/checks/') return Response.json({ checks });
     if (url.startsWith('https://healthchecks.io/')) {
       const id = url.split('/')[6];

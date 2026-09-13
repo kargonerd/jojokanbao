@@ -1,10 +1,10 @@
-// Explicit hosted quota smoke test. Calls Supabase only; never requests a model.
-// Run after migrations 202609080003 and 202609080004 are applied:
+// Explicit hosted quota smoke test. Calls Reader, PostHog and Supabase; never requests a model.
+// Run after migration 202609130002 are applied:
 //   node tools/beta-smoke/ai-usage.mjs [env-directory]
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { getAdminKey, literal, loadEnvironment, query, request } from './lib.mjs';
+import { getAdminKey, literal, loadEnvironment, query, request, readPostHogConfig, signupAuthorization } from './lib.mjs';
 
 const env = loadEnvironment(process.argv[2]);
 for (const key of ['SUPABASE_ACCESS_TOKEN', 'SUPABASE_PROJECT_REF', 'VITE_SUPABASE_URL', 'VITE_SUPABASE_PUBLISHABLE_KEY', 'JOJO_OPERATOR_TOKEN']) {
@@ -46,7 +46,7 @@ async function setFixtureState(assignments) {
   assert.equal(rows.length, 1, 'Only the marked fixture state may be changed');
 }
 const rpc = (name, requestId, operatorToken = env.JOJO_OPERATOR_TOKEN, token) => request(env, `rest/v1/rpc/${name}`, {
-  token, body: { p_operator_token: operatorToken, p_user_id: userId, p_request_id: requestId },
+  token, body: { p_operator_token: operatorToken, p_user_id: userId, p_request_id: requestId, ...(name === 'acquire_agent_usage' ? { p_requests_per_minute: policy.requestsPerMinute, p_requests_per_day: policy.requestsPerDay, p_max_run_seconds: policy.maxRunSeconds } : {}) },
 });
 async function acquire(requestId) {
   const result = await rpc('acquire_agent_usage', requestId);
@@ -62,18 +62,14 @@ const deniedOperator = result => [401, 403].includes(result.status) && result.da
 try {
   const [schema] = await query(env, `select
     exists(select 1 from supabase_migrations.schema_migrations where version = '202609080003') as migration_recorded,
-    exists(select 1 from supabase_migrations.schema_migrations where version = '202609080004') as feature_config_migration_recorded,
+    exists(select 1 from supabase_migrations.schema_migrations where version = '202609130002') as runtime_migration_recorded,
     to_regclass('private.agent_usage_policy') is null as old_policy_removed,
     to_regclass('private.agent_usage_state') is not null as usage_state_retained,
-    to_regprocedure('public.acquire_agent_usage(text,uuid,uuid)') is not null as acquire_rpc,
+    to_regprocedure('public.acquire_agent_usage(text,uuid,uuid,integer,integer,integer)') is not null as acquire_rpc,
     to_regprocedure('public.release_agent_usage(text,uuid,uuid)') is not null as release_rpc`);
   check('usage migrations and RPCs are present, with state retained and the old policy table removed', Object.values(schema).every(value => value === true));
-  const currentFlag = await request(env, 'rest/v1/rpc/operator_get_feature_flag', {
-    body: { p_operator_token: env.JOJO_OPERATOR_TOKEN, p_key: 'ai.usage_limits' },
-  });
-  assert.ok(currentFlag.ok && currentFlag.data?.key === 'ai.usage_limits', 'The operator can read the usage-limit feature flag');
-  policy = currentFlag.data.config;
-  check('usage limits are stored as valid feature configuration',
+  policy = await readPostHogConfig(env, 'ai_usage_limits_config');
+  check('PostHog returns valid usage limits',
     Number.isInteger(policy?.requestsPerMinute) && policy.requestsPerMinute >= 1 && policy.requestsPerMinute <= 60
     && Number.isInteger(policy.requestsPerDay) && policy.requestsPerDay >= 1 && policy.requestsPerDay <= 10000
     && Number.isInteger(policy.maxRunSeconds) && policy.maxRunSeconds >= 30 && policy.maxRunSeconds <= 600);
@@ -84,10 +80,11 @@ try {
   const [invitation] = await query(env, `select * from private.create_signup_invitation(null, interval '1 hour', 1, ${literal(run)})`, false);
   const email = `${run}@example.invalid`;
   const password = randomBytes(24).toString('base64url');
+  const authorization = await signupAuthorization(env, email, invitation.code);
   const created = await request(env, 'auth/v1/admin/users', {
     token: adminKey, key: adminKey, body: {
       email, password, email_confirm: true,
-      user_metadata: { invitation_code: invitation.code, beta_smoke_run: run },
+      user_metadata: { invitation_code: invitation.code, signup_authorization: authorization, beta_smoke_run: run },
     },
   });
   assert.ok(created.ok, `Temporary account creation: HTTP ${created.status}`);

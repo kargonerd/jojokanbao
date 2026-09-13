@@ -4,7 +4,9 @@ import {
   createJojoAuthClient,
   createJojoAuthStore,
   createPersonalInvitationRepository,
+  authorizeSignup,
 } from "@jojo/auth";
+import { startSignupPolicy } from "./signupPolicy";
 import { AppState, Platform } from "react-native";
 import { createReaderIdentityCache } from "./readerIdentity";
 import { MOBILE_AUTH_STORAGE_KEY, readMobilePersistedSession } from "./persistedSession";
@@ -28,6 +30,8 @@ export const mobilePersonalInvitationRepository =
 
 const controller = createJojoAuthStore(mobileAuthClient, {
   readPersistedSession: () => readMobilePersistedSession(AsyncStorage),
+  startSignupPolicy,
+  authorizeSignup: (email, code) => authorizeSignup(`${process.env.EXPO_PUBLIC_READER_API_BASE?.replace(/\/$/, "") || "https://beta.jojokanbao.cn"}/api/v1/account/signup-authorization`, email, code),
 });
 
 export const useMobileAuthStore = controller.useAuthStore;

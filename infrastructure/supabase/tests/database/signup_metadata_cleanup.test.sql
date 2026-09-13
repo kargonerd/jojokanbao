@@ -1,16 +1,13 @@
 begin;
--- Arrange invitation-required fixtures through the legacy configuration source.
-update private.feature_flags set config_provider = 'supabase' where key = 'auth.signup';
-update private.feature_flags set config = config || '{"invitationRequired":true}'::jsonb
-where key = 'auth.signup';
 create extension if not exists pgtap with schema extensions;
+\ir ../signup-fixture.sql
 select extensions.plan(4);
 create temporary table metadata_cleanup_state as
 select extensions.gen_random_uuid() as user_id, invitation.*
 from private.create_signup_invitation(null, interval '1 hour', 1, 'Metadata cleanup test') invitation;
 
 insert into auth.users(id, email, raw_user_meta_data)
-select user_id, 'metadata-cleanup@example.invalid', jsonb_build_object('invitation_code', code)
+select user_id, 'metadata-cleanup@example.invalid', pg_temp.signup_metadata('metadata-cleanup@example.invalid',code)
 from metadata_cleanup_state;
 
 -- Reproduce the follow-up update made by the actual hosted Auth Admin API.

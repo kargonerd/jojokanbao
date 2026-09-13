@@ -1,7 +1,7 @@
 # JOJO 看报 · PostHog
 
 PostHog 承担 Web、Desktop、Mobile 和官网的使用统计、JavaScript 错误追踪，以及小型运行参数管理。
-服务端从数据库缓存读取运行参数，客户端通过独立 SDK 缓存读取公开的QQ群配置。
+前后端直接通过各自 SDK 读取同一份公开运行配置，使用本地或进程内缓存异步刷新。
 Healthchecks.io 和维护调度器负责定时任务、AI/邮件巡检及故障告警。
 
 ## 项目与构建配置
@@ -14,12 +14,14 @@ Project Token 和 API Host 是客户端公开配置。Operator Token 等服务�
 | GitHub 仓库或发布 Environment Variables | `POSTHOG_PROJECT_TOKEN`、`POSTHOG_API_HOST` |
 | Web/Desktop | `VITE_POSTHOG_TOKEN`、`VITE_POSTHOG_HOST` |
 | Mobile 的 EAS 环境变量 | `EXPO_PUBLIC_POSTHOG_TOKEN`、`EXPO_PUBLIC_POSTHOG_HOST` |
+| Python API、Agent、邮件额度服务 | `POSTHOG_PROJECT_TOKEN`、`POSTHOG_API_HOST` |
 | 官网 | `PUBLIC_POSTHOG_TOKEN`、`PUBLIC_POSTHOG_HOST` |
 
 发布工作流负责映射 GitHub 变量；EAS 云构建需要在项目使用的 EAS environment 中配置对应变量。
 本地构建通过仓库的 `.env` / worktree 配置加载器读取公开值。
 Mobile 也支持 `VITE_POSTHOG_TOKEN/HOST`，以 `EXPO_PUBLIC_` 值为优先，并只将允许的字段写入 `extra.analytics`。
 Token 和 Host 同时存在且 Host 为 HTTPS 时启用统计 SDK；日常开发模式关闭统计。
+运行配置独立于统计启用状态，注册、批注和 AI 服务需要有效的 PostHog 配置。
 
 Web 使用 `stable` / `beta` 发布渠道。移动端正式发布使用 `production-standard` /
 `production-eink` EAS Update channel，对应统计标签 `release_channel=stable`；OTA 沿用安装包渠道。
@@ -83,25 +85,30 @@ PostHog Remote config 是参数编辑与回滚入口，配置文档保持全局�
 | [`ops_email_quota_config`](https://us.posthog.com/project/604535/feature_flags/881156) | `warningPercent`、`criticalPercent`、`usageSource`、`dailyLimit`、`monthlyLimit` | 邮件额度检查 |
 | [`support_config`](https://us.posthog.com/project/604535/feature_flags/881158) | `qqGroup` | Web/Desktop 支持页、Mobile 设置页 |
 
-前四份配置由 `tools/posthog/sync-runtime-config.mjs` 同步到 `private.feature_flags.config`，
-对应业务 key 为 `auth.signup`、`reader.annotations`、`ai.usage_limits`、`ops.email_quota`。
-业务请求直接读取数据库缓存，无需等待 PostHog 网络请求。
-注册界面通过 `signup_invitation_required()` 决定是否显示邀请码；Auth hook/trigger 读取同一策略，
-提交时以服务端实际生效值为准。字段范围和默认值见
-[运行配置复用](../infrastructure/supabase/README.md#runtime-configuration-reuse)。
+前后端使用相同 key、相同 payload 和固定配置身份 `jojo-public-config`，`signed_in=false`。
+这五份文档保持全局启用，不添加按用户、平台或百分比分流规则；布尔策略放在 payload 字段中。
+例如允许无邀请码注册时，将 `auth_signup_config` 的 payload 改为 `{"invitationRequired":false}`。
+参数范围见 [运行配置复用](../infrastructure/supabase/README.md#runtime-configuration-reuse)。
 
-同步程序与数据库均校验字段类型、范围和版本，通过 `operator_sync_posthog_configs` 一次事务提交。
-首次绑定要求 PostHog 参数与数据库当前值一致。远端 ID 固定，版本单调递增；
-同版本不同内容、缺失或关闭的配置、非法字段及版本冲突都会使整个批次失败。
-失败期间使用最后有效缓存。同版本同内容重试只更新同步时间，参数变化产生新的审计 revision。
-配置同步保留未修改字段、历史、用户用量和执行中的租约。
+Web/Desktop 和 Mobile 的注册界面直接订阅 `auth_signup_config`，按项目持久保存已验证值。
+无缓存时界面先显示邀请码，SDK 返回有效配置后更新；注册页打开和提交失败时会刷新。
+后台每 5 分钟刷新，恢复前台的刷新间隔至少 30 秒；无效或失败的响应保留最后有效值。
 
-`.github/workflows/sync-runtime-config.yml` 计划每 5 分钟执行一次，
-仅在 master 且 `POSTHOG_RUNTIME_CONFIG_SYNC_ENABLED=true` 时运行。
-GitHub 定时调度可能延迟，实际生效以成功同步为准。服务端缓存没有强制过期；
-下一次业务读取使用同步后的值，邮件额度参数在下一次半小时检查读取。
-JOJO 管理台展示服务端实际值、同步时间、远端版本及历史。
-`configProvider=posthog` 的配置为只读，修改与回滚均在 PostHog 完成。
+Python API 和 Agent 用官方 SDK 读取配置，在进程内保存已验证快照。已有快照的请求立即使用缓存，
+距上次成功读取 5 分钟后，下一次请求触发后台刷新；失败至少间隔 30 秒重试。
+进程首次读取最多等待一次 3 秒 SDK 请求，没有有效配置则暂时拒绝相关操作。
+进程重启会重新读取。各进程刷新时间不同，提交操作以处理该请求的后端配置为准。
+邮件额度任务每次运行通过 Node SDK 读取完整配置；读取失败按采集故障处理。
+
+注册先调用 `/api/v1/account/signup-authorization`，后端根据同一配置签发绑定邮箱和邀请码、
+有效期 120 秒的授权凭据，再由客户端提交到 Supabase Auth。数据库 Auth hook 和触发器验证签名，
+并在要求邀请码时原子核销。客户端不能自行声明免邀请码。邀请码与邮箱验证码是两项独立校验：
+`invitationRequired` 控制邀请码，邮箱验证码用于确认邮箱所有权。
+
+批注请求经 `/api/v1/annotations` 进入后端，后端从 SDK 取得公开划线阈值，并携带用户 JWT 和
+服务端 Operator 凭据调用数据库原子操作。SQL 执行所有权、隐私、审核和参数边界检查。
+Agent 同样将可信限额传入配额操作，数据库按账号行锁维护计数和并发租约。
+PostHog 管理参数和变更历史；数据库仅保存业务状态及服务端鉴权凭据。
 
 QQ群号由各端独立 SDK 读取 `support_config`，无需登录。
 `qqGroup` 为 5–12 位数字字符串，首位非零；显示与复制使用同一值。
@@ -116,26 +123,21 @@ Web/Desktop 恢复联网时也刷新。无效响应保留有效缓存，公开�
 听读优先复用已有音频，MiMo 使用服务端密钥，自动模式在 MiMo 不可用时回退到 Edge。
 合成接口、并发限制与缓存行为见 [听读说明](../tools/speech/README.md)。
 
-兼容接口 `get_my_feature_flags` 提供存储的规则快照；
-Operator 单项快照接口提供配置和审计历史。用户书架、批注及运行状态保存在各自业务表中。
-
 ## 部署与初始化
 
-1. 配置上述构建变量，在 GitHub Secret 中保存同步用 `JOJO_OPERATOR_TOKEN`，
-   并提供 `VITE_SUPABASE_URL`、`VITE_SUPABASE_PUBLISHABLE_KEY`。
-2. 按仓库数据库部署流程依次应用
-   `202609110001_posthog_product_flags.sql`、
-   `202609120001_posthog_runtime_config.sql`、
-   `202609120002_retire_product_flags.sql`。
-   核对四组服务端参数与 PostHog 文档一致，保留部署目标的实际值。
-3. 在已设置进程环境变量的受控环境执行 `node tools/posthog/sync-runtime-config.mjs`。
-   首次绑定预期 `checked=4, changed=[]`；检查服务端实际值、同步时间和远端版本。
-4. 设置 `POSTHOG_RUNTIME_CONFIG_SYNC_ENABLED=true`，执行工作流并检查结果。
-5. 使用包含所需原生依赖的移动端安装包。OTA 必须满足项目的 runtimeVersion 与原生模块兼容要求。
-   按下方清单验收各端统计和配置。
+1. 在 PostHog 核对五份全局配置，保留部署目标的实际值；确保公开项目 Token 能读取完整 payload。
+2. 配置客户端构建变量。Python API、Agent 和邮件额度 SCF 的运行环境均设置
+   `POSTHOG_PROJECT_TOKEN`、`POSTHOG_API_HOST`。GitHub 构建变量不会自动成为云函数运行环境变量。
+3. Python API 与 Agent 设置同一个 `JOJO_OPERATOR_TOKEN`，与 Supabase Operator 摘要匹配；
+   配置 Supabase URL 和 Publishable Key。服务端凭据只保存在服务端 Secret 中。
+4. 在受控发布窗口协调部署 API、Agent、客户端和 `202609130002_posthog_runtime.sql`。
+   迁移更新 Auth 校验和批注/配额 RPC 合约，发布前备份并核对业务数据与配置；
+   新客户端依赖新的注册授权和批注 API，应与服务端一起验收。迁移保持已有账号、邀请码、批注、用量和租约。
+5. 邮件额度服务重新打包发布，使每次检查从 PostHog 读取参数。验证注册两种模式、批注隐私和 AI 限额后开放流量。
+6. 移动端使用包含所需原生依赖的正式安装包；OTA 必须满足项目 runtimeVersion 与原生模块兼容要求。
+   已安装客户端只有在获得包含新代码的更新后才会使用这些配置。
 
-停止同步时将 `POSTHOG_RUNTIME_CONFIG_SYNC_ENABLED` 设为 false，服务端继续使用最后有效值。
-参数回滚在 PostHog 完成，并在下一次成功同步时生效。
+参数修改与回滚直接在 PostHog 完成，在各服务下一次成功刷新后生效。
 
 ## 验收
 
@@ -148,9 +150,10 @@ Operator 单项快照接口提供配置和审计历史。用户书架、批注�
 7. 验证QQ群号读取与离线缓存，以及注册策略、共享批注阈值和 AI/邮件限额。
 8. 确认 Healthchecks.io 与维护调度任务正常运行。
 
-配置同步测试使用 PGlite 执行配置和 AI 准入 SQL，覆盖首次绑定、保值、版本冲突、幂等重试、
-非法配置、事务回滚和权限校验。Auth 基础设施及 pgcrypto 入口使用测试替身。
-CI 的 Node 和数据库检查均执行 `pnpm --filter @jojo/posthog-ops test`。
+数据库契约测试使用 PGlite 执行完整迁移，覆盖业务状态保留、注册授权签名与邀请码核销、
+批注隐私和配额原子操作。Auth/Storage 基础设施和 pgcrypto 入口使用测试夹具。
+CI 的 Node 和数据库检查均执行 `pnpm --filter @jojo/posthog-ops test`，数据库任务另运行 pgTAP。
+SDK 缓存、离线刷新、前后端策略读取和客户端注册行为由各工作区测试覆盖。
 
 SDK 参考：[JavaScript](https://posthog.com/docs/libraries/js/config)、
 [React Native](https://posthog.com/docs/libraries/react-native)、

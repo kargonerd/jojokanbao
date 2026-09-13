@@ -22,7 +22,15 @@ pnpm dev:backend
 
 - `GET http://127.0.0.1:8088/v1/health`
 - `GET http://127.0.0.1:8088/v1/me`
+- `POST http://127.0.0.1:8088/v1/account/signup-authorization`
+- `POST http://127.0.0.1:8088/v1/annotations`
 - `POST http://127.0.0.1:8088/v1/speech`
+
+注册与批注 API 使用 PostHog SDK 读取全局运行配置，按进程缓存已验证快照并后台刷新。
+设置 `POSTHOG_PROJECT_TOKEN`、`POSTHOG_API_HOST` 和服务端 `JOJO_OPERATOR_TOKEN`；
+Operator Token 必须与 Supabase 保存的摘要匹配。注册授权绑定邮箱、邀请码与短时有效期；
+批注请求保留用户 JWT，由后端提供可信公开阈值，数据库执行身份和业务权限校验。
+字段与部署顺序见 [PostHog 接入](../docs/posthog.md)。
 
 ## 听书 / 听新闻
 

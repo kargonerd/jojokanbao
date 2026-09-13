@@ -5,7 +5,6 @@ import { PdfDataPage } from "./pages/PdfDataPage";
 import { EsDataPage } from "./pages/EsDataPage";
 import { ContentDataPage } from "./pages/ContentDataPage";
 import { ContentPreviewPage } from "./pages/ContentPreviewPage";
-import { FeatureFlagsPage } from "./features/FeatureFlagsPage";
 import { AgentAdminPage } from "./agent/AgentAdminPage";
 import { ModerationPage } from "./moderation/ModerationPage";
 import { RmrbReviewPage } from "./rmrb/RmrbReviewPage";
@@ -20,7 +19,6 @@ export function App() {
           <Route path="pdf" element={<PdfDataPage />} />
           <Route path="es" element={<EsDataPage />} />
           <Route path="content" element={<ContentDataPage />} />
-          <Route path="features" element={<FeatureFlagsPage />} />
           <Route path="agent" element={<AgentAdminPage />} />
           <Route path="moderation" element={<ModerationPage />} />
           <Route path="rmrb-review" element={<RmrbReviewPage />} />

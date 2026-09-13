@@ -49,3 +49,37 @@ export async function request(env, path, { token, key = env.VITE_SUPABASE_PUBLIS
   const data = await response.json().catch(() => null);
   return { status: response.status, ok: response.ok, data };
 }
+
+export async function readerRequest(env, path, body, token) {
+  const base = env.VITE_AGENT_GATEWAY_BASE || env.EXPO_PUBLIC_READER_API_BASE || env.READER_BASE_URL;
+  if (!base) throw new Error('Set READER_BASE_URL to the deployed Reader API origin');
+  const response = await fetch(`${base.replace(/\/$/, '')}/api/v1/${path}`, {
+    method: 'POST', redirect: 'error', signal: AbortSignal.timeout(30_000),
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify(body),
+  });
+  return { status: response.status, ok: response.ok, data: await response.json().catch(() => null) };
+}
+
+export async function signupAuthorization(env, email, invitationCode) {
+  const result = await readerRequest(env, 'account/signup-authorization', { email, invitationCode });
+  if (!result.ok || typeof result.data?.authorization !== 'string') throw new Error(`Signup authorization: HTTP ${result.status}`);
+  return result.data.authorization;
+}
+
+// One-shot public configuration read for the explicitly invoked hosted smoke.
+export async function readPostHogConfig(env, key) {
+  const host = env.POSTHOG_API_HOST || env.VITE_POSTHOG_HOST || 'https://us.i.posthog.com';
+  const token = env.POSTHOG_PROJECT_TOKEN || env.VITE_POSTHOG_TOKEN;
+  if (!token || new URL(host).protocol !== 'https:') throw new Error('PostHog configuration missing');
+  const response = await fetch(`${host.replace(/\/$/, '')}/flags/?v=2`, {
+    method: 'POST', redirect: 'error', signal: AbortSignal.timeout(10_000),
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token, distinct_id: 'jojo-public-config', person_properties: { signed_in: false } }),
+  });
+  if (!response.ok) throw new Error(`PostHog configuration: HTTP ${response.status}`);
+  const data = await response.json();
+  if (data.featureFlags?.[key] !== true) throw new Error(`PostHog configuration unavailable: ${key}`);
+  const payload = data.featureFlagPayloads?.[key];
+  return typeof payload === 'string' ? JSON.parse(payload) : payload;
+}

@@ -117,8 +117,8 @@ jobs:
           node infrastructure/tencent-scf/maintenance-scheduler/build.mjs
           node --check infrastructure/tencent-scf/maintenance-scheduler/ops.mjs
 
-      - name: Check PostHog sync contracts
-        # The workflow and SQL migrations are outside this package's Turbo hash.
+      - name: Check PostHog database contracts
+        # SQL migrations are outside this package's Turbo hash.
         run: pnpm --filter @jojo/posthog-ops test
 
       - name: Check maintenance workflow contracts

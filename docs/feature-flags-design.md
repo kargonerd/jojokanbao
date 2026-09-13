@@ -1,39 +1,37 @@
 # 运行配置设计
 
-PostHog Remote config 是小型运行参数的编辑入口。配置字段、部署步骤和验收方法见
-[PostHog 接入](posthog.md)。
+PostHog Remote config 是小型运行参数的编辑与回滚入口。前后端通过各自 SDK
+读取相同的全局 key 和 payload，固定使用 `jojo-public-config` 配置身份。
+字段、取值范围、部署及验收步骤见 [PostHog 接入](posthog.md)。
 
-## 配置与读取路径
+## 读取与生效
 
 | 配置 | 使用方 | 生效路径 |
 | --- | --- | --- |
-| `auth_signup_config` | 注册界面与 Auth 校验 | 同步到服务端缓存，前后端读取同一策略 |
-| `reader_annotations_config` | 共享批注服务 | 同步到服务端缓存，控制公开展示阈值 |
-| `ai_usage_limits_config` | AI 请求准入 | 同步到服务端缓存，控制频率、日额度和执行时限 |
-| `ops_email_quota_config` | 邮件额度检查 | 同步到服务端缓存，在检查任务执行时读取 |
-| `support_config` | Web/Desktop 支持页、Mobile 设置页 | 客户端 SDK 异步读取并持久缓存 |
+| `auth_signup_config` | Web/Desktop/Mobile 注册界面、Python API | 客户端持久缓存与服务端进程缓存，提交时由后端签发注册授权 |
+| `reader_annotations_config` | Python 批注 API | 服务端读取阈值，携带可信参数执行数据库操作 |
+| `ai_usage_limits_config` | Agent | 服务端读取频率、日额度与执行时限，数据库原子维护用量 |
+| `ops_email_quota_config` | 邮件额度检查 | 每次任务通过 SDK 读取 |
+| `support_config` | Web/Desktop 支持页、Mobile 设置页 | 客户端异步读取并持久缓存 |
 
-服务端缓存位于 `private.feature_flags.config`。`tools/posthog` 负责校验并同步前四组参数，
-通过 Operator 鉴权、版本冲突检查和数据库事务保存配置及审计历史。
-管理台展示服务端实际值、同步时间、远端版本和历史；参数调整与回滚在 PostHog 完成。
-
-QQ群号配置与使用统计采用独立 SDK 实例和存储；关闭统计时仍能读取公开配置。
-网络失败或配置非法时使用最后有效缓存，首次启动使用代码定义的默认值。
+客户端按项目保存已验证值，默认邀请码必填、QQ群号 `974380749`。服务端进程首次读取
+没有有效快照时拒绝相关操作；已有快照时立即使用并按需后台刷新。前后台刷新间隔、
+配置无效与断网行为见接入文档。配置 SDK 与统计 SDK 独立。
 
 ## 功能与权限
 
 书架、共享批注和听读是登录后可用的常规功能。内容可见性、数据所有权、审核和使用限额
-由各自的服务端规则执行。原生阅读器的离线划线和笔记按账号保存在本机。
+由服务端执行。原生阅读器的离线划线和笔记按账号保存在本机。
 听读优先使用已有音频，按服务端声音能力请求合成。
 
-AI 限额统一作用于所有账号。注册是否需要邀请码由
-`auth_signup_config.invitationRequired` 决定，Auth 校验以服务端生效配置为准。
+AI 限额统一作用于所有账号。`auth_signup_config.invitationRequired` 控制邀请码要求，
+邮箱验证码用于确认邮箱所有权。客户端与后端刷新时间可能不同，注册提交以服务端判定为准。
 
 ## 配置约定
 
-同一功能的参数归入同一份 Remote config，新增参数优先复用已有 key、服务端缓存和读取函数。
-写入端校验字段类型、范围和版本；读取端定义默认值、边界及生效时机。
-同步保留未修改字段、审计历史、用户用量和执行中的租约。
-配置只存运行参数，凭据、计数、租约和任务状态使用各自的专用存储。
+同一功能的参数归入同一份 Remote config；新增参数优先复用已有 key 和 SDK 读取入口。
+读取端校验字段类型、范围并定义首次读取和刷新行为。全局参数保持文档启用，业务布尔值放在 payload 中。
+涉及数据库事务的安全参数由受信任服务传入，数据库执行身份与参数边界检查。
 
-详细边界见 [运行配置复用](../infrastructure/supabase/README.md#runtime-configuration-reuse)。
+配置只存可公开的运行参数；凭据、计数、租约、任务状态和业务记录使用专用存储。
+参数修改与回滚保留用户用量及业务状态。

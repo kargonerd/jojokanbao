@@ -1,7 +1,7 @@
 // Local administration only. The management token never enters GitHub or SCF.
 import { randomBytes } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { loadEnvironment, literal, query, management, getAdminKey } from '../beta-smoke/lib.mjs';
+import { loadEnvironment, literal, query, management, getAdminKey, signupAuthorization } from '../beta-smoke/lib.mjs';
 
 const env = loadEnvironment(process.argv[2] ?? process.cwd());
 const purpose = 'email_delivery_monitor';
@@ -25,12 +25,13 @@ if (!account) {
   const email = `delivered+jojo-monitor-${randomBytes(12).toString('hex')}@resend.dev`;
   const [invitation] = await query(env, `select * from private.create_signup_invitation(null, interval '1 hour', 1, 'Email delivery monitor provisioning')`, false);
   const key = await getAdminKey(env);
+  const authorization = await signupAuthorization(env, email, invitation.code);
   const response = await fetch(`https://${env.SUPABASE_PROJECT_REF}.supabase.co/auth/v1/admin/users`, {
     method: 'POST', redirect: 'error', signal: AbortSignal.timeout(30_000),
     headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
     email, password: randomBytes(32).toString('base64url'), email_confirm: true,
-    user_metadata: { invitation_code: invitation.code, account_purpose: purpose },
+    user_metadata: { invitation_code: invitation.code, signup_authorization: authorization, account_purpose: purpose },
     app_metadata: { account_purpose: purpose },
   }) });
   if (!response.ok) throw new Error(`Mail monitor account creation HTTP ${response.status}`);

@@ -72,7 +72,7 @@ def verify(bundle: Path) -> None:
 
     # Import explicitly: deleted docs must fail even if the scanner swallows an
     # application import error and silently falls back to its Flask 404 handler.
-    for name in ("botocore.docs", "boto3.docs", "lameenc", "mutagen", "uvicorn"):
+    for name in ("botocore.docs", "boto3.docs", "lameenc", "mutagen", "uvicorn", "posthog", "httpx"):
         module = importlib.import_module(name)
         require(Path(module.__file__).resolve().is_relative_to(bundle), f"{name} was imported outside the bundle")
 
@@ -110,6 +110,10 @@ def verify(bundle: Path) -> None:
                     require(len(body["providers"][0]["voices"]) == 2, "Expected two compatible physical voices")
             response = await client.get("/api/v1/times")
             require(response.status_code == 404, "JOJO Times must not be exposed by the production bundle")
+            response = await client.post("/api/v1/account/signup-authorization", json={"email": "reader@example.invalid"})
+            require(response.status_code == 503, "Signup must reject missing server credentials")
+            response = await client.post("/api/v1/annotations", json={"operation": "get_annotation_threads", "params": {}})
+            require(response.status_code == 401, "Annotations must require a reader session")
 
     async def check_streaming_runtime():
         require(any(getattr(route, "path", None) == "/v1/speech/stream/" for route in application.routes),

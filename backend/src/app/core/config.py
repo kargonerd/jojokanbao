@@ -70,6 +70,9 @@ class Settings:
     supabase_url: str | None
     supabase_publishable_key: str | None
     auth_timeout_seconds: float
+    operator_token: str | None = field(default=None, repr=False)
+    posthog_project_token: str | None = None
+    posthog_api_host: str = "https://us.i.posthog.com"
     mimo_api_key: str | None = field(default=None, repr=False)
     mimo_api_keys: tuple[str, ...] = field(default=(), repr=False)
     speech_cache_path: str | None = None
@@ -110,6 +113,9 @@ class Settings:
                 default=5.0,
                 name="JOJO_AUTH_TIMEOUT_SECONDS",
             ),
+            operator_token=os.getenv("JOJO_OPERATOR_TOKEN", "").strip() or None,
+            posthog_project_token=os.getenv("POSTHOG_PROJECT_TOKEN", "").strip() or None,
+            posthog_api_host=os.getenv("POSTHOG_API_HOST", "https://us.i.posthog.com").strip().rstrip("/"),
             mimo_api_key=((os.getenv("MIMO_API_KEY") or "").strip() or None)
             if os.getenv("MIMO_API_KEYS") is None else None,
             mimo_api_keys=_mimo_api_keys(os.getenv("MIMO_API_KEYS")),

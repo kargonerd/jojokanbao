@@ -211,11 +211,7 @@ select extensions.is(
   'openai-codex/test',
   'the cache retains model provenance from the first completed answer'
 );
-select extensions.is(
-  (select description from private.feature_flags where key = 'reader.annotations'),
-  '划线和想法',
-  'annotation flag copy no longer claims to control Reader AI explanations'
-);
+select extensions.hasnt_table('private','feature_flags','reader AI data does not require a flag table');
 
 select * from extensions.finish();
 rollback;

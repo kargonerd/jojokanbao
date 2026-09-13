@@ -43,51 +43,39 @@ enables a hook backed by `public.hook_require_signup_invitation`.
 
 ### Configure the Operator credential
 
-Configuration synchronization and local administration use `JOJO_OPERATOR_TOKEN`.
+Registration authorization, trusted policy operations and local administration use `JOJO_OPERATOR_TOKEN`.
 After applying the reviewed database migrations, register the SHA-256 digest of
 the token in the target project:
 
 ```sql
-insert into private.feature_flag_operator_secret (singleton, token_digest)
+insert into private.operator_credentials (singleton, token_digest)
 values (true, extensions.digest('<same JOJO_OPERATOR_TOKEN>', 'sha256'))
 on conflict (singleton) do update
 set token_digest = excluded.token_digest,
     updated_at = timezone('utc', now());
 ```
 
-The JOJO 管理台 Flask server reads the token from the repository `.env` and sends
-it to protected Operator RPCs. The browser receives configuration and audit data
-only. Keep the local server bound to `127.0.0.1`. Scheduled synchronization uses
-the same credential from a GitHub Secret.
+The Python API, Agent and JOJO 管理台 Flask server keep the same token in their
+server environment. The raw credential must never enter a client build.
 
 Apply complete migrations and record their versions in the same transaction.
-Check pending migrations before applying them. Database schema and function
-contracts can be verified with the
-[configuration smoke test](../../tools/beta-smoke/README.md#feature-configuration).
-
-The database also enforces the signup policy with a trigger. When invitations
-are required, new user creation fails closed if somebody disables or bypasses
-the hosted hook. Existing users are unaffected.
+Check pending migrations and coordinate API/client releases with the
+[PostHog deployment guide](../../docs/posthog.md#部署与初始化).
 
 ### Registration policy
 
-Edit `auth_signup_config.invitationRequired` in PostHog Remote config.
-The synchronization workflow writes it to `auth.signup.config`; the Auth hook
-and redemption trigger read this value for each new account.
+Edit `auth_signup_config.invitationRequired` in PostHog Remote config. Web/Desktop,
+Mobile and the Python API each read that same global configuration with their SDK.
+The UI refreshes when registration opens or fails; the API independently issues a
+120-second authorization bound to the email, invitation code and policy decision.
+The Supabase hook and trigger verify its signature. The trigger atomically redeems
+an invitation when required and removes the transient signup metadata.
 
-When the value is false, registration ignores submitted invitation codes and
-does not consume allocations or alter redemption history. When true, a valid
-invitation is required. Email confirmation and password requirements apply in
-both modes.
-
-`public.signup_invitation_required()` exposes this boolean to clients.
-Web/Desktop and Mobile refresh it when the account page or registration form
-opens, and after a failed registration. Auth validation uses the current server
-value. Missing or invalid configuration and unavailable policy RPCs require an
-invitation. The synchronized field must be a boolean.
-
-The local admin displays the server value, remote version, synchronization time
-and audit history. PostHog is the parameter editing and rollback entry point.
+When the value is false, registration consumes no invitation allocation. When true,
+a valid invitation is required. Email confirmation and password requirements apply
+in both modes. Server operations need a valid configuration snapshot; network or
+validation failures preserve an existing process cache, and a cold process without
+valid configuration temporarily rejects registration.
 
 The Auth config explicitly preserves the hosted one-minute email request
 interval, 100-email-per-hour project allowance, six-digit OTP setting, TOTP
@@ -115,10 +103,10 @@ The `delete-account` Edge Function validates the caller's access token before
 using the server-only service role. It removes the reader's avatar objects and
 Auth user. Never expose `SUPABASE_SERVICE_ROLE_KEY` to any frontend environment.
 
-The trigger applies to every new Auth user, including users created from the
-Supabase dashboard and OAuth identities. Keep those signup paths disabled
-while invitations are required unless they supply an invitation. An invitation is redeemed
-when the Auth user is created, before the reader confirms their email.
+The trigger applies to every new Auth user, including dashboard and OAuth-created
+accounts. Enabled signup/provisioning paths must obtain the API authorization
+before creating a user. An invitation is redeemed when the Auth user is created,
+before email confirmation.
 
 ## Product access
 
@@ -126,70 +114,53 @@ Bookshelf, shared annotations and listening are regular authenticated features.
 SQL entry points require login; ownership, content visibility, moderation and
 quotas are enforced by their respective service rules.
 
-The compatibility RPC `get_my_feature_flags` returns stored rule snapshots.
-Operator snapshots expose configuration and audit history. Bookshelf entries,
-annotations and usage state belong to their own business tables.
+Bookshelf entries, annotations, user counters and active leases belong to their
+own business tables. Policy parameters are supplied by the trusted application
+server; the database enforces identity, ownership, privacy and atomic updates.
 
 ## Runtime configuration reuse
 
-`auth.signup`、`reader.annotations`、`ai.usage_limits`、`ops.email_quota`
-在 PostHog Remote config 中管理。业务读取 `private.feature_flags.config` 的服务端缓存，
-`tools/posthog` 校验并异步同步配置。管理台展示实际值、同步时间、远端版本和审计历史。
-QQ群号由客户端读取公开的 `support_config` 并持久缓存。
-
-新增参数优先复用已有 Remote config 文档、业务 key、缓存和读取函数。
-同一功能的参数放在同一份配置，独立功能可以新增明确的业务 key。
-字段类型、范围、默认值和生效时机应与使用方一起定义。
+小型运行参数在 PostHog Remote config 管理，前后端直接通过 SDK 读取同一份公开配置。
+服务端使用进程内有效快照，客户端持久保存按项目隔离的已验证值。
+参数修改和回滚在 PostHog 完成，生效时机见 [PostHog 接入](../../docs/posthog.md)。
 
 ### 存储边界
 
 | 内容 | 存放位置 | 例子 |
 | --- | --- | --- |
-| 限额、阈值、执行时限等参数 | PostHog Remote config；服务端缓存于对应 key 的 `config` | AI 使用限额、批注公开阈值 |
-| 客户端公开配置 | PostHog Remote config 与客户端持久缓存 | `support_config.qqGroup` |
-| 用户用量、并发租约、任务状态和业务记录 | 各自的业务或状态表 | `private.agent_usage_state` |
-| 部署地址、环境相关设置、密钥 | 部署配置及服务端凭据存储 | 环境变量、Agent 凭据存储 |
+| 限额、阈值、执行时限 | PostHog Remote config、服务端进程缓存 | AI 使用限额、批注公开阈值 |
+| 客户端公开配置 | PostHog Remote config、客户端持久缓存 | 注册界面策略、QQ群号 |
+| 用户计数、租约、任务状态和业务记录 | 各自的业务表或状态存储 | `private.agent_usage_state` |
+| 部署地址和密钥 | 环境变量及服务端凭据存储 | Operator Token、Agent 凭据 |
 
-服务端配置是 JSON 对象，序列化文本最多 16,384 字节。
-需要关联查询、独立行级权限或大量独立记录的数据使用对应业务存储，
-并在 PR 中说明结构选择。PostHog payload 是公开配置，只存可公开的运行参数。
-
-普通客户端通过专用 RPC 读取业务所需字段；数据库完整配置和审计历史由
-受保护的 Operator RPC 提供。AI 限额统一作用于所有账号，按参数值执行，
-配置发布及回滚保留已有用量和执行中的租约。
+需要关联查询、独立行级权限或大量独立记录的数据使用业务存储。
+PostHog payload 只存可公开的运行参数。数据库原子操作接受受信任后端传入的参数，
+并校验服务身份、用户权限和数值范围。用户用量与执行中的租约独立于参数变更。
 
 ### 配置字段
 
-| 数据库 key | PostHog Remote config | 字段 | 默认值与范围 |
-| --- | --- | --- | --- |
-| `auth.signup` | `auth_signup_config` | `invitationRequired` | 布尔值；缺失时默认 true |
-| `reader.annotations` | `reader_annotations_config` | `publicMarkThreshold` | 默认 2；整数 1–100 |
-| `ai.usage_limits` | `ai_usage_limits_config` | `requestsPerMinute` | 默认 3；整数 1–60 |
-| `ai.usage_limits` | `ai_usage_limits_config` | `requestsPerDay` | 默认 100；整数 1–10,000 |
-| `ai.usage_limits` | `ai_usage_limits_config` | `maxRunSeconds` | 默认 300 秒；整数 30–600 |
-| `ops.email_quota` | `ops_email_quota_config` | `warningPercent` / `criticalPercent` | 默认 80 / 90；整数，1 ≤ warning < critical ≤ 99 |
-| `ops.email_quota` | `ops_email_quota_config` | `usageSource` | 默认 records；records 或 usage_api |
-| `ops.email_quota` | `ops_email_quota_config` | `dailyLimit` / `monthlyLimit` | 默认 100 / 3000；整数，分别为 1–1,000,000 / 1–100,000,000 |
+| PostHog Remote config | 字段 | 示例值与范围 |
+| --- | --- | --- |
+| `auth_signup_config` | `invitationRequired` | 布尔值；客户端无缓存时先显示邀请码 |
+| `reader_annotations_config` | `publicMarkThreshold` | 示例 2；整数 1–100 |
+| `ai_usage_limits_config` | `requestsPerMinute` | 示例 3；整数 1–60 |
+| `ai_usage_limits_config` | `requestsPerDay` | 示例 100；整数 1–10,000 |
+| `ai_usage_limits_config` | `maxRunSeconds` | 示例 300 秒；整数 30–600 |
+| `ops_email_quota_config` | `warningPercent` / `criticalPercent` | 示例 80 / 90；整数，1 ≤ warning < critical ≤ 99 |
+| `ops_email_quota_config` | `usageSource` | records 或 usage_api |
+| `ops_email_quota_config` | `dailyLimit` / `monthlyLimit` | 示例 100 / 3000；整数，分别为 1–1,000,000 / 1–100,000,000 |
+| `support_config` | `qqGroup` | 5–12 位数字字符串，首位非零；客户端默认 974380749 |
 
-代码默认值用于读取兜底，线上实际值以成功同步的配置为准。
-AI 请求准入时读取配置，已准入请求沿用当次取得的执行时限；
-参数修改在下一次成功同步后的业务读取中生效。
+示例值用于解释字段，部署时核对目标项目的实际值。服务端要求完整有效的配置快照，
+已有快照时后台刷新，首次读取失败暂时拒绝相关操作。AI 已准入请求沿用当次取得的执行时限。
 
 ### 接入与修改
 
-1. 确认参数归属，复用已有配置或定义新的业务 key，并明确字段、单位、类型、范围、
-   默认值及生效时机。
-2. 服务端参数通过数据库迁移初始化缓存与审计历史，并在
-   `tools/posthog` 的同步映射和数据库同步函数中登记。初始 PostHog 文档匹配部署目标的实际值。
-3. 读取端复用 `private.feature_flag_config_integer` 等能力；
-   导入程序和数据库写入端同时校验业务字段。
-4. 参数调整与回滚在 PostHog 完成。同步使用 Operator 鉴权、远端版本及数据库 revision
-   检查，在同一事务中提交整批配置，并保留未修改字段和历史。
-5. 用管理台确认服务端实际值与同步时间；验证参数边界、业务生效、回滚和状态保留。
-   部署及首次绑定步骤见 [PostHog](../../docs/posthog.md#部署与初始化)。
-
-任一配置缺失、非法或版本冲突时，整批同步失败，业务继续使用最后有效缓存。
-网络故障期间配置仍有效。管理入口见 [JOJO 管理台](../../tools/jojo-admin/README.md)。
+1. 复用已有配置或定义明确的业务 key，定义字段、单位、类型、范围和生效时机。
+2. 在 PostHog 配置全局 payload，保持文档启用；布尔策略写入 payload 字段。
+3. 客户端与服务端 SDK 使用相同 key 和 `jojo-public-config` 身份，读取端验证完整字段。
+4. 涉及原子业务操作时，由后端传入可信参数，数据库保留身份、所有权与边界检查。
+5. 验证缓存刷新、断网、字段非法、业务权限和状态保留。参数修改与回滚在 PostHog 完成。
 
 ## Manage invitations
 

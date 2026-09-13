@@ -85,12 +85,6 @@ export function OverviewPage() {
               <p>导入并发布书籍 JSON、清单与 Jox 内容对象。</p>
               <footer><span>进入模块</span><b>→</b></footer>
             </Link>
-            <Link className="module-card" to="/features">
-              <span className="module-code">FLAG</span>
-              <h3>功能开关</h3>
-              <p>按顺序配置用户名单、百分比灰度和全局默认规则。</p>
-              <footer><span>进入运行控制</span><b>→</b></footer>
-            </Link>
             <Link className="module-card" to="/agent">
               <span className="module-code">AGENT</span>
               <h3>Agent 管理</h3>

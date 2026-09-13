@@ -6,14 +6,6 @@ let api: typeof import("../src/annotations/api");
 
 vi.mock("../src/account/auth", () => ({
   authClient: {
-    rpc: (name: string, params: Record<string, unknown>) => {
-      const request = {
-        setHeader: (header: string, value: string) => { setHeader(header, value); return request; },
-        abortSignal: (signal: AbortSignal) => { abortSignal(signal); return request; },
-        then: (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) => Promise.resolve(rpc(name, params)).then(resolve, reject),
-      };
-      return request;
-    },
     auth: { getSession },
   },
 }));
@@ -75,9 +67,16 @@ describe("annotation API compatibility", () => {
     getSession.mockResolvedValue({ data: { session: { user: { id: "reader:me" }, access_token: "token-me" } }, error: null });
     setHeader.mockReset();
     abortSignal.mockReset();
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => {
+      setHeader("Authorization", (init.headers as Record<string,string>).Authorization);
+      if (init.signal) abortSignal(init.signal);
+      const { operation, params } = JSON.parse(init.body as string);
+      const result = await rpc(operation, params);
+      return Response.json(result.error ? {error:result.error} : result.data, {status:result.error ? 400 : 200});
+    }));
   });
 
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
   it("uses the database default for public annotations", async () => {
     await api.createAnnotation(subject, anchor);

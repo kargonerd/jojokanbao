@@ -1,4 +1,5 @@
 import { createAnnotationApi } from "@jojo/content/annotations";
+import { agentGatewayUrl } from "../api/agentGateway";
 export type { BookAnnotationOptions, BookAnnotationProgress } from "@jojo/content/annotations";
 
 // Keep public content independent of account configuration until an authenticated
@@ -14,12 +15,14 @@ const api = createAnnotationApi({
     const { data, error } = await authClient.auth.getSession();
     const session = data.session;
     if (error || session?.user.id !== expectedUserId || !session.access_token) throw new Error("登录状态已变化，请重新打开笔记");
-    // Supabase preserves explicit Authorization when its live session changes.
     const authorization = `Bearer ${session.access_token}`;
-    // RPC rollout is intentionally independent of generated database typings.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const request = (authClient as any).rpc(name, params).setHeader("Authorization", authorization);
-    return signal ? request.abortSignal(signal) : request;
+    const response = await fetch(agentGatewayUrl("/api/v1/annotations"), {
+      method: "POST", headers: { "Authorization": authorization, "Content-Type": "application/json" },
+      body: JSON.stringify({ operation: name, params }), signal,
+    });
+    const result = await response.json();
+    return response.ok ? { data: result, error: null }
+      : { data: null, error: { message: result.error?.message || "阅读笔记服务暂时不可用" } };
   },
   getCurrentUserId: async () => {
     const { authClient } = await loadAuth();

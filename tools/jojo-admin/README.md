@@ -61,16 +61,7 @@ From the repository root:
 pnpm dev:admin
 ```
 
-`http://127.0.0.1:4174/features` 展示服务端运行配置。
-页面通过同机 Flask 访问 Supabase；Flask 从仓库根目录 `.env` 读取
-`JOJO_OPERATOR_TOKEN`，浏览器只接收查询结果。
-
-`auth.signup`、`reader.annotations`、`ai.usage_limits`、`ops.email_quota`
-在 PostHog Remote config 中编辑与回滚。管理台按 `configProvider=posthog` 只读展示
-服务端实际值、最后同步时间、远端版本和修改历史，也可导出快照。
-这用于确认 PostHog 的参数是否已同步到业务服务，或排查同步故障。
-新增参数的存储边界和接入步骤见
-[运行配置复用](../../infrastructure/supabase/README.md#runtime-configuration-reuse)。
+运行参数在 [PostHog Remote config](../../docs/posthog.md#小型远程配置) 管理。
 
 评论审核页面位于 `http://127.0.0.1:4174/moderation`。它复用同一个
 `JOJO_OPERATOR_TOKEN`，读取读者举报并支持隐藏、恢复评论或驳回举报；每次操作

@@ -102,11 +102,6 @@ export function SupportPage() {
             下留言或私信反馈
           </p>
 
-          {!platformRedesign ? <section aria-labelledby="捐助">
-            <h2 id="捐助" className="scroll-mt-20 text-2xl font-bold tracking-wider text-ink border-t border-rule mt-8 pt-5 mb-4">捐助</h2>
-            <DonationContent />
-          </section> : null}
-
           {/* 纪念缅怀 */}
           <h2 id="纪念缅怀" className="scroll-mt-20 text-2xl font-bold tracking-wider text-ink border-t border-rule mt-8 pt-5 mb-4">纪念缅怀</h2>
           <ul className="list-none p-0 m-0">

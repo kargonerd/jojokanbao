@@ -894,18 +894,16 @@ describe.each([false, true])("reader listening visibility (eInk=%s)", (eInk) => 
     expect(view.root.findAllByProps({ accessibilityLabel: "打开听读播放器" })).toHaveLength(1);
   });
 
-  it.each(["logout", "flag disabled", "flag belongs to another account", "reader loses focus"])("unmounts the active listening session when %s", async (reason) => {
+  it.each(["logout", "reader loses focus"])("unmounts the active listening session when %s", async (reason) => {
     await renderReader(); await press("打开听读播放器");
     if (reason === "logout") mocks.user = null;
-    else if (reason === "flag disabled") mocks.enabled = false;
-    else if (reason === "flag belongs to another account") mocks.flagUserId = "another-reader";
     else mocks.focused = false;
     await act(async () => view.update(<BookReaderScreen {...readerProps} />));
     expect(view.root.findAllByType("dialog")).toHaveLength(0);
     expect(view.root.findAllByProps({ accessibilityLabel: "打开听读播放器" })).toHaveLength(0);
     expect(view.root.findAllByProps({ accessibilityLabel: "展开听读播放器" })).toHaveLength(0);
     expect(mocks.playbackUnmount).toHaveBeenCalledOnce();
-    mocks.user = { id: "reader" }; mocks.enabled = true; mocks.flagUserId = "reader"; mocks.focused = true;
+    mocks.user = { id: "reader" }; mocks.focused = true;
     await act(async () => view.update(<BookReaderScreen {...readerProps} />));
     expect(view.root.findAllByProps({ accessibilityLabel: "打开听读播放器" })).toHaveLength(1);
     expect(view.root.findAllByType("dialog")).toHaveLength(0);

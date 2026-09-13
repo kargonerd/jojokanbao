@@ -1241,10 +1241,10 @@ export function BookReader({
       <button type="button" onClick={() => openTool("progress")} className="book-mobile-tool" aria-label="阅读进度" aria-pressed={toolPopover === "progress"}><ReaderToolIcon name="progress" /><span>进度</span></button>
       <button type="button" onClick={() => openTool("notes")} className="book-mobile-tool" aria-label="阅读笔记" aria-pressed={toolPopover === "notes"}><IoCreateOutline aria-hidden="true" /><span>笔记</span></button>
       <button type="button" onClick={() => openTool("display")} className="book-mobile-tool" aria-label="文字设置" aria-pressed={toolPopover === "display"}><ReaderToolIcon name="display" /><span>文字</span></button>
-      {!mobileViewport && currentUserId && speechControl && <div ref={setSpeechLauncherTarget} className="book-desktop-speech shrink-0" />}
+      {!mobileViewport && speechControl && <div ref={setSpeechLauncherTarget} className="book-desktop-speech shrink-0" />}
       {!mobileViewport && onDownload && <button type="button" onClick={onDownload} className="book-mobile-tool" aria-label="下载整本 EPUB"><IoDownloadOutline aria-hidden="true" /><span>下载</span></button>}
     </nav>
-    {currentUserId && speechControl}
+    {speechControl}
 
     {(tocOpen || searchOpen) && <BookNavigationSheet mobile={mobileViewport} tab={tocOpen ? "toc" : "search"} onTabChange={openPanel} onClose={() => { setTocOpen(false); setSearchOpen(false); }} panelClass={panelClass}>
       {tocOpen ? <><div className="book-toc-book-title"><strong>{bookTitle}</strong><span>{logicalChapterCount ? `${logicalChapterCount} 章 · ` : ""}{characterCount.toLocaleString()} 字</span></div><label className="book-toc-filter"><input value={tocQuery} onChange={(event) => setTocQuery(event.target.value)} placeholder="筛选目录" aria-label="搜索目录" className="book-toc-search" /></label>{tocList}</> : <BookSearchPanel embedded bookTitle={bookTitle} panelClass={panelClass} onClose={() => setSearchOpen(false)} onJump={locateSearchResult} onSearch={onSearch} />}

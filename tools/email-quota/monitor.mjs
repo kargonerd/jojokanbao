@@ -1,5 +1,6 @@
 // Resend and Healthchecks are the only outbound services besides public config.
 // Healthchecks persists each threshold's up/down state across cold starts.
+import { PostHog } from 'posthog-node';
 export const PERIODS = ['daily', 'monthly'];
 export const LEVELS = ['warning', 'critical', 'exhausted'];
 export const SCHEDULE = '0,30 * * * *';
@@ -131,11 +132,24 @@ export function signals(usage, policy) {
 function checkedEnv(env) {
   if (!/^re_[A-Za-z0-9_-]+$/.test(env.RESEND_QUOTA_API_KEY ?? '') || !env.HEALTHCHECKS_API_KEY?.trim()) throw fail('quota_credentials_missing');
   let url;
-  try { url = new URL(env.SUPABASE_URL); } catch { throw fail('quota_config_endpoint_invalid'); }
-  if (url.protocol !== 'https:' || !/^[a-z0-9]+\.supabase\.co$/.test(url.hostname)
+  try { url = new URL(env.POSTHOG_API_HOST || 'https://us.i.posthog.com'); } catch { throw fail('quota_config_endpoint_invalid'); }
+  if (url.protocol !== 'https:'
     || url.port || url.username || url.password || url.search || url.hash || url.pathname !== '/') throw fail('quota_config_endpoint_invalid');
-  if (!env.SUPABASE_PUBLISHABLE_KEY?.trim()) throw fail('quota_config_key_missing');
-  return `${url.origin}/rest/v1/rpc/get_email_quota_monitor_config`;
+  if (!env.POSTHOG_PROJECT_TOKEN?.trim()) throw fail('quota_config_key_missing');
+  return url.origin;
+}
+
+async function readQuotaConfig(env, host, fetcher) {
+  const client = new PostHog(env.POSTHOG_PROJECT_TOKEN, {
+    host, requestTimeout: 5_000, featureFlagsRequestTimeoutMs: 5_000, fetchRetryCount: 0,
+    fetch: fetcher, before_send: () => null,
+  });
+  try {
+    const result = await client.getAllFlagsAndPayloads('jojo-public-config', { personProperties: { signed_in: false } });
+    const value = result.featureFlagPayloads.ops_email_quota_config;
+    if (result.featureFlags.ops_email_quota_config !== true || !value || typeof value !== 'object') throw fail('quota_config_invalid');
+    return value;
+  } finally { await client.shutdown(); }
 }
 
 async function checks(env, fetcher) {
@@ -184,9 +198,9 @@ async function reportDecision(check, decision, summary, env, fetcher) {
 export async function run(env, { fetcher = fetch, now = Date.now(), probe = false } = {}) {
   let registered;
   try {
-    const configUrl = checkedEnv(env);
+    const configHost = checkedEnv(env);
     const responses = await Promise.allSettled([
-      json(configUrl, { method: 'POST', headers: { apikey: env.SUPABASE_PUBLISHABLE_KEY, 'Content-Type': 'application/json' }, body: '{}' }, 'quota_config', fetcher),
+      readQuotaConfig(env, configHost, fetcher),
       checks(env, fetcher),
     ]);
     if (responses[1].status === 'fulfilled') registered = responses[1].value;

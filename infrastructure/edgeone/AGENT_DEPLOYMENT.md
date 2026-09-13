@@ -96,14 +96,15 @@ Agent 实例之间串行准入；不同设备和会话也共享同一个账号�
 后也不会永久锁住账号。状态仅存计数和时间，不保存问题或回答，注销账号时自动删除。
 
 部署时应用仓库数据库迁移，并按 [PostHog 配置指南](../../docs/posthog.md#部署与初始化)
-初始化运行配置同步。Agent 使用 `JOJO_OPERATOR_TOKEN` 调用配额 RPC，
+设置 Agent 运行环境的 `POSTHOG_PROJECT_TOKEN` 与 `POSTHOG_API_HOST`。Agent 使用 `JOJO_OPERATOR_TOKEN` 调用配额 RPC，
 该值必须与 Supabase Operator 密钥摘要匹配。配额服务不可用时拒绝开始新生成。
 `/rag/health` 只检查模型配置，发布后还必须验证实际认证请求和配额 RPC。
 
 管理员在 PostHog 的 `ai_usage_limits_config` 调整参数：
 `requestsPerMinute`（1–60）、`requestsPerDay`（1–10000）、`maxRunSeconds`（30–600）。
-三项都必须是整数并完整提供。同步程序校验后写入 `ai.usage_limits.config` 并保存
-审计历史，新请求读取成功同步的配置，无需重新部署。管理台展示服务端实际值、版本和同步时间。
+三项都必须是整数并完整提供。Agent 使用 Node SDK 读取并校验，在进程内缓存有效快照；
+有缓存时立即使用，每 5 分钟由下一次请求触发后台刷新。冷启动没有有效配置时拒绝生成。
+参数修改和回滚在 PostHog 完成，下一次成功刷新后的新请求使用新值。
 账号计数与租约独立保存，参数调整和回滚保留用量。监控账号遵循同一规则，
 每 30 分钟一次的日常探测约 48 次/天。
 

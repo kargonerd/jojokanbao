@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID, randomBytes } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { loadEnvironment, literal, query, getAdminKey, request } from './lib.mjs';
+import { loadEnvironment, literal, query, getAdminKey, request, readerRequest, signupAuthorization } from './lib.mjs';
 
 const env = loadEnvironment(process.argv[2]);
 const run = `beta-smoke-${randomUUID()}`;
@@ -19,7 +19,10 @@ save({ status: 'running' });
 const check = (name, condition) => { assert.ok(condition, name); passed.push(name); };
 
 async function rpc(user, name, body = {}, expected = true) {
-  const result = await request(env, `rest/v1/rpc/${name}`, { token: user?.token, body });
+  const annotations = ['get_annotation_threads', 'create_content_annotation', 'add_annotation_comment', 'report_annotation_comment', 'set_annotation_comment_like', 'delete_my_annotation_mark'];
+  const result = annotations.includes(name)
+    ? await readerRequest(env, 'annotations', { operation: name, params: body }, user?.token)
+    : await request(env, `rest/v1/rpc/${name}`, { token: user?.token, body });
   if (expected) assert.ok(result.ok, `${name}: HTTP ${result.status}, code ${result.data?.code ?? ''}`);
   return expected ? result.data : result;
 }
@@ -33,8 +36,9 @@ try {
   for (let i = 0; i < 3; i++) {
     const email = `${run}-${i}@example.invalid`;
     const password = randomBytes(24).toString('base64url');
+    const authorization = await signupAuthorization(env, email, invitation.code);
     const created = await request(env, 'auth/v1/admin/users', { token: adminKey, key: adminKey, body: {
-      email, password, email_confirm: true, user_metadata: { invitation_code: invitation.code, beta_smoke_run: run },
+      email, password, email_confirm: true, user_metadata: { invitation_code: invitation.code, signup_authorization: authorization, beta_smoke_run: run },
     } });
     assert.ok(created.ok, `test account creation: HTTP ${created.status}`);
     const signedIn = await request(env, 'auth/v1/token?grant_type=password', { body: { email, password } });

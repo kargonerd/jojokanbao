@@ -99,8 +99,8 @@ test("shared UI and transitive workspace sources trigger all their consumers", (
   assertConsumers(result, true);
 });
 
-test("PostHog sync code and its workflow trigger Node checks", () => {
-  for (const file of ["tools/posthog/sync-runtime-config.mjs", "tools/posthog/runtime-config-sql.test.mjs", ".github/workflows/sync-runtime-config.yml"]) {
+test("PostHog migration tests and email quota code trigger Node checks", () => {
+  for (const file of ["tools/email-quota/monitor.mjs", "tools/posthog/runtime-config-sql.test.mjs", ".github/workflows/check-email-quota.yml"]) {
     assert.equal(check([file]).flags.node, true, file);
   }
 });
