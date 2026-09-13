@@ -208,14 +208,14 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
     return true;
   }
 
-  async function updateShelf(entry: BookshelfEntry, added: boolean, busyKey: string) {
-    setShelfBusyKey(busyKey);
+  async function updateShelf(entry: BookshelfEntry, added: boolean, _busyKey: string) {
+    const previousItems = shelfItems;
+    setShelfItems((items) => added
+      ? [entry, ...items.filter((item) => !(item.datasetId === entry.datasetId && item.itemId === entry.itemId))]
+      : items.filter((item) => !(item.datasetId === entry.datasetId && item.itemId === entry.itemId)));
     setShelfError("");
     try {
       await setBookshelf({ ...entry, added });
-      setShelfItems((items) => added
-        ? [entry, ...items.filter((item) => !(item.datasetId === entry.datasetId && item.itemId === entry.itemId))]
-        : items.filter((item) => !(item.datasetId === entry.datasetId && item.itemId === entry.itemId)));
     } catch {
       setShelfError("书架操作失败，请稍后重试。");
     } finally {
@@ -247,12 +247,9 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
         itemId: source.itemKey || source.id,
         title: source.title || source.name || book.title || book.name || "未命名书籍",
       };
-      await setBookshelf({ ...entry, added: true });
-      setShelfItems((items) => [entry, ...items]);
+      await updateShelf(entry, true, busyKey);
     } catch {
       setShelfError("书架操作失败，请稍后重试。");
-    } finally {
-      setShelfBusyKey("");
     }
   }
 

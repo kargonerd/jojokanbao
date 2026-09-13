@@ -57,6 +57,8 @@ export function useAnnotationThreads(subject: AnnotationSubject, enabled: boolea
   const activeContext = useRef(context);
   const mounted = useRef(false);
   const requestId = useRef(0);
+  const threadsRef = useRef(state.threads);
+  threadsRef.current = state.threads;
   activeContext.current = context;
 
   useLayoutEffect(() => {
@@ -101,24 +103,83 @@ export function useAnnotationThreads(subject: AnnotationSubject, enabled: boolea
       return currentUserId;
     };
     const updateThreads = (update: (threads: AnnotationThread[]) => AnnotationThread[]) => {
+      if (!isCurrent()) return;
       // A read that started before a successful mutation must not restore stale data.
       requestId.current += 1;
       setState((current) => {
         if (!isCurrent()) return current;
         const previous = current.context === context ? current : { context, threads: [], loading: false, error: "" };
-        return { ...previous, threads: update(previous.threads), loading: false, error: "" };
+        const nextThreads = update(previous.threads);
+        threadsRef.current = nextThreads;
+        return { ...previous, threads: nextThreads, loading: false, error: "" };
       });
     };
     return {
       async create(anchor: TextAnchor, initialComment?: string, visibility: AnnotationVisibility = "public") {
         const expectedUserId = requireCurrentUser();
-        const created = await createAnnotation(stableSubject, anchor, initialComment, visibility, expectedUserId);
-        requireCurrentUser();
-        const compatible = compatibleThread(created, currentUserId, true)!;
-        updateThreads((threads) => threads.some((thread) => thread.id === compatible.id)
-          ? threads.map((thread) => thread.id === compatible.id ? compatible : thread)
-          : [...threads, compatible]);
-        return compatible;
+        let optimisticId: string | undefined;
+        let matchedExisting = false;
+        let previousThread: AnnotationThread | undefined;
+
+        if (!initialComment) {
+          optimisticId = `optimistic-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+          const existing = threadsRef.current.find((t) => t.sectionId === stableSubject.sectionId
+            && t.quote === anchor.quote
+            && t.startOffset === anchor.startOffset
+            && t.endOffset === anchor.endOffset);
+          if (existing) {
+            matchedExisting = true;
+            previousThread = existing;
+          }
+
+          updateThreads((threads) => {
+            const existingIndex = threads.findIndex((t) => t.sectionId === stableSubject.sectionId
+              && t.quote === anchor.quote
+              && t.startOffset === anchor.startOffset
+              && t.endOffset === anchor.endOffset);
+            if (existingIndex !== -1) {
+              return threads.map((t, idx) => idx === existingIndex
+                ? { ...t, underlinedByMe: true, underlineCount: (t.underlineCount ?? 0) + (t.underlinedByMe ? 0 : 1) }
+                : t);
+            }
+            const optimisticThread: AnnotationThread = {
+              ...stableSubject,
+              ...anchor,
+              id: optimisticId!,
+              authorId: expectedUserId,
+              authorName: "",
+              createdAt: new Date().toISOString(),
+              underlineCount: 1,
+              underlinedByMe: true,
+              publiclyVisible: visibility === "public",
+              comments: [],
+            };
+            return [...threads, optimisticThread];
+          });
+        }
+
+        try {
+          const created = await createAnnotation(stableSubject, anchor, initialComment, visibility, expectedUserId);
+          requireCurrentUser();
+          const compatible = compatibleThread(created, currentUserId, true)!;
+          updateThreads((threads) => {
+            const withoutOptimistic = optimisticId ? threads.filter((t) => t.id !== optimisticId) : threads;
+            return withoutOptimistic.some((thread) => thread.id === compatible.id)
+              ? withoutOptimistic.map((thread) => thread.id === compatible.id ? compatible : thread)
+              : [...withoutOptimistic, compatible];
+          });
+          return compatible;
+        } catch (error) {
+          if (isCurrent() && optimisticId) {
+            updateThreads((threads) => {
+              if (matchedExisting && previousThread) {
+                return threads.map((t) => t.id === previousThread!.id ? previousThread! : t);
+              }
+              return threads.filter((t) => t.id !== optimisticId);
+            });
+          }
+          throw error;
+        }
       },
       async comment(annotationId: string, body: string, parentCommentId?: string, visibility: AnnotationVisibility = "public") {
         const expectedUserId = requireCurrentUser();
@@ -160,14 +221,48 @@ export function useAnnotationThreads(subject: AnnotationSubject, enabled: boolea
       },
       async like(annotationId: string, commentId: string, liked: boolean) {
         const expectedUserId = requireCurrentUser();
-        const changed = await setAnnotationCommentLike(commentId, liked, expectedUserId);
-        requireCurrentUser();
-        updateThreads((threads) => threads.map((thread) => thread.id === annotationId
-          ? { ...thread, comments: sortAnnotationComments(thread.comments.map((comment) => comment.id === commentId
-            ? { ...comment, likeCount: changed.likeCount, likedByMe: changed.likedByMe }
-            : comment)) }
-          : thread));
-        return changed;
+        const currentThread = threadsRef.current.find((t) => t.id === annotationId);
+        const previousComment = currentThread?.comments.find((c) => c.id === commentId);
+
+        updateThreads((threads) => threads.map((thread) => {
+          if (thread.id !== annotationId) return thread;
+          return {
+            ...thread,
+            comments: sortAnnotationComments(thread.comments.map((comment) => {
+              if (comment.id !== commentId) return comment;
+              const delta = liked ? 1 : -1;
+              const currentCount = comment.likeCount ?? 0;
+              return {
+                ...comment,
+                likedByMe: liked,
+                likeCount: Math.max(0, currentCount + delta),
+              };
+            })),
+          };
+        }));
+
+        try {
+          const changed = await setAnnotationCommentLike(commentId, liked, expectedUserId);
+          requireCurrentUser();
+          updateThreads((threads) => threads.map((thread) => thread.id === annotationId
+            ? { ...thread, comments: sortAnnotationComments(thread.comments.map((comment) => comment.id === commentId
+              ? { ...comment, likeCount: changed.likeCount, likedByMe: changed.likedByMe }
+              : comment)) }
+            : thread));
+          return changed;
+        } catch (error) {
+          if (isCurrent() && previousComment) {
+            updateThreads((threads) => threads.map((thread) => thread.id === annotationId
+              ? {
+                ...thread,
+                comments: sortAnnotationComments(thread.comments.map((comment) => comment.id === commentId
+                  ? previousComment
+                  : comment)),
+              }
+              : thread));
+          }
+          throw error;
+        }
       },
       async report(annotationId: string, commentId: string, reason: AnnotationReportReason, details?: string) {
         const expectedUserId = requireCurrentUser();
