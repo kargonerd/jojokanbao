@@ -5,6 +5,7 @@ packages:
   - "frontend/tooling/*"
   - "infrastructure/cloudflare/*"
   - "tools/content-pipeline"
+  - "tools/weread-extension"
   - "tools/email-quota"
   - "tools/ci"
   - "tools/maintenance-scheduler"
