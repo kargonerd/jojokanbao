@@ -15,8 +15,10 @@ and moderation. It does not send confirmation emails or touch real books.
 Moderation calls `admin_*` RPCs with the service role key, which the test reads
 from the management API.
 
-Apply the repository migrations through `202609130006_delete_own_annotation_comment.sql` before
-running this test. Notification checks also cover explicitly marking displayed IDs, duplicate
+Apply the repository migrations through `202609140001_annotations_direct_rpc.sql` before
+running this test. Every annotation RPC is called directly with the reader session;
+there is no `/api/v1/annotations` proxy, because the shared disclosure threshold lives
+inside the database functions. Notification checks also cover explicitly marking displayed IDs, duplicate
 and empty batches, ownership, and a new reply arriving after the displayed
 snapshot. That later reply must remain unread.
 

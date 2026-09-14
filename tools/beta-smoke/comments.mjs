@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID, randomBytes } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { loadEnvironment, literal, query, getAdminKey, request, readerRequest, signupAuthorization } from './lib.mjs';
+import { loadEnvironment, literal, query, getAdminKey, request, signupAuthorization } from './lib.mjs';
 
 const env = loadEnvironment(process.argv[2]);
 const run = `beta-smoke-${randomUUID()}`;
@@ -21,10 +21,11 @@ save({ status: 'running' });
 const check = (name, condition) => { assert.ok(condition, name); passed.push(name); };
 
 async function rpc(user, name, body = {}, expected = true) {
-  const annotations = ['get_annotation_threads', 'create_content_annotation', 'add_annotation_comment', 'report_annotation_comment', 'set_annotation_comment_like', 'delete_my_annotation_mark'];
-  const result = annotations.includes(name)
-    ? await readerRequest(env, 'annotations', { operation: name, params: body }, user?.token)
-    : await request(env, `rest/v1/rpc/${name}`, { token: user?.token, body });
+  // Readers call every annotation RPC directly with their own session, including
+  // the six below. The old /api/v1/annotations proxy existed only to inject the
+  // shared disclosure threshold; that value now lives inside the database
+  // functions, so the proxy and its route are gone.
+  const result = await request(env, `rest/v1/rpc/${name}`, { token: user?.token, body });
   if (expected) assert.ok(result.ok, `${name}: HTTP ${result.status}, code ${result.data?.code ?? ''}`);
   return expected ? result.data : result;
 }
