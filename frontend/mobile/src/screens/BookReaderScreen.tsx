@@ -1,6 +1,6 @@
 import { libraryBookPolicy, isLibrarySourceEnabled } from "@jojo/content";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { bookProgressPercent, bookProgressLocation, estimatedReadingMinutes, formatReadingTime, type SpeechLocation, type SpeechReadingPosition } from "@jojo/content";
+import { bookProgressPercent, estimatedReadingMinutes, formatReadingTime, type SpeechLocation, type SpeechReadingPosition } from "@jojo/content";
 import { createReadingAttempt } from "@jojo/analytics";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useIsFocused } from "@react-navigation/native";
@@ -174,7 +174,6 @@ export function BookReaderScreen({ route, navigation }: Props) {
     else setRetryToken((value) => value + 1);
   }
   useRetryOnFailure(Boolean(error) && !loading, retryReading);
-  const [dragProgress, setDragProgress] = useState<number>();
   const tocListRef = useRef<FlatList<BookTocEntry>>(null);
   const [selection, setSelection] = useState<BookReaderSelectionMessage>();
   const [readerFrame, setReaderFrame] = useState({ x: 0, y: 0, width: 0, height: 0 });
@@ -302,7 +301,6 @@ export function BookReaderScreen({ route, navigation }: Props) {
     aiBookRouteRef.current = routeBook;
     if (bookChanged) {
       pendingLocateRef.current = undefined;
-      setDragProgress(undefined);
       setPageState(undefined);
       setChapterEntryEdge("start");
       setActiveTool(null);
@@ -423,10 +421,7 @@ export function BookReaderScreen({ route, navigation }: Props) {
       : pageState.scrollProgress
     : 0;
   const progress = bookProgressPercent(chapters, activeChapterId, chapterPageProgress * 100);
-  const previewProgress = dragProgress ?? progress;
-  const previewLocation = bookProgressLocation(chapters, previewProgress);
-  const previewChapter = chapters.find((entry) => entry.id === previewLocation?.chapterId);
-  const remainingMinutes = estimatedReadingMinutes(chapters.reduce((sum, entry) => sum + (Number.isFinite(entry.characterCount) ? Math.max(0, entry.characterCount) : 0), 0), previewProgress);
+  const remainingMinutes = estimatedReadingMinutes(chapters.reduce((sum, entry) => sum + (Number.isFinite(entry.characterCount) ? Math.max(0, entry.characterCount) : 0), 0), progress);
   const tocEntries = useMemo(() => bookTocEntries(loaded?.manifest.content.toc ?? [], chapters), [loaded]);
   const exactTocIndex = pageState?.anchorId ? tocEntries.findIndex((entry) => entry.chapterId === activeChapterId && entry.anchorId === pageState.anchorId) : -1;
   const currentTocIndex = exactTocIndex >= 0 ? exactTocIndex : Math.max(0, tocEntries.findIndex((entry) => entry.chapterId === activeChapterId));
@@ -664,25 +659,8 @@ export function BookReaderScreen({ route, navigation }: Props) {
   function toggleTool(tool: ReaderTool) {
     setChromeVisible(true);
     setNoteComposer(undefined);
-    setDragProgress(undefined);
     setActiveTool((current) => current === tool ? null : tool);
     void selectionHaptic(hapticsEnabled);
-  }
-  function goToBookProgress(value: number) {
-    const target = bookProgressLocation(chapters, value);
-    setDragProgress(undefined);
-    if (!target) return;
-    if (target.chapterId === activeChapterId) {
-      webViewRef.current?.injectJavaScript(createBookReaderGoToChapterProgressScript(target.chapterProgress / 100, bookReadingMode === "scroll" ? target.chapterId : undefined));
-    } else {
-      pendingLocateRef.current = { chapterId: target.chapterId, chapterProgress: target.chapterProgress / 100 };
-      chooseProgressChapter(target.chapterId);
-    }
-    void selectionHaptic(hapticsEnabled);
-  }
-  function chooseProgressChapter(chapterId: string, entryEdge: BookChapterEdge = "start") {
-    chooseChapter(chapterId, entryEdge);
-    setActiveTool("progress");
   }
   function chooseTocEntry(entry: BookTocEntry) {
     if (!entry.chapterId) return;
@@ -1102,12 +1080,10 @@ export function BookReaderScreen({ route, navigation }: Props) {
         {activeTool === "progress" ? <ReaderNavigationSheet onClose={() => setActiveTool(null)} top={insets.top + 64} bottom={sheetBottom} theme={theme} compact>
           <ScrollView contentContainerStyle={styles.progressContent}>
             <View style={styles.progressStats}>
-              <View style={styles.progressStat}><Text style={[styles.progressValue, { color: theme.ink, fontFamily: theme.sans }]}>{Math.round(previewProgress)}<Text style={styles.progressUnit}>%</Text></Text><Text style={[styles.progressCaption, { color: theme.muted }]}>{previewProgress >= 100 ? "已读完" : remainingMinutes > 0 ? `约${formatReadingTime(remainingMinutes * 60)}后读完` : "暂无预计时长"}</Text></View>
+              <View style={styles.progressStat}><Text style={[styles.progressValue, { color: theme.ink, fontFamily: theme.sans }]}>{Math.round(progress)}<Text style={styles.progressUnit}>%</Text></Text><Text style={[styles.progressCaption, { color: theme.muted }]}>{progress >= 100 ? "已读完" : remainingMinutes > 0 ? `约${formatReadingTime(remainingMinutes * 60)}后读完` : "暂无预计时长"}</Text></View>
               <View style={[styles.progressStat, { borderLeftWidth: StyleSheet.hairlineWidth, borderRightWidth: StyleSheet.hairlineWidth, borderColor: theme.rule }]}><Text style={[styles.progressTimeValue, { color: theme.ink, fontFamily: theme.sans }]}>{formatReadingTime(readingTime.seconds)}</Text><Text style={[styles.progressCaption, { color: theme.muted }]}>阅读时长</Text></View>
               <Pressable style={styles.progressStat} accessibilityRole="button" accessibilityLabel={`查看${bookNotes.length}条笔记`} onPress={() => setActiveTool("notes")}><Text style={[styles.progressValue, { color: theme.ink, fontFamily: theme.sans }]}>{bookNotes.length}<Text style={styles.progressUnit}>条</Text></Text><Text style={[styles.progressCaption, { color: theme.muted }]}>笔记</Text></Pressable>
             </View>
-            <View style={[styles.progressPreview, { backgroundColor: theme.paperSoft }]}><Text numberOfLines={2} style={[styles.stepTitle, { color: theme.ink, fontFamily: theme.serif }]}>{previewChapter?.title ?? bookTitle}</Text><Text style={[styles.stepMeta, { color: theme.muted }]}>{dragProgress === undefined ? "拖动滑块，跳转全书任意位置" : `全书 ${Math.round(previewProgress)}% · 松手跳转`}</Text></View>
-            <View style={styles.bookProgressSlider}><Pressable accessibilityRole="button" accessibilityLabel="上一章" disabled={activeIndex <= 0} onPress={() => chooseProgressChapter(chapters[activeIndex - 1]!.id, "end")} style={[styles.stepButton, { opacity: activeIndex <= 0 ? .28 : 1 }]}><Ionicons name="chevron-back" size={20} color={theme.ink} /></Pressable><ReaderSlider label="全书阅读进度" minimumValue={0} maximumValue={100} value={progress} onSlidingStart={setDragProgress} onValueChange={setDragProgress} onSlidingComplete={goToBookProgress} color={theme.red} trackColor={theme.rule} style={styles.bookSlider} /><Pressable accessibilityRole="button" accessibilityLabel="下一章" disabled={activeIndex >= chapters.length - 1} onPress={() => chooseProgressChapter(chapters[activeIndex + 1]!.id)} style={[styles.stepButton, { opacity: activeIndex >= chapters.length - 1 ? .28 : 1 }]}><Ionicons name="chevron-forward" size={20} color={theme.ink} /></Pressable></View>
           </ScrollView>
         </ReaderNavigationSheet> : null}
 
@@ -1215,8 +1191,8 @@ const styles = StyleSheet.create({
   searchHeader: { paddingHorizontal: 18, paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth }, searchBox: { marginTop: 12, height: 42, borderBottomWidth: 1, flexDirection: "row", alignItems: "center", gap: 10 }, searchInput: { flex: 1, height: 42, paddingVertical: 0, fontSize: 14 }, searchSubmit: { fontSize: 11, fontWeight: "900" }, tocSearch: { marginHorizontal: 18, height: 42, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: "row", alignItems: "center", gap: 9 }, tocSearchInput: { flex: 1, height: 42, paddingVertical: 0, fontSize: 12 }, resultRow: { borderBottomWidth: StyleSheet.hairlineWidth, paddingHorizontal: 20, paddingVertical: 15 }, resultTitle: { fontSize: 13, fontWeight: "900" }, resultExcerpt: { marginTop: 7, fontSize: 12, lineHeight: 22 }, panelStatus: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 20, paddingVertical: 18 }, panelStatusText: { fontSize: 11, fontWeight: "700" }, panelError: { margin: 18, borderLeftWidth: 2, paddingLeft: 10, fontSize: 11, lineHeight: 20 },
   aiPanelHeader: { minHeight: 62, marginHorizontal: 18, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: "row", alignItems: "center", gap: 14 }, aiPanelHeading: { flex: 1, minWidth: 0 }, aiPanelTitle: { fontSize: 16, fontWeight: "900" }, aiPanelBook: { marginTop: 3, fontSize: 8, fontWeight: "700" }, aiNewConversation: { fontSize: 10, fontWeight: "900" },
   aiHistory: { flex: 1 }, aiHistoryContent: { padding: 18, gap: 16 }, aiEmpty: { borderLeftWidth: 2, paddingLeft: 12, paddingVertical: 3 }, aiEmptyTitle: { fontSize: 14, fontWeight: "900" }, aiEmptyText: { marginTop: 6, fontSize: 10, lineHeight: 18 }, aiMessage: { maxWidth: "88%", borderLeftWidth: 2, paddingLeft: 12 }, aiUser: { alignSelf: "flex-end", borderLeftWidth: 0, borderRightWidth: 2, paddingLeft: 0, paddingRight: 12 }, aiAssistant: { alignSelf: "flex-start" }, aiMessageText: { fontSize: 13, lineHeight: 23 }, aiReferences: { marginTop: 10, gap: 6 }, aiReferenceButton: { borderWidth: 1, paddingHorizontal: 9, paddingVertical: 7 }, aiReferenceText: { fontSize: 10, fontWeight: "800" }, aiComposer: { borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 18, paddingVertical: 12, flexDirection: "row", alignItems: "flex-end", gap: 14 }, aiInput: { flex: 1, minHeight: 42, maxHeight: 92, borderBottomWidth: 1, paddingVertical: 8, fontSize: 13 }, aiSubmit: { minHeight: 42, justifyContent: "center" },
-  progressContent: { paddingHorizontal: 20, paddingBottom: 20 }, progressStats: { flexDirection: "row", paddingVertical: 24 }, progressStat: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 4, gap: 9 }, progressValue: { fontSize: 30, fontWeight: "700" }, progressUnit: { fontSize: 12 }, progressTimeValue: { fontSize: 18, fontWeight: "700", textAlign: "center" }, progressCaption: { fontSize: 10, textAlign: "center", lineHeight: 16 }, progressPreview: { minHeight: 72, padding: 14, alignItems: "center", justifyContent: "center" }, bookProgressSlider: { flexDirection: "row", alignItems: "center", marginTop: 12 }, bookSlider: { flex: 1, height: 44 },
-  chapterStepper: { minHeight: 80, flexDirection: "row", alignItems: "center" }, stepButton: { width: 52, height: 52, alignItems: "center", justifyContent: "center" }, stepCopy: { flex: 1, alignItems: "center", paddingHorizontal: 10 }, stepTitle: { fontSize: 15, fontWeight: "900" }, stepMeta: { marginTop: 5, fontSize: 9, fontWeight: "700" }, pageProgress: { paddingTop: 16 }, progressRail: { height: 4, marginHorizontal: 10, justifyContent: "center" }, progressFill: { position: "absolute", left: 0, height: 4 }, progressThumb: { position: "absolute", width: 18, height: 18, marginLeft: -9 }, pageLabel: { marginTop: 15, textAlign: "center", fontSize: 10, fontWeight: "700" },
+  progressContent: { paddingHorizontal: 20, paddingBottom: 20 }, progressStats: { flexDirection: "row", paddingVertical: 24 }, progressStat: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 4, gap: 9 }, progressValue: { fontSize: 30, fontWeight: "700" }, progressUnit: { fontSize: 12 }, progressTimeValue: { fontSize: 18, fontWeight: "700", textAlign: "center" }, progressCaption: { fontSize: 10, textAlign: "center", lineHeight: 16 },
+  pageProgress: { paddingTop: 16 }, progressRail: { height: 4, marginHorizontal: 10, justifyContent: "center" }, progressFill: { position: "absolute", left: 0, height: 4 }, progressThumb: { position: "absolute", width: 18, height: 18, marginLeft: -9 }, pageLabel: { marginTop: 15, textAlign: "center", fontSize: 10, fontWeight: "700" },
   settingGroup: { minHeight: 59, flexDirection: "row", alignItems: "center" }, settingsLabel: { width: 72, fontSize: 10, fontWeight: "800" }, scaleRow: { flex: 1, flexDirection: "row", alignItems: "center", gap: 7 }, scaleButton: { flex: 1, height: 38, borderWidth: 1, alignItems: "center", justifyContent: "center" }, scaleButtonText: { fontSize: 10, fontWeight: "900" }, brightnessSlider: { flex: 1, height: 40 },
   chapterRow: { height: 68, marginHorizontal: 18, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: "row", alignItems: "center", paddingHorizontal: 12 }, chapterNumber: { width: 38, fontSize: 9, fontWeight: "700" }, chapterCopy: { flex: 1 }, chapterRowTitle: { fontSize: 14, fontWeight: "700", lineHeight: 21 }, currentChapter: { fontSize: 9, fontWeight: "700" }, currentChapterMark: { marginLeft: 12, flexDirection: "row", gap: 4, alignItems: "center" },
   noteComposer: { position: "absolute", zIndex: 8, left: 16, right: 16, borderWidth: 1, padding: 14 }, composerQuote: { borderLeftWidth: 2, paddingLeft: 9, fontSize: 11, lineHeight: 19 }, noteInput: { minHeight: 64, marginTop: 9, borderBottomWidth: 1, paddingVertical: 8, textAlignVertical: "top", fontSize: 13 }, composerActions: { marginTop: 11, flexDirection: "row", justifyContent: "flex-end", gap: 24 }, composerButton: { fontSize: 11, fontWeight: "900" },
