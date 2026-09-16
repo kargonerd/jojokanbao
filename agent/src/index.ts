@@ -24,6 +24,11 @@ export {
   resolvePlatformModelConfig,
 } from "./models";
 export {
+  OPENAI_COMPATIBLE_API_KEY_ENV_VAR,
+  OPENAI_COMPATIBLE_PROVIDER_ID,
+  openAICompatibleProvider,
+} from "./openai-compatible";
+export {
   defaultMessageConverter,
   type AgentUsage,
   type PlatformAgentDefinition,
