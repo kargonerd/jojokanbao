@@ -599,25 +599,18 @@ describe("BookReader", () => {
     expect(window.localStorage.getItem("jojo-reader-font-size")).toBe("21");
   });
 
-  it.each([390, 1200])("shows book-wide progress and previews another chapter until the slider is released at %spx", async (width) => {
+  it.each([390, 1200])("shows book-wide progress stats without a seek slider at %spx", async (width) => {
     window.innerWidth = width;
-    const { onChapterChange } = renderReader();
+    renderReader();
     fireEvent.click(screen.getByRole("button", { name: "阅读进度" }));
     const sheet = screen.getByRole("complementary", { name: "阅读进度面板" });
-    const slider = within(sheet).getByRole<HTMLInputElement>("slider", { name: "全书进度" });
     expect(within(sheet).getByText("阅读时长")).toBeTruthy();
     expect(within(sheet).getByText(/后读完|已读完/)).toBeTruthy();
     await waitFor(() => expect(within(sheet).getByRole("button", { name: /0\s*条\s*笔记/ })).toBeTruthy());
     expect(within(sheet).queryByText("—", { exact: true })).toBeNull();
     expect(sheet.textContent).not.toMatch(/本设备|每分钟\s*500|500\s*字/);
-    fireEvent.pointerDown(slider);
-    fireEvent.change(slider, { target: { value: "75" } });
-    expect(slider.getAttribute("aria-valuetext")).toContain("75.0%，第二章");
-    expect(within(sheet).getByText("第二章")).toBeTruthy();
-    expect(onChapterChange).not.toHaveBeenCalled();
-    fireEvent.pointerUp(slider);
-    expect(onChapterChange).toHaveBeenCalledExactlyOnceWith("chapter-2");
-    expect(screen.getByRole("complementary", { name: "阅读进度面板" })).toBe(sheet);
+    expect(within(sheet).queryByRole("slider", { name: "全书进度" })).toBeNull();
+    expect(within(sheet).queryByText("全书开头")).toBeNull();
   });
 
   it("leaves scroll-mode edge gestures to the continuous document without changing chapters", () => {
@@ -724,20 +717,6 @@ describe("BookReader", () => {
     fireEvent.click(screen.getByRole("button", { name: "关闭书内导航" }));
     fireEvent.keyDown(window, { key: "ArrowRight" });
     expect(onChapterChange).toHaveBeenCalledWith("chapter-2");
-  });
-
-  it("cancels a progress drag without changing chapters and commits keyboard navigation", () => {
-    const { onChapterChange } = renderReader();
-    fireEvent.click(screen.getByRole("button", { name: "阅读进度" }));
-    const slider = screen.getByRole<HTMLInputElement>("slider", { name: "全书进度" });
-    const original = slider.value;
-    fireEvent.change(slider, { target: { value: "80" } });
-    fireEvent.pointerCancel(slider);
-    expect(slider.value).toBe(original);
-    expect(onChapterChange).not.toHaveBeenCalled();
-    fireEvent.change(slider, { target: { value: "100" } });
-    fireEvent.keyUp(slider, { key: "End" });
-    expect(onChapterChange).toHaveBeenCalledExactlyOnceWith("chapter-2");
   });
 
   it("stores paper color and texture independently", async () => {

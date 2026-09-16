@@ -12,7 +12,7 @@ import {
 } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { IoBookOutline, IoCopyOutline, IoCreateOutline, IoDownloadOutline, IoListOutline, IoRadioButtonOnOutline, IoSearchOutline, IoSparklesOutline, IoTextOutline } from "react-icons/io5";
-import { bookProgressPercent, bookProgressLocation, estimatedReadingMinutes, formatReadingTime, type SpeechLocation } from "@jojo/content";
+import { bookProgressPercent, estimatedReadingMinutes, formatReadingTime, type SpeechLocation } from "@jojo/content";
 import { createSpeechReader, SPEECH_EXCLUDED_ELEMENTS } from "@jojo/content/speech-dom";
 import { createUseCursorPages } from "@jojo/ui/cursor-pages";
 import type { ReaderSelectionRect } from "@jojo/ui/reader-selection";
@@ -234,7 +234,6 @@ export function BookReader({
   const [popular, setPopular] = useState<ReusableExplanation[]>([]);
   const [expandedImage, setExpandedImage] = useState<ExpandedImage>();
   const [readingProgress, setReadingProgress] = useState(0);
-  const [progressPreview, setProgressPreview] = useState<number>();
   const [bookNotes, setBookNotes] = useState<AnnotationThread[]>([]);
   const [notesError, setNotesError] = useState("");
   const [notesLoading, setNotesLoading] = useState(false);
@@ -259,7 +258,6 @@ export function BookReader({
   const tocPanelRef = useRef<HTMLDivElement>(null);
   const currentPageRef = useRef(0);
   const pendingPageRef = useRef<"start" | "end" | null>("start");
-  const pendingProgressRef = useRef<{ chapterId: string; progress: number }>(undefined);
   const swipeRef = useRef<{ x: number; y: number; time: number; dragging: boolean; start: number; distance: number }>(undefined);
   const suppressSwipeClickRef = useRef(false);
   const resumePositionRef = useRef((() => {
@@ -305,9 +303,7 @@ export function BookReader({
     if (!continuous) { setContinuousReady(false); return; }
     if (activeChapterId === visibleChapterRef.current || requestedScrollChapterRef.current === activeChapterId) return;
     requestedScrollChapterRef.current = activeChapterId;
-    const pending = pendingProgressRef.current;
-    continuousRef.current?.seek(activeChapterId, pending?.chapterId === activeChapterId ? pending.progress : 0);
-    pendingProgressRef.current = undefined;
+    continuousRef.current?.seek(activeChapterId, 0);
   }, [activeChapterId, continuous]);
   const annotationAccess = Boolean(currentUserId);
   const annotations = useAnnotationThreads(annotationSubject, annotationAccess, currentUserId);
@@ -329,7 +325,6 @@ export function BookReader({
   const bookProgress = Math.round(exactBookProgress * 10) / 10;
   const readingSeconds = useBookReadingTime(`${currentUserId || "guest"}:${datasetId}:${itemId}`, !contentLoading && !error && !readerOverlayOpen);
   const remainingMinutes = estimatedReadingMinutes(characterCount, exactBookProgress);
-  const previewLocation = bookProgressLocation(chapters, progressPreview ?? exactBookProgress);
 
   useEffect(() => { setBookNotes([]); setNotesError(""); }, [currentUserId, datasetId, itemId]);
 
@@ -393,18 +388,14 @@ export function BookReader({
     if (needsTrailingBlankPage !== trailingBlankPage) setTrailingBlankPage(needsTrailingBlankPage);
     const spreads = Math.max(1, Math.ceil(physicalPages / columnsPerSpread));
     const step = flow.clientWidth + gap;
-    const pendingProgress = pendingProgressRef.current;
     const resume = resumePositionRef.current?.chapterId === activeChapterId ? resumePositionRef.current : null;
-    const requestedPage = pendingProgress?.chapterId === activeChapterId
-      ? Math.round(pendingProgress.progress / 100 * (spreads - 1))
-      : resume ? Math.round(resume.progress * (spreads - 1))
+    const requestedPage = resume ? Math.round(resume.progress * (spreads - 1))
       : pendingPageRef.current === "end"
       ? spreads - 1
       : pendingPageRef.current === "start"
         ? 0
         : Math.min(currentPageRef.current, spreads - 1);
     pendingPageRef.current = null;
-    if (pendingProgress?.chapterId === activeChapterId) pendingProgressRef.current = undefined;
     if (resume) resumePositionRef.current = null;
     currentPageRef.current = requestedPage;
     flow.scrollLeft = requestedPage * step;
@@ -479,12 +470,10 @@ export function BookReader({
     if (mode !== "scroll" || continuous || contentLoading) return;
     const reader = scrollRef.current;
     if (!reader) return;
-    const pending = pendingProgressRef.current;
-    const progress = pending?.chapterId === activeChapterId ? pending.progress : pendingPageRef.current === "end" ? 100 : 0;
-    if (pending?.chapterId === activeChapterId || pendingPageRef.current) {
+    if (pendingPageRef.current) {
+      const progress = pendingPageRef.current === "end" ? 100 : 0;
       reader.scrollTop = Math.max(0, reader.scrollHeight - reader.clientHeight) * progress / 100;
       setReadingProgress(progress);
-      pendingProgressRef.current = undefined;
       pendingPageRef.current = null;
     }
   }, [activeChapterId, contentLoading, continuous, mode]);
@@ -640,10 +629,8 @@ export function BookReader({
     if (!chapterId) return;
     setTocOpen(false);
     if (continuous) {
-      const pending = pendingProgressRef.current;
       requestedScrollChapterRef.current = chapterId;
-      continuousRef.current?.seek(chapterId, pending?.chapterId === chapterId ? pending.progress : destination === "end" ? 100 : 0);
-      pendingProgressRef.current = undefined;
+      continuousRef.current?.seek(chapterId, destination === "end" ? 100 : 0);
       if (chapterId !== activeChapterId) onChapterChange(chapterId);
       return;
     }
@@ -1217,32 +1204,6 @@ export function BookReader({
     openPanel("ai");
   }
 
-  function seekReadingProgress(progress: number): void {
-    const bounded = Math.max(0, Math.min(100, progress));
-    if (continuous) { continuousRef.current?.seek(activeChapterId, bounded); return; }
-    if (mode === "paged") {
-      const targetPage = Math.round((bounded / 100) * Math.max(0, pageMetrics.spreads - 1));
-      goToPage(targetPage, "auto");
-      return;
-    }
-    const reader = scrollRef.current;
-    if (!reader) return;
-    const range = Math.max(0, reader.scrollHeight - reader.clientHeight);
-    reader.scrollTo({ top: (bounded / 100) * range, behavior: "auto" });
-    setReadingProgress(bounded);
-  }
-
-  function commitBookProgress(percent: number): void {
-    const destination = bookProgressLocation(chapters, percent);
-    setProgressPreview(undefined);
-    if (!destination) return;
-    if (destination.chapterId === activeChapterId && !contentLoading) seekReadingProgress(destination.chapterProgress);
-    else {
-      pendingProgressRef.current = { chapterId: destination.chapterId, progress: destination.chapterProgress };
-      chooseChapter(destination.chapterId);
-    }
-  }
-
   const isDark = paperColor === "dark";
   const shellClass = isDark ? "bg-[#151716] text-[#deded8]" : paperColor === "white" ? "bg-[#edf0f0] text-ink" : "bg-[#e8e9e4] text-ink";
   const pageClass = isDark ? "bg-[#202321]" : paperColor === "white" ? "bg-white" : "bg-[#fbfaf6]";
@@ -1310,7 +1271,7 @@ export function BookReader({
       onDeleteComment={(commentId) => annotations.deleteComment(commentId)}
     /> : null}
 
-    {toolPopover && <BookNavigationSheet mobile={mobileViewport} key={toolPopover} compact={toolPopover !== "notes"} title={toolPopover === "progress" ? "阅读进度" : toolPopover === "notes" ? "阅读笔记" : "文字设置"} label={toolPopover === "progress" ? "阅读进度面板" : toolPopover === "notes" ? "阅读笔记面板" : "文字设置面板"} onClose={() => { setToolPopover(undefined); setProgressPreview(undefined); }} panelClass={panelClass}>
+    {toolPopover && <BookNavigationSheet mobile={mobileViewport} key={toolPopover} compact={toolPopover !== "notes"} title={toolPopover === "progress" ? "阅读进度" : toolPopover === "notes" ? "阅读笔记" : "文字设置"} label={toolPopover === "progress" ? "阅读进度面板" : toolPopover === "notes" ? "阅读笔记面板" : "文字设置面板"} onClose={() => setToolPopover(undefined)} panelClass={panelClass}>
       <div className="book-tool-sheet-body">
         {toolPopover === "progress" ? <div>
           <div className="book-progress-stats">
@@ -1318,9 +1279,6 @@ export function BookReader({
             <div><strong className="book-progress-duration">{formatReadingTime(readingSeconds)}</strong><span>阅读时长</span></div>
             <button type="button" onClick={() => openTool("notes")}><strong>{bookNotes.length}<small>条</small></strong><span>笔记</span></button>
           </div>
-          <div className="book-progress-preview" aria-live="polite"><strong>{chapters.find((chapter) => chapter.id === previewLocation?.chapterId)?.title || "正文"}</strong><span>{(progressPreview ?? bookProgress).toFixed(1)}%</span></div>
-          <div className="book-progress-rail"><button type="button" aria-label="上一章" disabled={!previousChapter} onClick={() => chooseChapter(previousChapter?.id)}>‹</button><input type="range" min="0" max="100" step="0.1" value={progressPreview ?? exactBookProgress} onChange={(event) => setProgressPreview(+event.target.value)} onPointerUp={(event) => commitBookProgress(+event.currentTarget.value)} onKeyUp={(event) => { if (RANGE_KEYS.includes(event.key)) commitBookProgress(+event.currentTarget.value); }} onBlur={(event) => { if (progressPreview !== undefined) commitBookProgress(+event.currentTarget.value); }} onPointerCancel={() => setProgressPreview(undefined)} style={rangeFill(progressPreview ?? exactBookProgress)} className="reader-range book-reader-range" aria-label="全书进度" aria-valuetext={`${(progressPreview ?? bookProgress).toFixed(1)}%，${chapters.find((chapter) => chapter.id === previewLocation?.chapterId)?.title || "正文"}`} /><button type="button" aria-label="下一章" disabled={!nextChapter} onClick={() => chooseChapter(nextChapter?.id)}>›</button></div>
-          <div className="book-progress-endpoints"><span>全书开头</span><span>全书结尾</span></div>
         </div> : toolPopover === "notes" ? <div className="book-notes-list">
           <div className="book-notes-tabs" role="tablist" aria-label="笔记范围">
             <button type="button" role="tab" aria-selected={notesView === "mine"} onClick={() => setNotesView("mine")}>我的</button>

@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   navigate: vi.fn(), injectJavaScript: vi.fn(), shelfContains: vi.fn(async () => false), setShelf: vi.fn(async () => undefined),
   state: { textScale: 1, bookLineHeight: 1.95, bookReadingMode: "paged", bookPaperColor: "white",
     bookFirstLineIndent: true, hapticsEnabled: false, leftTapNext: false, recentBooks: [], bookAnnotations: [] as import("../store/mobileStore").BookAnnotation[], rememberBook: vi.fn(),
+    setBookReadingMode: vi.fn((mode: "paged" | "scroll") => { mocks.state.bookReadingMode = mode; }),
     claimLegacyBookAnnotations: vi.fn(), updateBookAnnotationNote: vi.fn(), removeBookAnnotation: vi.fn(), removeBookAnnotationMark: vi.fn(),
     addBookAnnotation: vi.fn((annotation: Record<string, unknown>) => ({ id: "new-annotation", ...annotation })) },
   playback: { open: vi.fn(), close: vi.fn(), toggle: vi.fn(), halt: vi.fn(), seek: vi.fn(), selectChapter: vi.fn(),
@@ -499,20 +500,6 @@ describe("continuous chapter reading", () => {
     expect(mocks.prefetch).not.toHaveBeenCalled();
   });
 
-  it("seeks across chapters in place and keeps the progress panel open", async () => {
-    await renderReader();
-    const source = reader().props.source;
-    await message({ type: "reader-ready", chapterId: "c1" });
-    const progressButton = view.root.findAllByType("button").find((button) => button.findAllByType("span").some((span) => span.props.children === "进度"))!;
-    await act(async () => progressButton.props.onPress());
-    await act(async () => view.root.findByType("input").props.onSlidingComplete(62.5));
-    expect(mocks.injectJavaScript).toHaveBeenCalledWith(expect.stringContaining('__jojoReaderInsertChapter("c2"'));
-    expect(mocks.injectJavaScript).toHaveBeenLastCalledWith(expect.stringContaining('__jojoReaderGoToChapterProgress(0.5, "c2")'));
-    await message(page("c2", .5));
-    expect(view.root.findByType("input").props.accessibilityLabel).toBe("全书阅读进度");
-    expect(reader().props.source).toBe(source);
-  });
-
   it("keeps loaded content after a chapter failure and retries without resetting the document", async () => {
     await renderReader();
     const source = reader().props.source;
@@ -705,39 +692,21 @@ describe.each([false, true])("reader listening visibility (eInk=%s)", (eInk) => 
     expect(mocks.state.rememberBook).toHaveBeenLastCalledWith(expect.objectContaining({ chapterId: "c1", spreadIndex: 4 }));
   });
 
-  it("converts full-book percentages to a chapter fraction and preserves it through chapter loading", async () => {
-    await renderReader();
-    const progressButton = view.root.findAllByType("button").find((button) => button.findAllByType("span").some((span) => span.props.children === "进度"))!;
-    await act(async () => progressButton.props.onPress());
-    const slider = view.root.findByProps({ accessibilityLabel: "全书阅读进度" });
-    await act(async () => slider.props.onSlidingComplete(12.5));
-    expect(view.root.findByProps({ accessibilityLabel: "全书阅读进度" })).toBeTruthy();
-    expect(mocks.injectJavaScript).toHaveBeenCalledWith("window.__jojoReaderGoToChapterProgress && window.__jojoReaderGoToChapterProgress(0.5); true;");
-    await act(async () => slider.props.onSlidingComplete(62.5));
-    expect(view.root.findByProps({ accessibilityLabel: "全书阅读进度" })).toBeTruthy();
-    expect(mocks.loadChapter).toHaveBeenLastCalledWith(expect.anything(), "c2", true, expect.any(AbortSignal));
-    await readerMessage({ type: "reader-ready", chapterId: "c2" });
-    await act(async () => { vi.advanceTimersByTime(80); });
-    expect(mocks.injectJavaScript).toHaveBeenCalledWith("window.__jojoReaderGoToChapterProgress && window.__jojoReaderGoToChapterProgress(0.5); true;");
-    expect(view.root.findByProps({ accessibilityLabel: "全书阅读进度" })).toBeTruthy();
-  });
-
-  it("starts adjacent prefetch and ignores a late chapter response after navigating back", async () => {
+  it("aborts a pending chapter load and ignores its late response after the reader reloads", async () => {
     await renderReader();
     expect(mocks.prefetch).toHaveBeenCalledWith(expect.anything(), "c1", expect.any(AbortSignal));
     let finish!: (value: unknown) => void;
     mocks.loadChapter.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
-    const jump = (id: string) => readerMessage({ type: "reader-internal-link", chapterId: id });
-    await jump("c2");
+    await readerMessage({ type: "reader-internal-link", chapterId: "c2" });
     expect(view.root.findAllByType("span").some((node) => node.props.children === "正在读取章节")).toBe(true);
     const signal = mocks.loadChapter.mock.calls.at(-1)![3] as AbortSignal;
-    const progress = view.root.findAllByType("button").find((node) => node.findAllByType("span").some((text) => text.props.children === "进度"));
-    await act(async () => progress!.props.onPress());
-    await press("上一章");
+    await act(async () => readerTool("文字").props.onPress());
+    await act(async () => view.root.findAllByType("button").find((node) => node.findAllByType("span").some((span) => span.props.children === "滚动"))!.props.onPress());
     expect(signal.aborted).toBe(true);
-    await act(async () => finish({ assetUrls: {}, fragment: { fragmentId: "c2", title: "旧请求" } }));
+    await act(async () => finish({ assetUrls: {}, fragment: { fragmentId: "c1", title: "旧请求" } }));
     expect(view.root.findAllByType("span").some((node) => node.props.children === "正在读取章节")).toBe(false);
-    expect(mocks.prefetch.mock.calls.at(-1)![1]).toBe("c1");
+    expect(mocks.loadChapter).toHaveBeenLastCalledWith(expect.anything(), "c2", true, expect.any(AbortSignal));
+    expect(mocks.prefetch.mock.calls.at(-1)![1]).toBe("c2");
   });
 
   it("shows a recoverable error when Android discards the WebView process", async () => {
