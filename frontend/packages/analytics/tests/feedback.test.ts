@@ -27,9 +27,9 @@ describe("feedback payload", () => {
   });
   it("clips overlong values instead of dropping the whole submission", () => {
     const responses = feedbackResponses({ topic: "suggestion", message: "x".repeat(3_000), quote: "q".repeat(900), contentTitle: "t".repeat(300) });
-    expect(responses?.message.length).toBe(2_000);
-    expect(responses?.quote.length).toBe(600);
-    expect((responses?.content_title as string).length).toBe(200);
+    expect(responses?.message?.length).toBe(2_000);
+    expect(responses?.quote?.length).toBe(600);
+    expect(responses?.content_title?.length).toBe(200);
   });
 });
 

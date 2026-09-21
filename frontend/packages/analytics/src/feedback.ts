@@ -1,6 +1,6 @@
 /** User-initiated feedback rides the standard `survey sent` event so PostHog
  * surveys, Hog Functions and dashboards all see the same shape. */
-import { analytics, type Properties } from "./index";
+import { analytics } from "./index";
 
 export type FeedbackTopic = "content_correction" | "bug" | "suggestion" | "other";
 export type FeedbackOutcome = "sent" | "unavailable" | "invalid";
@@ -35,10 +35,10 @@ function clipped(value: string | undefined, max: number): string | undefined {
 }
 
 /** Builds the `$survey_responses` payload; returns undefined when unusable. */
-export function feedbackResponses(request: FeedbackRequest): Properties | undefined {
+export function feedbackResponses(request: FeedbackRequest): Record<string, string> | undefined {
   const message = request.message.trim();
   if (!message || !TOPICS.has(request.topic)) return undefined;
-  const responses: Properties = { topic: request.topic, message: message.slice(0, MESSAGE_MAX_LENGTH) };
+  const responses: Record<string, string> = { topic: request.topic, message: message.slice(0, MESSAGE_MAX_LENGTH) };
   const quote = clipped(request.quote, QUOTE_MAX_LENGTH);
   if (quote) responses.quote = quote;
   const contentType = request.contentType;
