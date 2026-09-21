@@ -20,6 +20,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { AppVersionInfo } from "../components/AppVersionInfo";
+import { FeedbackSheet } from "../components/FeedbackSheet";
 import { SectionTitle } from "../components/SectionTitle";
 import { IS_EINK_RELEASE } from "../config/appVariant";
 import { checkNativeAppUpdate, openNativeAppUpdate } from "../lib/appUpdate";
@@ -90,6 +91,7 @@ export function SettingsScreen() {
   const [updateMessage, setUpdateMessage] = useState<string>();
   const [groupNotice, setGroupNotice] = useState("");
   const [feedbackPageNotice, setFeedbackPageNotice] = useState("");
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const timesLanguage = useMobileStore((state) => state.timesLanguage);
   const setTimesLanguage = useMobileStore((state) => state.setTimesLanguage);
   const timesDisabledSourceIds = useMobileStore((state) => state.timesDisabledSourceIds);
@@ -437,8 +439,15 @@ export function SettingsScreen() {
           <View style={styles.sectionGap}>
             <SectionTitle title="反馈" />
             <View style={[styles.panel, { backgroundColor: theme.paper, borderColor: theme.rule }]}>
+              <Pressable accessibilityRole="button" accessibilityHint="在应用内报告问题或提出建议" onPress={() => setFeedbackOpen(true)} style={styles.actionRow}>
+                <View style={styles.settingCopy}>
+                  <Text style={[styles.settingTitle, { color: theme.ink, fontFamily: theme.serif }]}>问题反馈</Text>
+                  <Text style={[styles.settingDescription, { color: theme.muted, fontFamily: theme.sans }]}>报告内容错误、功能异常，或写下你的建议</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={17} color={theme.muted} />
+              </Pressable>
               <Text style={[styles.aboutParagraph, { color: theme.ink, fontFamily: theme.serif }]}>
-                使用中遇到问题，或有功能建议，可以加入 QQ 群反馈，也可以在 B 站 JOJO看报账号下留言或私信。
+                也可以加入 QQ 群反馈，或在 B 站 JOJO看报账号下留言、私信。
               </Text>
               <View>
                 <View style={[styles.feedbackGroup, { borderTopColor: theme.rule }]}>
@@ -479,6 +488,7 @@ export function SettingsScreen() {
         </View>
         ) : null}
       </ScrollView>
+      <FeedbackSheet visible={feedbackOpen} screen="settings" onClose={() => setFeedbackOpen(false)} theme={theme} />
     </SafeAreaView>
   );
 }
