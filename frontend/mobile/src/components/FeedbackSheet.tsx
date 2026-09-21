@@ -111,7 +111,6 @@ export function FeedbackSheet({ visible, correction, screen, onClose, theme }: {
             )}
             <TextInput
               accessibilityLabel={correction ? "问题说明" : "反馈内容"}
-              autoFocus
               multiline
               maxLength={2000}
               editable={!sending}
@@ -124,8 +123,9 @@ export function FeedbackSheet({ visible, correction, screen, onClose, theme }: {
             {notice ? <Text accessibilityRole="alert" style={[styles.notice, { color: theme.red, fontFamily: theme.sans }]}>{notice}</Text> : null}
           </ScrollView>
           <View style={styles.footer}>
-            <Pressable accessibilityRole="button" accessibilityLabel="提交反馈" disabled={!canSend} onPress={send} style={[styles.submit, { backgroundColor: theme.red, opacity: canSend ? 1 : 0.4 }]}>
-              <Text style={{ color: theme.inverse }}>{sending ? "提交中…" : "提交"}</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel="提交反馈" disabled={!canSend} onPress={send}
+              style={[styles.submit, canSend ? { backgroundColor: theme.red } : { borderWidth: 1, borderColor: theme.rule }]}>
+              <Text style={{ color: canSend ? theme.inverse : theme.muted }}>{sending ? "提交中…" : "提交"}</Text>
             </Pressable>
           </View>
         </>}
