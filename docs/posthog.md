@@ -1,6 +1,7 @@
 # JOJO 看报 · PostHog
 
-PostHog 承担 Web、Desktop、Mobile 和官网的使用统计、JavaScript 错误追踪，以及小型运行参数管理。
+PostHog 承担 Web、Desktop、Mobile 和官网的使用统计、JavaScript 错误追踪、用户反馈收集，
+以及小型运行参数管理。
 前后端直接通过各自 SDK 读取同一份公开运行配置，使用本地或进程内缓存异步刷新。
 Healthchecks.io 和维护调度器负责定时任务、AI/邮件巡检及故障告警。
 
@@ -42,6 +43,7 @@ Web 使用 `stable` / `beta` 发布渠道。移动端正式发布使用 `product
 | 客户端下载入口使用量如何？ | `download_clicked`，按 `target_platform`、`available_version` 分组 |
 | 桌面自动更新是否正常？ | `update_available`、`update_downloaded`、`update_failed` |
 | 哪些版本出现 JavaScript 错误？ | Error tracking 的 `$exception`，按客户端、平台、版本过滤 |
+| 用户报告了哪些问题、纠错与建议？ | `survey sent`，`$survey_responses.topic` 分组，按 `content_type/content_id` 定位内容 |
 
 `installation_id` 是随机本地 ID，代表一个安装或浏览器存储实例。退出登录时保持不变；
 清理存储或重装会产生新 ID。登录后 `distinct_id` 使用内部用户 ID，支持跨端关联；
@@ -62,15 +64,75 @@ Web 使用 `stable` / `beta` 发布渠道。移动端正式发布使用 `product
 
 ## 采集边界
 
-应用事件和 SDK 的 `before_send` 使用属性白名单。采集范围是使用次数、内容标识、版本和故障信息；
-正文、搜索词、批注、AI 对话、凭据、完整 URL 和异常消息不上传。
-自动点击、自动页面采集、录屏、问卷和 IP 地理解析关闭。
+应用事件和 SDK 的 `before_send` 使用属性白名单。采集范围是使用次数、内容标识、版本、故障信息，
+以及用户主动提交的反馈内容；正文、搜索词、批注、AI 对话、凭据、完整 URL 和异常消息不会被自动采集。
+自动点击、自动页面采集、录屏、PostHog 自带的问卷组件和 IP 地理解析关闭。
 公开配置使用独立 SDK 实例和存储，统计偏好及账号变化不会清空配置缓存。
 
 正式构建默认发送这组统计，无需用户点击开启。登录身份恢复期间暂存少量事件，确认身份与本机采集状态后上报。
 `account_purpose=ai_availability_monitor/email_delivery_monitor` 的巡检账号及其缓冲事件不参与采集。
 
 采集状态由统计运行层管理，初始化时读取本机保存值。统计服务不可用时登录与阅读正常运行。
+
+## 用户反馈
+
+读者报告内容错误、功能异常与建议走同一条用户主动提交的通道：客户端表单构造标准
+`survey sent` 事件。它不依赖 PostHog 自带的问卷组件，`disable_surveys` 保持关闭。
+
+| 入口 | 位置 | 表单 |
+| --- | --- | --- |
+| 内容纠错 | Web/Desktop 读书、读报、时事的选中文字工具条 | 引用选中原文，填写问题说明 |
+| 问题反馈 | Web/Desktop 账户中心"帮助与反馈"、桌面设置 | 选择类型，自由描述 |
+| 内容纠错 | Mobile 读书、时事的选中文字工具条 | 引用选中原文，填写问题说明 |
+| 问题反馈 | Mobile 设置页"反馈" | 选择类型，自由描述 |
+
+事件属性固定为 `$survey_id=jojo-reader-feedback`、`$survey_name`、`$survey_completed=true`，
+回答内容放在 `$survey_responses`：
+
+| 字段 | 说明 |
+| --- | --- |
+| `topic` | `content_correction`（纠错）、`bug`（功能异常）、`suggestion`（功能建议）、`other` |
+| `message` | 用户描述，必填，最多 2000 字符 |
+| `quote` | 纠错引用的原文片段，最多 600 字符 |
+| `content_type` | `book`、`periodical`、`times_article` |
+| `content_id`、`content_title`、`section` | 内容标识、标题与章节，各最多 200 字符 |
+
+事件同时带 `screen` 和常规客户端上下文。反馈是用户知情主动提交，不走事件属性白名单，
+但 `@jojo/analytics/feedback` 仍裁剪长度并校验类型；字段校验失败或统计关闭、SDK 未就绪时
+提交返回失败，表单给出提示，不会静默丢弃。内嵌在移动端 WebView 的 Web 阅读器按设计关闭
+Web 统计，因此不显示纠错工具条，读者改用 App 内入口。
+
+反馈只保存在 PostHog，不自动流转到外部系统。看板「JOJO 看报 · 使用与质量」上有两张固定卡片：
+
+- [用户反馈 · 全部](https://us.posthog.com/project/604535/insights/oCvSfOm0)：每个字段一列（类型、描述、
+  引用原文、内容、章节、屏幕、版本、用户）。
+- [用户反馈 · 类型分布](https://us.posthog.com/project/604535/insights/NnRy8OLD)：按 `topic` 统计。
+
+也可以直接在 [Activity · Explore](https://us.posthog.com/project/604535/activity/explore)
+筛选事件名 `survey sent`。两张卡片的等价 SQL：
+
+```sql
+SELECT timestamp,
+  multiIf(properties.$survey_responses.topic = 'content_correction', '内容纠错',
+          properties.$survey_responses.topic = 'bug', '功能异常',
+          properties.$survey_responses.topic = 'suggestion', '功能建议',
+          properties.$survey_responses.topic = 'other', '其他',
+          properties.$survey_responses.topic) AS "类型",
+  properties.$survey_responses.message AS "描述",
+  properties.$survey_responses.quote AS "引用原文",
+  properties.$survey_responses.content_title AS "内容",
+  properties.$survey_responses.section AS "章节",
+  properties.screen AS "屏幕",
+  properties.app_version AS "版本",
+  distinct_id AS "用户"
+FROM events
+WHERE event = 'survey sent'
+ORDER BY timestamp DESC
+LIMIT 200
+```
+
+PostHog 的 Surveys 产品页只展示 PostHog 自带问卷的响应，本项目反馈是自建表单发出的普通事件，
+不在那里显示。当前没有配置任何 data pipeline destination，反馈不会流出 PostHog。
 
 ## 小型远程配置
 
@@ -153,7 +215,9 @@ Beta 上传暂缓；正式发布报错退出。完成运行环境配置与数据
 5. 首次启动正式构建即可上报；开发模式和巡检账号不产生事件。
 6. 在测试项目中触发不含敏感内容的 JS 异常，检查错误类型、版本及裁剪后的堆栈。
 7. 验证QQ群号读取与离线缓存，以及注册策略、共享批注阈值和 AI/邮件限额。
-8. 确认 Healthchecks.io 与维护调度任务正常运行。
+8. 在书、报、时事中选中文字提交一次纠错，并在设置页提交一次问题反馈，确认 PostHog 收到
+   `survey sent`、`$survey_responses` 字段完整、`content_type/content_id` 指向正确内容。
+9. 确认 Healthchecks.io 与维护调度任务正常运行。
 
 数据库契约测试使用 PGlite 执行完整迁移，覆盖业务状态保留、注册授权签名与邀请码核销、
 批注隐私和配额原子操作。Auth/Storage 基础设施和 pgcrypto 入口使用测试夹具。

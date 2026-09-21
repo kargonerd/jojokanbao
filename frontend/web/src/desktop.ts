@@ -30,3 +30,4 @@ export { default as TimesRoutes } from "./times/TimesRoutes";
 export { startOfflineAccountSync } from "./offline/books";
 
 export { LibrarySettingsPage } from "./library/LibrarySettingsPage";
+export { FeedbackDialog, type FeedbackCorrection } from "./feedback/FeedbackDialog";

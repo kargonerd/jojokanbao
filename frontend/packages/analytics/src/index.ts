@@ -153,6 +153,18 @@ export class Analytics {
     catch { /* Best effort. */ }
   }
 
+  /** User-initiated feedback bypasses the event whitelist; the caller has already
+   * validated and sized every field. Survey responses nest one object, which the
+   * flat event contract cannot express. Returns false when the SDK can't deliver. */
+  captureFeedback(properties: Record<string, unknown>): boolean {
+    if (!this.enabled) return false;
+    try {
+      const payload = { ...properties, ...this.context!, signed_in: Boolean(this.identity.userId) } as unknown as Properties;
+      this.transport!.capture("survey sent", payload);
+      return true;
+    } catch { return false; }
+  }
+
   screen(screen: string) {
     if (screen === this.lastScreen || !this.consent || this.identity.excluded) return;
     this.lastScreen = screen;

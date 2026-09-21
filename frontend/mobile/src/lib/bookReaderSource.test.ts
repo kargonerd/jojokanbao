@@ -11,6 +11,7 @@ import { expect, it } from "vitest";
 import * as content from "@jojo/content";
 import { SPEECH_READER_FACTORY } from "@jojo/content/speech-dom-script";
 import { CONTINUOUS_BOOK_SCROLL_FACTORY } from "./continuousBookScroll.generated";
+import { ANNOTATION_DOM_SCRIPT } from "./annotationDomScript";
 
 it("ships current continuous reading code as source instead of serializing a native runtime function", () => {
   expect(() => execFileSync(process.execPath, [fileURLToPath(new URL("../../scripts/generate-book-scroll.mjs", import.meta.url)), "--check"])).not.toThrow();
@@ -53,6 +54,7 @@ it("builds a complete standalone bridge even when Hermes cannot serialize functi
     if (id === "@jojo/content") return content;
     if (id === "@jojo/content/speech-dom-script") return { SPEECH_READER_FACTORY };
     if (id === "./continuousBookScroll.generated") return continuous;
+    if (id === "./annotationDomScript") return { ANNOTATION_DOM_SCRIPT };
     throw new Error(`Unexpected bridge runtime dependency: ${id}`);
   };
   const bridge = load("./bookReaderBridge.ts") as typeof import("./bookReaderBridge");
@@ -62,6 +64,7 @@ it("builds a complete standalone bridge even when Hermes cannot serialize functi
   expect(() => new Script(script)).not.toThrow();
   expect(script).toContain("reader-ready");
   expect(script).toContain("reader-speech-position");
+  expect(script).toContain("locateAnnotationQuote");
   expect(script).not.toContain("[native code]");
   expect(script).not.toContain("[bytecode]");
 });

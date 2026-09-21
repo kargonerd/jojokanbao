@@ -37,6 +37,8 @@ const ragApi = vi.hoisted(() => ({
 vi.mock("../src/annotations/api", () => annotationApi);
 vi.mock("../src/rag/readerData", () => readerDataApi);
 vi.mock("../src/rag/api", () => ragApi);
+const feedbackApi = vi.hoisted(() => ({ submitFeedback: vi.fn(() => "sent" as const) }));
+vi.mock("@jojo/analytics/feedback", () => feedbackApi);
 
 class ResizeObserverMock {
   observe(): void {}
@@ -919,6 +921,28 @@ describe("BookReader", () => {
     fireEvent.click(screen.getByRole("button", { name: "复制" }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("这是正文。"));
     expect(screen.queryByRole("toolbar", { name: "选中文字工具" })).toBeNull();
+  });
+
+  it("reports a content correction quoting the selected passage and chapter", async () => {
+    renderReader();
+    const paragraph = screen.getByText("这是正文。");
+    const range = document.createRange();
+    range.selectNodeContents(paragraph);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+    fireEvent(document, new Event("selectionchange"));
+
+    fireEvent.click(await screen.findByRole("button", { name: "内容纠错" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog.textContent).toContain("这是正文。");
+    expect(screen.queryByRole("toolbar", { name: "选中文字工具" })).toBeNull();
+    fireEvent.change(screen.getByLabelText("问题说明"), { target: { value: "应为「这是正文！」" } });
+    fireEvent.click(screen.getByRole("button", { name: "提交反馈" }));
+
+    await waitFor(() => expect(feedbackApi.submitFeedback).toHaveBeenCalledWith({
+      topic: "content_correction", message: "应为「这是正文！」", quote: "这是正文。",
+      contentType: "book", contentId: "test-books:test-books:full-book", contentTitle: "测试书", section: "第一章", screen: "book_reader",
+    }));
   });
 
   it("suppresses the reader context menu and removes actions when selection collapses", () => {
