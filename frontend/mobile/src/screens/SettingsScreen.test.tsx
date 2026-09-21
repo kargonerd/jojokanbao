@@ -28,8 +28,6 @@ vi.mock("../lib/haptics", () => ({ selectionHaptic: vi.fn(), toggleHaptic: vi.fn
 vi.mock("../lib/times", () => ({ mobileTimesApi: {}, timesSourceName: vi.fn() }));
 vi.mock("../store/mobileStore", () => ({ useMobileStore: (select: (state: unknown) => unknown) => select({ timesDisabledSourceIds: [], recentIssues: [], recentBooks: [] }) }));
 vi.mock("../config/supportConfig", () => ({useSupportConfig: () => mocks.config}));
-const feedbackApi = vi.hoisted(() => ({ submitFeedback: vi.fn(() => "sent" as const) }));
-vi.mock("@jojo/analytics/feedback", () => feedbackApi);
 
 let view: ReactTestRenderer;
 const button = (label: string) => view.root.findAllByType("button").find((node) => node.findAllByType("span").some((child) => child.props.children === label))!;
@@ -94,13 +92,7 @@ it("copies the new remote group shown on screen after a configuration update", a
   expect(mocks.copy).toHaveBeenLastCalledWith("123456789");
 });
 
-it("opens the in-app feedback form and submits a report from settings", async () => {
-  const sheet = view.root.findByType("dialog");
-  expect(sheet.props.visible).toBe(false);
+it("navigates to the full-page feedback form from settings", async () => {
   await act(async () => button("问题反馈").props.onPress());
-  expect(view.root.findByType("dialog").props.visible).toBe(true);
-
-  await act(async () => view.root.findByType("textarea").props.onChangeText("笔记无法保存"));
-  await act(async () => button("提交").props.onPress());
-  expect(feedbackApi.submitFeedback).toHaveBeenCalledWith({ topic: "bug", message: "笔记无法保存", screen: "settings" });
+  expect(mocks.navigate).toHaveBeenCalledWith("Feedback", { screen: "settings" });
 });

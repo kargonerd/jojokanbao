@@ -48,6 +48,7 @@ vi.mock("../components/BookThoughtComposer", () => ({ BookThoughtComposer: () =>
 vi.mock("../annotations/AnnotationDiscussionPanel", () => ({ AnnotationDiscussionPanel: () => null }));
 
 let view: ReactTestRenderer;
+const navigate = vi.fn();
 const article = { id: "news", title: "新闻标题", content: "<p>杰诺原油的价格上涨。</p>", contentFormat: "html", translationAvailable: true,
   usingTranslation: true, source: { id: "reuters" }, assets: [{ id: "lead", type: "image", caption: "English caption" }], assetUrls: { lead: "data:image/jpeg;base64,abc" } };
 const selection = { type: "selection", quote: "杰诺原油", prefix: "前文", suffix: "后文", start: 12, end: 16, rect: { left: 170, right: 250, top: 240, bottom: 260 }, viewport: { width: 390, height: 700 } };
@@ -55,7 +56,7 @@ async function message(payload: unknown) {
   await act(async () => view.root.findByType("webview").props.onMessage({ nativeEvent: { data: JSON.stringify(payload) } }));
 }
 async function mount() {
-  await act(async () => { view = create(<TimesDetailScreen route={{ params: { issueDate: "20260910", newsId: "news" } } as never} navigation={{ goBack: vi.fn() } as never} />); });
+  await act(async () => { view = create(<TimesDetailScreen route={{ params: { issueDate: "20260910", newsId: "news" } } as never} navigation={{ goBack: vi.fn(), navigate } as never} />); });
   await act(async () => view.root.findAllByType("div").find((node) => node.props.onLayout)!.props.onLayout({ nativeEvent: { layout: { x: 0, y: 100, width: 390, height: 700 } } }));
 }
 beforeEach(async () => {
@@ -115,21 +116,11 @@ describe("Times reading interactions", () => {
     expect(mocks.inject.mock.calls.some(([script]) => String(script).includes("__jojoTimesApplyAnnotations") && String(script).includes("saved-1"))).toBe(true);
   });
 
-  it("opens the correction form with the selected quote and reports it", async () => {
+  it("opens the feedback page with the selected quote", async () => {
     await message(selection);
     await act(async () => view.root.findByProps({ accessibilityLabel: "纠错" }).props.onPress());
     expect(view.root.findAllByType(ReaderSelectionToolbar)).toHaveLength(0);
-    const spanTexts = view.root.findAllByType("span").map((node) => node.props.children);
-    expect(spanTexts).toContain("内容纠错");
-    expect(spanTexts).toContain("杰诺原油");
-
-    await act(async () => view.root.findByType("textarea").props.onChangeText("应为「杰努原油」"));
-    const submit = view.root.findAllByType("button").find((node) => node.findAllByType("span").some((child) => child.props.children === "提交"))!;
-    await act(async () => submit.props.onPress());
-    expect(feedbackApi.submitFeedback).toHaveBeenCalledWith({
-      topic: "content_correction", message: "应为「杰努原油」", quote: "杰诺原油",
-      contentType: "times_article", contentId: "news", contentTitle: "新闻标题", screen: "times_detail",
-    });
+    expect(navigate).toHaveBeenCalledWith("Feedback", { screen: "times_detail", correction: expect.objectContaining({ quote: "杰诺原油", contentType: "times_article", contentId: "news" }) });
   });
 
   it.each([false, true])("shows generation progress, supports retry and cancels on close (eInk=%s)", async (eink) => {

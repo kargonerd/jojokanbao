@@ -17,7 +17,6 @@ import { BookReaderWebView } from "../components/BookReaderWebView";
 import { ReaderNavigationSheet } from "../components/ReaderNavigationSheet";
 import { ReaderSlider } from "../components/ReaderSlider";
 import { ReaderSelectionToolbar } from "../components/ReaderSelectionToolbar";
-import { FeedbackSheet, type FeedbackCorrection } from "../components/FeedbackSheet";
 import { BookThoughtComposer } from "../components/BookThoughtComposer";
 import { AnnotationDiscussionPanel } from "../annotations/AnnotationDiscussionPanel";
 import { createUseCursorPages } from "@jojo/ui/cursor-pages";
@@ -177,7 +176,6 @@ export function BookReaderScreen({ route, navigation }: Props) {
   useRetryOnFailure(Boolean(error) && !loading, retryReading);
   const tocListRef = useRef<FlatList<BookTocEntry>>(null);
   const [selection, setSelection] = useState<BookReaderSelectionMessage>();
-  const [correction, setCorrection] = useState<FeedbackCorrection>();
   const [readerFrame, setReaderFrame] = useState({ x: 0, y: 0, width: 0, height: 0 });
   const [noteComposer, setNoteComposer] = useState<NoteComposer>();
   const [noteDraft, setNoteDraft] = useState("");
@@ -546,13 +544,14 @@ export function BookReaderScreen({ route, navigation }: Props) {
   function composeCorrection() {
     if (!selection) return;
     const section = chapters.find((entry) => entry.id === (selection.chapterId ?? activeChapterId))?.title;
-    setCorrection({
+    navigation.navigate("Feedback", {
+      screen: "book_reader", correction: {
       quote: selection.text,
       contentType: "book",
       contentId: `${datasetId}:${itemKey}`,
       contentTitle: loaded?.book.title ?? bookTitle,
       ...(section ? { section } : {}),
-    });
+    }});
     clearSelection();
   }
 
@@ -1146,7 +1145,6 @@ export function BookReaderScreen({ route, navigation }: Props) {
       </> : null}
 
       {selection ? <ReaderSelectionToolbar selection={selection} frame={readerFrame} theme={theme} eInk={IS_EINK_RELEASE} onCopy={() => { void Clipboard.setStringAsync(selection.text); clearSelection(); }} onReport={composeCorrection} onUnderline={underlineSelection} onThought={composeSelectionNote} onExplain={explainSelection} /> : null}
-      <FeedbackSheet visible={Boolean(correction)} correction={correction} screen="book_reader" onClose={() => setCorrection(undefined)} theme={theme} />
       <BookThoughtComposer quote={noteComposer?.quote} value={noteDraft} visibility={noteVisibility} onVisibilityChange={setNoteVisibility} saving={noteSaving} error={noteError} localOnly={!user} onChange={setNoteDraft} onCancel={() => { if (!noteSaving) { setNoteComposer(undefined); setNoteDraft(""); setActiveAnnotationId(undefined); } }} onSave={() => void saveNote()} onSaveLocal={user ? saveNoteLocally : undefined} onRemoveMark={noteComposer?.annotationId && localBookAnnotations.some((entry) => entry.id === noteComposer.annotationId && entry.underlined !== false) ? () => deleteLocalUnderline(localBookAnnotations.find((entry) => entry.id === noteComposer!.annotationId)!) : undefined} theme={theme} />
       {activeCloudThread && user ? <AnnotationDiscussionPanel key={`${user.id}:${activeCloudThread.id}`} thread={activeCloudThread} currentUserId={user.id} theme={theme}
         onClose={() => setActiveAnnotationId(undefined)}
