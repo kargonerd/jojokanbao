@@ -8,7 +8,13 @@ vi.mock("@jojo/analytics/feedback", () => feedbackApi);
 vi.mock("react-native", () => ({
   Modal: "dialog", TextInput: "textarea", Pressable: "button", Text: "span", View: "div", ScrollView: "scroll",
   KeyboardAvoidingView: "div",
-  StyleSheet: { create: (styles: unknown) => styles, hairlineWidth: 1 },
+  Animated: {
+    Value: class { setValue() {} interpolate() { return 0; } },
+    timing: () => ({ start: (callback?: () => void) => callback?.() }),
+    View: "div",
+  },
+  Easing: { out: (value: unknown) => value, in: (value: unknown) => value, cubic: {} },
+  StyleSheet: { create: (styles: unknown) => styles, hairlineWidth: 1, absoluteFill: {}, absoluteFillObject: {} },
   Platform: { OS: "android", select: (values: { android: string }) => values.android },
 }));
 vi.mock("react-native-safe-area-context", () => ({ SafeAreaView: "section" }));
