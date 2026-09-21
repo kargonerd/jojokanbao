@@ -35,7 +35,9 @@ vi.mock("react-native", async () => {
     Text: "span", TextInput: "input", View: "div", FlatList: "section",
     Modal: ({ visible, children, ...props }: { visible: boolean; children: import("react").ReactNode }) =>
       visible ? createElement("dialog", props, children) : null,
-    StyleSheet: { create: (styles: unknown) => styles, absoluteFillObject: {}, hairlineWidth: 1 },
+    StyleSheet: { create: (styles: unknown) => styles, absoluteFillObject: {}, absoluteFill: {}, hairlineWidth: 1 },
+    Animated: { Value: class { setValue() {} interpolate() { return 0; } }, timing: () => ({ start: (callback?: () => void) => callback?.() }), View: "div" },
+    Easing: { out: (value: unknown) => value, in: (value: unknown) => value, cubic: {} },
     Platform: { OS: "android", select: (values: { android: string }) => values.android },
     AppState: { addEventListener: () => ({ remove() {} }) },
   };

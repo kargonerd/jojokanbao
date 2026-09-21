@@ -10,8 +10,10 @@ const mocks = vi.hoisted(() => ({
 vi.mock("react-native", () => ({
   ActivityIndicator: "progress", Pressable: "button", Text: "span", View: "div", ScrollView: "main", Switch: "input",
   Modal: "dialog", TextInput: "textarea", KeyboardAvoidingView: "div",
+  Animated: { Value: class { setValue() {} interpolate() { return 0; } }, timing: () => ({ start: (callback?: () => void) => callback?.() }), View: "div" },
+  Easing: { out: (value: unknown) => value, in: (value: unknown) => value, cubic: {} },
   Alert: { alert: vi.fn() }, Linking: { openURL: mocks.openURL },
-  StyleSheet: { create: (styles: unknown) => styles, hairlineWidth: 1 },
+  StyleSheet: { create: (styles: unknown) => styles, hairlineWidth: 1, absoluteFill: {}, absoluteFillObject: {} },
   Platform: { OS: "android", select: (values: { android: string }) => values.android },
 }));
 vi.mock("@expo/vector-icons/Ionicons", () => ({ default: "i" }));

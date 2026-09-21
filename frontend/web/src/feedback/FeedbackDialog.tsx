@@ -92,7 +92,7 @@ export function FeedbackDialog({ open, onClose, correction, screen }: {
         {notice ? <p role="alert" className="mb-0 mt-5 border-l-4 border-red bg-[#fbf3f3] px-4 py-3 text-sm font-bold leading-6 text-red">{notice}</p> : null}
 
         {sent ? (
-          <p role="status" className="mb-0 mt-6 border-l-4 border-ink bg-[#f5f3ee] px-4 py-3 font-serif text-sm leading-7 text-ink">已提交，感谢你的反馈。</p>
+          <p role="status" className="mb-0 mt-6 flex min-h-[240px] items-center justify-center border-l-4 border-ink bg-[#f5f3ee] px-4 py-3 font-serif text-sm leading-7 text-ink">已提交，感谢你的反馈。</p>
         ) : <>
         {correction ? (
           <blockquote className="mb-0 mt-5 max-h-40 overflow-y-auto border-l-2 border-red px-3 py-1 font-serif text-sm leading-8 text-muted">

@@ -7,8 +7,10 @@ import type { explainMobileTimesSelection } from "../lib/timesAgent";
 
 const mocks = vi.hoisted(() => ({ getNews: vi.fn(), explain: vi.fn(), cancel: vi.fn(), inject: vi.fn(), copy: vi.fn(), eink: false }));
 vi.mock("react-native", () => ({ ActivityIndicator: "progress", Pressable: "button", Text: "span", TextInput: "textarea", KeyboardAvoidingView: "keyboard-avoid", View: "div", ScrollView: "section",
+  Animated: { Value: class { setValue() {} interpolate() { return 0; } }, timing: () => ({ start: (callback?: () => void) => callback?.() }), View: "div" },
+  Easing: { out: (value: unknown) => value, in: (value: unknown) => value, cubic: {} },
   Modal: ({ visible, children }: { visible: boolean; children: ReactNode }) => visible ? children : null,
-  Linking: { openURL: vi.fn() }, StyleSheet: { create: (value: unknown) => value, hairlineWidth: 1 },
+  Linking: { openURL: vi.fn() }, StyleSheet: { create: (value: unknown) => value, hairlineWidth: 1, absoluteFill: {}, absoluteFillObject: {} },
   Platform: { OS: "android", select: (value: { android: string }) => value.android } }));
 vi.mock("react-native-webview", async () => {
   const { forwardRef, useImperativeHandle, createElement } = await import("react");
