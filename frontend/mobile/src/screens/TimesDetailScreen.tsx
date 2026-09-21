@@ -17,7 +17,6 @@ import { WebView, type WebViewMessageEvent } from "react-native-webview";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { TimesExplanationPanel } from "../components/TimesExplanationPanel";
 import { ReaderSelectionToolbar } from "../components/ReaderSelectionToolbar";
-import { FeedbackSheet, type FeedbackCorrection } from "../components/FeedbackSheet";
 import { BookThoughtComposer } from "../components/BookThoughtComposer";
 import { AnnotationDiscussionPanel } from "../annotations/AnnotationDiscussionPanel";
 import {
@@ -102,7 +101,6 @@ export function TimesDetailScreen({ route, navigation }: Props) {
   const [retryToken, setRetryToken] = useState(0);
   useRetryOnFailure(Boolean(error) && !loading, () => setRetryToken((value) => value + 1));
   const [selection, setSelection] = useState<ArticleSelection | null>(null);
-  const [correction, setCorrection] = useState<FeedbackCorrection>();
   const explanationChat = useReaderExplanation<MobileTimesTextAnchor, MobileTimesExplanationMetadata>(
     (anchor, callbacks, request) => explainMobileTimesSelection(news!, anchor, callbacks, request),
     `${issueDate}:${newsId}:${requestedLanguage}:${retryToken}`,
@@ -280,12 +278,13 @@ export function TimesDetailScreen({ route, navigation }: Props) {
 
   function composeCorrection() {
     if (!news || !selection) return;
-    setCorrection({
+    navigation.navigate("Feedback", {
+      screen: "times_detail", correction: {
       quote: selection.quote,
       contentType: "times_article",
       contentId: newsId,
       contentTitle: news.title,
-    });
+    }});
     clearSelection();
   }
 
@@ -367,8 +366,6 @@ export function TimesDetailScreen({ route, navigation }: Props) {
         onSave={() => void saveThought()} theme={theme} /> : null}
 
       {annotationNotice && !thoughtComposer ? <Pressable accessibilityRole="button" onPress={() => setAnnotationNotice("")} style={[styles.annotationNotice, { borderColor: theme.red, backgroundColor: theme.paper }]}><Text style={[styles.annotationNoticeText, { color: theme.red, fontFamily: theme.sans }]}>{annotationNotice}</Text></Pressable> : null}
-
-      <FeedbackSheet visible={Boolean(correction)} correction={correction} screen="times_detail" onClose={() => setCorrection(undefined)} theme={theme} />
 
       {news?.content ? <NativeSpeechPlayer news documentId={`news:${newsId}:${requestedLanguage}`} title={news.title} sourceName={timesSourceName(news.source)} chapterId={newsId} chapters={[{ id: newsId, title: news.title }]} loadChapter={loadSpeechChapter} hidden={Boolean(selection || explanation || expandedImage || loading)} cover={coverUri ? { uri: coverUri } : undefined} coverFallback={SOURCE_LOGOS[news.source.id]} onRead={() => undefined} /> : null}
 
