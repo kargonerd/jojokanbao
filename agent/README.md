@@ -1,6 +1,7 @@
 # @jojo/agent
 
-JOJO 看报的通用 Pi Agent 运行层，支持 Codex OAuth 和 Antigravity OAuth。
+JOJO 看报的通用 Pi Agent 运行层，支持 Codex OAuth、Antigravity OAuth，以及任意
+OpenAI 兼容端点（base URL + API key + 模型）。
 
 ```text
 pi-ai
@@ -23,8 +24,9 @@ applications.ts / rag-tools.ts
 
 ## Provider 切换
 
-`JOJO_AGENT_PROVIDER` 支持 `openai-codex`（默认）和 `antigravity`。
-`JOJO_AGENT_MODEL` 留空时分别使用 `gpt-5.6-luna` 和 `gemini-3.5-flash-lite`。
+`JOJO_AGENT_PROVIDER` 支持 `openai-codex`（默认）、`antigravity` 和 `openai-compatible`。
+`JOJO_AGENT_MODEL` 留空时前两者分别使用 `gpt-5.6-luna` 和 `gemini-3.5-flash-lite`；
+`openai-compatible` 没有内置目录，必须显式指定模型，否则直接报错。
 切换 provider 时清空旧的 model 覆盖，或指定该 provider 的模型；错误组合会直接报错。
 本地 `pnpm dev:agent` 从仓库根目录 `.env`、`.env.local` 读取配置，进程环境变量优先级最高；
 修改后重启服务。部署端在国际 Agent 的 EdgeOne Makers 项目环境变量中修改，再重新部署。
@@ -36,6 +38,34 @@ Git worktree 没有自己的环境文件时，本地服务复用主工作区的�
 ```dotenv
 JOJO_AGENT_PROVIDER=antigravity
 JOJO_AGENT_MODEL=gemini-3.5-flash-lite
+```
+
+### OpenAI 兼容端点
+
+`openai-compatible` 用一个可选模型目录的 `/chat/completions` 端点替代 OAuth 登录：
+它从 `JOJO_AGENT_BASE_URL` 和 `JOJO_AGENT_API_KEY` 取端点与密钥，模型目录只有
+`JOJO_AGENT_MODEL` 这一个条目。`JOJO_AGENT_BASE_URL` 必须是绝对 http(s) URL，
+两个变量缺失时启动即报错；模型不支持推理强度，因此不会发送 `reasoning_effort`，
+也没有价格表，usage 只报告 token 数、成本恒为 0。
+
+```dotenv
+JOJO_AGENT_PROVIDER=openai-compatible
+JOJO_AGENT_MODEL=gpt-5.6-luna
+JOJO_AGENT_BASE_URL=https://api.0-0.pro/v1
+JOJO_AGENT_API_KEY=sk-...
+```
+
+密钥只从 `JOJO_AGENT_API_KEY` 读取，不会误用 `OPENAI_API_KEY` 等其他变量；如果加密
+Credential Store 中存在同名 `api_key` 凭据，则凭据优先于环境变量。管理台上传入口仅处理
+OAuth，因此该 provider 的密钥通过环境变量配置。部署端仍会初始化加密 Credential Store，
+需要保留现有 `JOJO_CREDENTIAL_ENCRYPTION_KEY`。
+
+```powershell
+$env:JOJO_AGENT_PROVIDER="openai-compatible"
+$env:JOJO_AGENT_MODEL="gpt-5.6-luna"
+$env:JOJO_AGENT_BASE_URL="https://api.0-0.pro/v1"
+$env:JOJO_AGENT_API_KEY="sk-..."
+pnpm --filter @jojo/agent smoke -- "用一句话介绍你自己"
 ```
 
 `smoke`、`rag:smoke` 等 CLI 验证命令读取当前终端环境变量，不自动加载根目录 `.env.local`。
