@@ -15,6 +15,11 @@ const AUTH_ERROR_MESSAGES: Record<string, string> = {
   signup_disabled: "当前暂未开放注册。",
   user_already_exists: "这个邮箱已经注册，请直接登录。",
   weak_password: "密码强度不足，请至少使用 8 位字符。",
+  signup_service_unreachable: "无法连接注册服务，请检查网络后重试。",
+  remote_config_unavailable: "注册服务暂时不可用，请稍后重试。",
+  signup_authorization_failed: "注册服务暂时不可用，请稍后重试。",
+  database_unavailable: "账号服务暂时不可用，请稍后重试。",
+  invitation_required: "注册需要 6 位邀请码，请填写邀请码后重试。",
 };
 
 export function getAuthErrorMessage(error: unknown): string {
@@ -45,6 +50,9 @@ export function getAuthErrorMessage(error: unknown): string {
   }
   if (message.includes("reauthentication")) return "当前密码不正确。";
   if (message.includes("user already registered")) return "这个邮箱已经注册，请直接登录。";
+  if (message.includes("registration authorization is invalid or expired")) {
+    return "注册授权已过期，请重新发送验证码后再试。";
+  }
   if (message.includes("invite code") || message.includes("invitation code")) {
     return "邀请码无效、已过期、已用完，或与当前邮箱不匹配。";
   }
