@@ -1,4 +1,5 @@
 import asyncio
+import time
 from dataclasses import replace
 from unittest.mock import AsyncMock
 
@@ -51,14 +52,26 @@ def test_process_cache_deduplicates_cold_reads_and_does_not_wait_for_background_
     asyncio.run(scenario())
 
 
-def test_invalid_first_snapshot_cannot_open_registration():
+def test_unavailable_snapshot_serves_the_fail_open_policy():
     async def scenario():
         config = RemoteConfig(settings())
         sdk = AsyncMock()
+        # An invalid payload must not leave registration unusable.
         sdk.evaluate_flags.return_value = Flags({"auth_signup_config": {"invitationRequired": "false"}})
         config.client = sdk
+        assert await config.get("auth_signup_config") == {"invitationRequired": False}
+
+        # An unreachable PostHog behaves the same way, keeps the documented
+        # single 3s attempt, and retries at least 30 seconds apart.
+        sdk.evaluate_flags.side_effect = RuntimeError("offline")
+        config.refresh_after = 0
+        assert await config.get("auth_signup_config") == {"invitationRequired": False}
+        assert sdk.evaluate_flags.await_count == 2
+        assert config.refresh_after - time.monotonic() > 29
+
+        # Keys without a documented default keep refusing to serve.
         with pytest.raises(ApiError) as failure:
-            await config.get("auth_signup_config")
+            await config.get("ops_email_quota_config")
         assert failure.value.status_code == 503
         await config.close()
     asyncio.run(scenario())
@@ -88,7 +101,9 @@ def test_signup_sends_only_server_policy_to_the_server_only_database_rpc(require
             assert client.post("/v1/account/signup-authorization", json={"email":"x@example.com"}).status_code == 400
 
 
-def test_signup_denies_unavailable_policy_and_missing_server_key():
+def test_signup_propagates_a_config_refusal_and_requires_the_server_key():
+    # The fail-open policy lives in RemoteConfig; a refusal that does reach the
+    # endpoint is still reported instead of minting an unauthorized receipt.
     app = create_app()
     config = AsyncMock()
     config.get.side_effect = ApiError(503, "remote_config_unavailable", "unavailable")

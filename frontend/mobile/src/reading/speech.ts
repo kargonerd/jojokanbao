@@ -4,7 +4,7 @@ import * as Crypto from "expo-crypto";
 import { Parser } from "htmlparser2";
 import { useMobileAuthStore } from "../account/auth";
 
-const apiBase = process.env.EXPO_PUBLIC_READER_API_BASE?.replace(/\/$/u, "") || "https://beta.jojokanbao.cn";
+const apiBase = process.env.EXPO_PUBLIC_READER_API_BASE?.replace(/\/$/u, "") || "https://reader.jojokanbao.cn";
 export const mobileSpeechClient = createSpeechClient({
   allowed: () => Boolean(useMobileAuthStore.getState().user?.id),
   apiUrl: (path) => `${apiBase}${path}`,

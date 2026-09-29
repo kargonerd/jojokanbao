@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from typing import Any
 from urllib.parse import urlsplit
@@ -11,6 +12,15 @@ from posthog import AsyncPosthog
 
 from .config import Settings
 from .errors import ApiError
+
+logger = logging.getLogger("jojo.platform_api.config")
+
+# Registration stays available when PostHog is unreachable: a missing or invalid
+# snapshot serves this documented fail-open policy instead of refusing the
+# request. Every use is logged, so the fallback is never silent to operators.
+FAIL_OPEN_DEFAULTS: dict[str, dict[str, Any]] = {
+    "auth_signup_config": {"invitationRequired": False},
+}
 
 
 def validate_config(key: str, value: Any) -> dict[str, Any] | None:
@@ -51,8 +61,9 @@ class RemoteConfig:
                     valid = False
             self.refresh_after = time.monotonic() + (300 if valid else 30)
         except Exception:
-            # Do not log SDK responses or attach credentials to user-facing errors.
-            pass
+            # Keep the documented 30s retry window, and never log SDK responses
+            # or attach credentials to user-facing errors.
+            logger.warning("Remote config refresh failed; retrying within 30 seconds")
 
     async def get(self, key: str) -> dict[str, Any]:
         if time.monotonic() >= self.refresh_after and (self.pending is None or self.pending.done()):
@@ -60,7 +71,11 @@ class RemoteConfig:
         if key not in self.values and self.pending is not None:
             await asyncio.shield(self.pending)
         if key not in self.values:
-            raise ApiError(503, "remote_config_unavailable", "运行配置暂时无法读取，请稍后重试。")
+            fallback = FAIL_OPEN_DEFAULTS.get(key)
+            if fallback is None:
+                raise ApiError(503, "remote_config_unavailable", "运行配置暂时无法读取，请稍后重试。")
+            logger.warning("Remote config %s is unavailable; serving the fail-open default", key)
+            return dict(fallback)
         return dict(self.values[key])
 
     async def close(self) -> None:

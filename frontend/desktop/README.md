@@ -47,11 +47,14 @@ Window Controls Overlay 把最小化、最大化和关闭按钮融入同一栏�
 Web 与桌面端通过 `@jojo/pdf-viewer/vite` 共用 PDF.js 字体、CMap 与 WASM 打包清单。
 单击托盘图标可恢复窗口。
 
-打包版从 `file://` 运行，不能使用 Web 的同源 `/gateway/*`。桌面构建会把馆藏 AI 与
-时事随文解释请求交给 `jojo-agent://reader`；主进程只允许 `/gateway/ask` 和
-`/gateway/times/explain` 两个路径，并通过 Chromium 网络栈流式转发到当前承载新版 Web 的
-`https://beta.jojokanbao.cn` Reader 网关。其余路径、
-请求头和响应头不会透传，renderer 仍保持 sandbox、无 Node.js 与无 `ipcRenderer` 访问。
+打包版从 `file://` 运行，不能使用 Web 的同源 `/api/*` 与 `/gateway/*`。桌面构建会把馆藏 AI、
+时事随文解释和注册授权请求交给 `jojo-agent://reader`；主进程只允许 `/gateway/ask`、
+`/gateway/times/explain`、`/api/v1/speech/providers`、`/api/v1/speech` 和
+`/api/v1/account/signup-authorization` 五个路径，并通过 Chromium 网络栈转发到
+`https://reader.jojokanbao.cn` Reader 网关；`JOJO_DESKTOP_READER_ORIGIN` 可在开发与灰度时改指
+`https://beta.jojokanbao.cn`（或其他受信任来源）。问答与随文解释按 SSE 响应校验，语音与
+注册授权按 JSON 校验。其余路径、请求头和响应头不会透传，
+renderer 仍保持 sandbox、无 Node.js 与无 `ipcRenderer` 访问。
 Windows 开发窗口、任务栏、托盘与 NSIS 包统一使用 `electron/assets/icon.ico`；该文件包含
 16、20、24、32、40、48、64、128、256 像素表示，避免高 DPI 托盘把单张 16px 图标二次放大。
 

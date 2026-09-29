@@ -99,6 +99,22 @@ describe("createJojoAuthStore", () => {
     await expect(useAuthStore.getState().signUp({email:"reader@example.com",password:"password"})).rejects.toThrow("Invitation code");
     expect(signUp).not.toHaveBeenCalled();
   });
+  it("starts without requiring an invitation and asks for one when the server does", async () => {
+    const { client, signUp } = createClient();
+    const { useAuthStore } = createJojoAuthStore(client, {
+      authorizeSignup: async () => { throw { code: "invitation_required" }; },
+    });
+    expect(useAuthStore.getState().signupInvitationRequired).toBe(false);
+
+    await expect(useAuthStore.getState().signUp({ email: "reader@example.com", password: "password" }))
+      .rejects.toMatchObject({ code: "invitation_required" });
+
+    expect(useAuthStore.getState()).toMatchObject({
+      signupInvitationRequired: true,
+      error: "注册需要 6 位邀请码，请填写邀请码后重试。",
+    });
+    expect(signUp).not.toHaveBeenCalled();
+  });
   it.each(["qq.com@123456789", "mail.qq@9876543210", "reader@host.123", "reader@@qq.com"])(
     "rejects an incomplete or reversed signup email before requesting delivery: %s", async (email) => {
       const { client, signUp, resend } = createClient();
@@ -294,6 +310,16 @@ describe("createJojoAuthStore", () => {
     signInWithPassword.mockResolvedValueOnce({ data: {}, error: failure });
     await expect(useAuthStore.getState().signIn("reader@example.com", "wrong")).rejects.toBe(failure);
     expect(useAuthStore.getState().error).toBe("邮箱或密码不正确。");
+  });
+
+  it("keeps the reader signed in when only the profile read fails", async () => {
+    const { client, maybeSingle, user } = createClient();
+    const { useAuthStore } = createJojoAuthStore(client, { authorizeSignup: async () => "server-authorization" });
+    maybeSingle.mockResolvedValueOnce({ data: null, error: { message: "offline" } });
+
+    await useAuthStore.getState().signIn("reader@example.com", "password");
+
+    expect(useAuthStore.getState()).toMatchObject({ user, profile: null, profileStatus: "error", busy: false });
   });
 
   it("keeps an unconfirmed signup signed out and confirms its email code", async () => {

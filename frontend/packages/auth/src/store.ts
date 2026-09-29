@@ -4,7 +4,7 @@ import type { JojoAuthClient } from "./client";
 import { getAuthErrorMessage } from "./errors";
 import { validateRegistrationEmail } from "./email";
 import { createProfileRepository } from "./profile";
-import type { AuthState, SignUpInput } from "./types";
+import type { AuthState, Profile, SignUpInput } from "./types";
 import type { SignupConfig, SignupPolicySync } from "./signup";
 
 export interface AuthActions {
@@ -80,7 +80,10 @@ export function createJojoAuthStore(
   };
 
   const useAuthStore = create<AuthStore>((set, get) => ({
-    signupInvitationRequired: true,
+    // Documented fail-open default: without a validated policy the form does not
+    // block registration. The server decides, and reveals the code field again
+    // through the invitation_required error below.
+    signupInvitationRequired: false,
     session: null,
     user: null,
     profile: null,
@@ -109,8 +112,19 @@ export function createJojoAuthStore(
       try {
         const { data, error } = await client.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        const profile = data.user ? await loadProfile(data.user.id) : null;
-        set({ session: data.session, user: data.user, profile, profileStatus: profile ? "ready" : "idle", busy: false });
+        // Supabase has already established the session, so a slow or failed
+        // profile read must not report the reader's login as failed.
+        let profile: Profile | null = null;
+        let profileStatus: AuthState["profileStatus"] = "idle";
+        if (data.user) {
+          try {
+            profile = await loadProfile(data.user.id);
+            profileStatus = "ready";
+          } catch {
+            profileStatus = "error";
+          }
+        }
+        set({ session: data.session, user: data.user, profile, profileStatus, busy: false });
       } catch (error) {
         set({ busy: false, error: getAuthErrorMessage(error) });
         throw error;
@@ -146,7 +160,15 @@ export function createJojoAuthStore(
         });
         return requiresEmailConfirmation;
       } catch (error) {
-        set({ busy: false, error: getAuthErrorMessage(error) });
+        // The server's snapshot requires an invitation even though this client
+        // has no validated policy yet, so ask for the code instead of leaving
+        // the reader without a field to fill in.
+        const requiresInvitation = (error as { code?: string } | null)?.code === "invitation_required";
+        set({
+          busy: false,
+          error: getAuthErrorMessage(error),
+          ...(requiresInvitation ? { signupInvitationRequired: true } : {}),
+        });
         throw error;
       }
     },
@@ -161,12 +183,23 @@ export function createJojoAuthStore(
           type: "email",
         });
         if (error) throw error;
-        const profile = data.user ? await loadProfile(data.user.id) : null;
+        // Email verification has succeeded; the profile read is cosmetic and
+        // must not turn a completed registration into a failure.
+        let profile: Profile | null = null;
+        let profileStatus: AuthState["profileStatus"] = "idle";
+        if (data.user) {
+          try {
+            profile = await loadProfile(data.user.id);
+            profileStatus = "ready";
+          } catch {
+            profileStatus = "error";
+          }
+        }
         set({
           session: data.session,
           user: data.user,
           profile,
-          profileStatus: profile ? "ready" : "idle",
+          profileStatus,
           recoveryPending: false,
           busy: false,
           notice: "邮箱验证完成，账号已经启用。",
