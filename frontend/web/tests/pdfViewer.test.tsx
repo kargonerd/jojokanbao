@@ -733,12 +733,31 @@ describe("PdfViewer desktop click zoom", () => {
     await view.unmount();
   });
 
-  it("does not zoom when a mouse click lands on selectable text", async () => {
+  it("zooms after a short delay when a mouse click lands on selectable text", async () => {
     const view = await renderZoomedViewer();
 
     dispatchPointer(view.text, "pointerdown", { pointerId: 1, pointerType: "mouse", clientX: 120, clientY: 160 });
     dispatchPointer(view.text, "pointerup", { pointerId: 1, pointerType: "mouse", clientX: 120, clientY: 160 });
+    expect(view.onZoomChange).not.toHaveBeenCalled();
 
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    });
+    expect(view.onZoomChange).toHaveBeenCalledWith(2.5);
+    await view.unmount();
+  });
+
+  it("does not zoom when double-clicking selectable text", async () => {
+    const view = await renderZoomedViewer();
+
+    dispatchPointer(view.text, "pointerdown", { pointerId: 1, pointerType: "mouse", clientX: 120, clientY: 160 });
+    dispatchPointer(view.text, "pointerup", { pointerId: 1, pointerType: "mouse", clientX: 120, clientY: 160 });
+    dispatchPointer(view.text, "pointerdown", { pointerId: 1, pointerType: "mouse", clientX: 121, clientY: 161 });
+    dispatchPointer(view.text, "pointerup", { pointerId: 1, pointerType: "mouse", clientX: 121, clientY: 161 });
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 600));
+    });
     expect(view.onZoomChange).not.toHaveBeenCalled();
     await view.unmount();
   });
