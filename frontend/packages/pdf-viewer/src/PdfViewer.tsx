@@ -56,6 +56,7 @@ interface DragState {
   scrollTop: number;
   moved: boolean;
   selectingText: boolean;
+  hadSelection: boolean;
 }
 
 interface PointerPosition {
@@ -76,6 +77,11 @@ function clampPage(page: number, numPages: number): number {
 
 function clampZoom(zoom: number): number {
   return Math.min(Math.max(zoom, MIN_ZOOM), MAX_ZOOM);
+}
+
+function hasActiveTextSelection(): boolean {
+  const selection = window.getSelection();
+  return Boolean(selection && selection.rangeCount > 0 && !selection.isCollapsed);
 }
 
 function hasTouchInput(): boolean {
@@ -427,8 +433,11 @@ export function PdfViewer({
     if ((event.target as Element).closest("button")) return;
     const scrollContainer = scrollContainerRef?.current;
     if (!scrollContainer) return;
+    // A desktop click on selectable text is a selection gesture (place a caret,
+    // extend or clear a selection), not a request to zoom.
     const selectingText = event.pointerType === "mouse"
       && Boolean((event.target as Element).closest("[data-pdf-text-layer] span"));
+    const hadSelection = event.pointerType === "mouse" && hasActiveTextSelection();
 
     if (event.pointerType === "touch") {
       const activePointers = activeTouchPointersRef.current;
@@ -478,6 +487,7 @@ export function PdfViewer({
       scrollTop: scrollContainer.scrollTop,
       moved: false,
       selectingText,
+      hadSelection,
     };
   };
 
@@ -555,6 +565,7 @@ export function PdfViewer({
             scrollTop: scrollContainer.scrollTop,
             moved: true,
             selectingText: false,
+            hadSelection: false,
           };
         }
         return;
@@ -564,7 +575,14 @@ export function PdfViewer({
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
 
-    if (!drag.moved && event.pointerType !== "touch" && event.type === "pointerup" && onZoomChange) {
+    if (
+      !drag.moved
+      && event.pointerType !== "touch"
+      && event.type === "pointerup"
+      && onZoomChange
+      && !drag.selectingText
+      && !drag.hadSelection
+    ) {
       zoomAnchorRef.current = { clientX: event.clientX, clientY: event.clientY };
       onZoomChange(clampZoom(effectiveZoom + (event.shiftKey ? -CLICK_ZOOM_STEP : CLICK_ZOOM_STEP)));
     }
