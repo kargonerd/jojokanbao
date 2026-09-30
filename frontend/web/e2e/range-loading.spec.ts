@@ -708,10 +708,15 @@ test("PDF region zooms in place, pans, and exits without a floating lens", async
   });
 
 
-  // Clicking selectable text is a selection gesture (place a caret, clear a
-  // selection) and must never zoom; clicking blank page area zooms in place.
-  await selectableText.click();
+  // Double click on selectable text selects the word; the delayed zoom must
+  // be cancelled so the view stays put. Single text clicks zoom after the
+  // delay (covered by unit tests); blank-area clicks zoom immediately.
+  await selectableText.dblclick();
   await expect(viewer).toHaveAttribute("data-zoom", "1.5");
+  await page.evaluate(() => {
+    window.getSelection()?.removeAllRanges();
+    document.dispatchEvent(new Event("selectionchange"));
+  });
 
   const zoomClickPoint = await findBlankPagePoint(page, "zoom click");
   await page.mouse.click(zoomClickPoint.x, zoomClickPoint.y);
