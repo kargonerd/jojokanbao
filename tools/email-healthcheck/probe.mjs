@@ -6,6 +6,12 @@ const STATUSES = new Set(['queued', 'scheduled', 'sent', 'delivered', 'delivery_
 const DELIVERED = new Set(['delivered', 'opened', 'clicked']);
 const FAILED = new Set(['bounced', 'complained', 'suppressed', 'failed', 'canceled']);
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+// The project's Supabase endpoint lives on its own apex domain. Keep the
+// default *.supabase.co host and additionally allow only that exact host, so a
+// mis-set VITE_SUPABASE_URL cannot send the recover request to another origin.
+const SUPABASE_HOST = /^[a-z0-9]+\.supabase\.co$/;
+const PROJECT_AUTH_HOSTS = new Set(['api.jojokanbao.cn']);
+const isAuthHost = (hostname) => SUPABASE_HOST.test(hostname) || PROJECT_AUTH_HOSTS.has(hostname);
 const SAFE_CODE = /^(?:monitor_config_invalid|resend_(?:http_[1-5][0-9]{2}|network_error|response_invalid|scan_limit|message_limit)|recover_(?:http_[1-5][0-9]{2}|network_error)|transport_(?:timeout|config_invalid|identity_invalid|delivery_failed|message_ambiguous|scan_incomplete))$/;
 
 const failure = (code) => new Error(code);
@@ -146,7 +152,7 @@ function transportConfig(env) {
   if (typeof key !== 'string' || !key.trim() || /\s/.test(key)) throw failure('transport_config_invalid');
   let auth;
   try { auth = new URL(env.VITE_SUPABASE_URL); } catch { throw failure('transport_config_invalid'); }
-  if (auth.protocol !== 'https:' || !/^[a-z0-9]+\.supabase\.co$/.test(auth.hostname) || auth.port
+  if (auth.protocol !== 'https:' || !isAuthHost(auth.hostname) || auth.port
     || auth.username || auth.password || auth.search || auth.hash || auth.pathname !== '/') throw failure('transport_config_invalid');
   return { address, key, url: `${auth.origin}/auth/v1/recover` };
 }
