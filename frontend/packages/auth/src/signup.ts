@@ -25,7 +25,8 @@ export async function authorizeSignup(url: string, email: string, invitationCode
       signal: controller.signal,
     });
   } catch {
-    throw { code: "signup_service_unreachable" };
+    // The deadline firing and an unreachable host need different guidance.
+    throw { code: controller.signal.aborted ? "signup_service_timeout" : "signup_service_unreachable" };
   } finally {
     clearTimeout(deadline);
   }

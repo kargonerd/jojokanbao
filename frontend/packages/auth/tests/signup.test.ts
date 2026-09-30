@@ -36,6 +36,21 @@ describe("authorizeSignup", () => {
     });
   });
 
+  it("reports the request deadline separately from an unreachable host", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.stubGlobal("fetch", vi.fn((_url: string, init: RequestInit) => new Promise((_resolve, reject) => {
+        init.signal?.addEventListener("abort", () => reject(new Error("Aborted")));
+      })));
+      const pending = authorizeSignup(URL, "reader@example.com");
+      const assertion = expect(pending).rejects.toMatchObject({ code: "signup_service_timeout" });
+      await vi.advanceTimersByTimeAsync(20_000);
+      await assertion;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("reports a missing deployment or an offline network as an unavailable service", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("<!doctype html><p>NOT_FOUND</p>", {
       status: 404, headers: { "content-type": "text/html" },
