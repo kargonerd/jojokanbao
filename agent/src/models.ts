@@ -15,8 +15,9 @@ import {
 } from "@earendil-works/pi-ai/api/openai-codex-responses";
 import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-codex";
 import { antigravityProvider, DEFAULT_ANTIGRAVITY_MODEL } from "./antigravity/provider";
+import { openAICompatibleProvider } from "./openai-compatible";
 
-export const SUPPORTED_AGENT_PROVIDERS = ["openai-codex", "antigravity"] as const;
+export const SUPPORTED_AGENT_PROVIDERS = ["openai-codex", "antigravity", "openai-compatible"] as const;
 export type AgentProvider = typeof SUPPORTED_AGENT_PROVIDERS[number];
 
 export function isAgentProvider(value: string): value is AgentProvider {
@@ -28,6 +29,8 @@ export type AgentEnvironment = Readonly<Record<string, string | undefined>>;
 export interface PlatformModelConfig {
   provider: AgentProvider;
   model: string;
+  /** Endpoint base URL; required by the openai-compatible provider. */
+  baseUrl?: string;
 }
 
 export interface PlatformModelRuntime {
@@ -159,18 +162,46 @@ export function resolvePlatformModelConfig(
 ): PlatformModelConfig {
   const provider = environment.JOJO_AGENT_PROVIDER?.trim() || "openai-codex";
   if (!isAgentProvider(provider)) throw new Error(`Unsupported JOJO_AGENT_PROVIDER: ${provider}`);
+  const model = environment.JOJO_AGENT_MODEL?.trim();
+  if (provider === "openai-compatible") {
+    const baseUrl = environment.JOJO_AGENT_BASE_URL?.trim()
+      || throwMissingOpenAICompatibleOption("JOJO_AGENT_BASE_URL");
+    return {
+      provider,
+      model: model || throwMissingOpenAICompatibleOption("JOJO_AGENT_MODEL"),
+      baseUrl: requireHttpUrl(baseUrl, "JOJO_AGENT_BASE_URL"),
+    };
+  }
   return {
     provider,
-    model: environment.JOJO_AGENT_MODEL?.trim()
-      || (provider === "antigravity" ? DEFAULT_ANTIGRAVITY_MODEL : DEFAULT_CODEX_MODEL),
+    model: model || (provider === "antigravity" ? DEFAULT_ANTIGRAVITY_MODEL : DEFAULT_CODEX_MODEL),
   };
+}
+
+function throwMissingOpenAICompatibleOption(name: string): never {
+  throw new Error(`${name} is required for the openai-compatible provider`);
+}
+
+function requireHttpUrl(value: string, name: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error(`${name} must be an absolute http(s) URL: ${value}`);
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error(`${name} must be an absolute http(s) URL: ${value}`);
+  }
+  return value;
 }
 
 export function createPlatformModels(options: {
   credentials?: CredentialStore;
   environment?: AgentEnvironment;
+  config?: PlatformModelConfig;
 } = {}): MutableModels {
   const environment = options.environment ?? process.env;
+  const config = options.config ?? resolvePlatformModelConfig(environment);
   const authContext: AuthContext = {
     env: async (name) => environment[name],
     fileExists: async () => false,
@@ -181,6 +212,17 @@ export function createPlatformModels(options: {
   });
   models.setProvider(edgeCompatibleOpenAICodexProvider());
   models.setProvider(antigravityProvider());
+  if (config.provider === "openai-compatible") {
+    // `resolvePlatformModelConfig` already resolved the endpoint; the
+    // environment fallback keeps hand-built configs working.
+    const baseUrl = config.baseUrl?.trim()
+      || environment.JOJO_AGENT_BASE_URL?.trim()
+      || throwMissingOpenAICompatibleOption("JOJO_AGENT_BASE_URL");
+    models.setProvider(openAICompatibleProvider({
+      baseUrl: requireHttpUrl(baseUrl, "JOJO_AGENT_BASE_URL"),
+      model: config.model,
+    }));
+  }
   return models;
 }
 
