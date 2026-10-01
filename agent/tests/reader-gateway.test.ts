@@ -41,6 +41,24 @@ describe("Reader Agent gateway", () => {
     expect((await onRequest(context("/gateway/unknown"))).status).toBe(404);
   });
 
+  it("raises the upstream timeout above the 15s edge-function default", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("event: done\n\n", {
+      headers: { "Content-Type": "text/event-stream" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await onRequest(context("/gateway/times/explain"));
+
+    const init = fetchMock.mock.calls[0]![1] as {
+      eo?: { timeoutSetting?: Record<string, number> };
+    };
+    // A slow model can spend longer than the edge default before sending
+    // response headers; the relay must wait instead of answering 502.
+    expect(init.eo?.timeoutSetting?.readTimeout).toBeGreaterThanOrEqual(120_000);
+    expect(init.eo?.timeoutSetting?.writeTimeout).toBeGreaterThanOrEqual(120_000);
+    expect(init.eo?.timeoutSetting?.connectTimeout).toBeLessThanOrEqual(30_000);
+  });
+
   it("rejects unsafe configuration and oversized requests before fetching", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response("event: done\n\n", {
       headers: { "Content-Type": "text/event-stream" },

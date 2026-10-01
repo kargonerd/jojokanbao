@@ -15,7 +15,7 @@ import {
 } from "@earendil-works/pi-ai/api/openai-codex-responses";
 import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-codex";
 import { antigravityProvider, DEFAULT_ANTIGRAVITY_MODEL } from "./antigravity/provider";
-import { openAICompatibleProvider } from "./openai-compatible";
+import { openAICompatibleProvider, parseModelInput } from "./openai-compatible";
 
 export const SUPPORTED_AGENT_PROVIDERS = ["openai-codex", "antigravity", "openai-compatible"] as const;
 export type AgentProvider = typeof SUPPORTED_AGENT_PROVIDERS[number];
@@ -221,6 +221,7 @@ export function createPlatformModels(options: {
     models.setProvider(openAICompatibleProvider({
       baseUrl: requireHttpUrl(baseUrl, "JOJO_AGENT_BASE_URL"),
       model: config.model,
+      input: parseModelInput(environment.JOJO_AGENT_MODEL_INPUT),
     }));
   }
   return models;

@@ -4,6 +4,7 @@ import {
   PersistentCredentialStore,
   createPlatformModelRuntime,
   modelRuntimeStream,
+  parseModelInput,
   resolvePlatformModelConfig,
   runPlatformAgent,
 } from "../src";
@@ -223,6 +224,27 @@ describe("openai-compatible provider", () => {
     });
     expect(runtime.models.getModel("openai-compatible", "gpt-5.6-luna"))
       .toBe(runtime.model);
+  });
+
+  it("advertises image input by default so article images are not rejected", async () => {
+    const runtime = await createPlatformModelRuntime({
+      config: resolvePlatformModelConfig(COMPATIBLE_ENV),
+      environment: COMPATIBLE_ENV,
+    });
+
+    expect(runtime.model.input).toEqual(["text", "image"]);
+  });
+
+  it("honours JOJO_AGENT_MODEL_INPUT and rejects unknown modalities", async () => {
+    const textOnly = await createPlatformModelRuntime({
+      config: resolvePlatformModelConfig(COMPATIBLE_ENV),
+      environment: { ...COMPATIBLE_ENV, JOJO_AGENT_MODEL_INPUT: " text " },
+    });
+
+    expect(textOnly.model.input).toEqual(["text"]);
+    expect(parseModelInput("image,text,image")).toEqual(["image", "text"]);
+    expect(() => parseModelInput("text,audio")).toThrow("JOJO_AGENT_MODEL_INPUT");
+    expect(() => parseModelInput(" , ")).toThrow("at least one modality");
   });
 
   it("stays unconfigured without the dedicated API key variable", async () => {
