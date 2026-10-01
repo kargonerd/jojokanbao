@@ -45,7 +45,13 @@ await cp(webDist, outputDirectory, { recursive: true });
 const functionsOutput = path.join(outputDirectory, "cloud-functions");
 await mkdir(functionsOutput, { recursive: true });
 await cp(functionEntry, path.join(functionsOutput, "api"), { recursive: true });
-await cp(gatewayEntry, path.join(functionsOutput, "gateway"), { recursive: true });
+// The relay must run on the edge network, not in the Shanghai cloud-function
+// region: cloud functions there reach overseas origins through a platform proxy
+// whose host is currently unresolvable (getaddrinfo ENOTFOUND
+// {{pages_proxy_host}}), so /gateway/* answered 502 for every request.
+const edgeFunctionsOutput = path.join(outputDirectory, "edge-functions");
+await mkdir(edgeFunctionsOutput, { recursive: true });
+await cp(gatewayEntry, path.join(edgeFunctionsOutput, "gateway"), { recursive: true });
 await cp(middlewareEntry, path.join(outputDirectory, "middleware.ts"));
 await cp(functionSource, path.join(functionsOutput, "app"), {
   recursive: true,

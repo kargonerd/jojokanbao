@@ -19,19 +19,6 @@ type ReaderGatewayContext = {
  * header. EdgeOne surfaces a generic "TypeError: fetch failed"; the useful
  * detail (ENOTFOUND / ECONNREFUSED / TLS) only exists on `error.cause`.
  */
-/**
- * TEMPORARY host matrix: find which hosts this edge runtime can actually reach.
- * Removed as soon as the egress question is answered.
- */
-const DIAG_TARGETS = [
-  "https://agent-global.jojokanbao.cn/rag/health",
-  "https://jojo-agent-global-dpu6m5jdsxlx.edgeone.dev/rag/health",
-  "https://api.0-0.pro/v1/models",
-  "https://api.github.com/zen",
-  "https://www.baidu.com/",
-  "https://www.cloudflare.com/cdn-cgi/trace",
-];
-
 function describeFetchError(error: unknown): string {
   if (!(error instanceof Error)) return String(error);
   const parts = [`${error.name}: ${error.message}`];
