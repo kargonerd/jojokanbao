@@ -111,7 +111,17 @@ describe("Gemma production translation", () => {
     const fetchMock = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
       active += 1;
       maximumActive = Math.max(maximumActive, active);
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      // Hold each request until all three workers are in flight so the
+      // saturation assertion below is deterministic even on loaded runners;
+      // the deadline keeps a broken sequential implementation failing fast.
+      await new Promise<void>((resolve) => {
+        const startedAt = Date.now();
+        const check = () => {
+          if (active >= 3 || Date.now() - startedAt > 2000) resolve();
+          else setTimeout(check, 1);
+        };
+        check();
+      });
       active -= 1;
       return translatedResponse(init);
     });
