@@ -5,18 +5,19 @@ import type { MobileTheme } from "../theme/tokens";
 
 const TOOLBAR_HEIGHT = 64;
 
-export function ReaderSelectionToolbar({ selection, frame, theme, eInk, onCopy, onUnderline, onThought, onExplain }: {
+export function ReaderSelectionToolbar({ selection, frame, theme, eInk, onCopy, onReport, onUnderline, onThought, onExplain }: {
   selection: { rect?: ReaderSelectionRect; viewport?: { width: number; height: number } };
   frame: LayoutRectangle;
   theme: MobileTheme;
   eInk: boolean;
   onCopy: () => void;
+  onReport?: () => void;
   onUnderline?: () => void;
   onThought?: () => void;
   onExplain: () => void;
 }) {
   if (!selection.rect || !selection.viewport || selection.viewport.width <= 0 || selection.viewport.height <= 0 || !frame.width || !frame.height) return null;
-  const actionCount = 2 + Number(Boolean(onUnderline)) + Number(Boolean(onThought));
+  const actionCount = 2 + Number(Boolean(onReport)) + Number(Boolean(onUnderline)) + Number(Boolean(onThought));
   const scaleX = frame.width / selection.viewport.width;
   const scaleY = frame.height / selection.viewport.height;
   const rect = {
@@ -33,6 +34,7 @@ export function ReaderSelectionToolbar({ selection, frame, theme, eInk, onCopy, 
     { label: "划线", icon: null, onPress: onUnderline },
     { label: "写想法", icon: "create-outline", onPress: onThought },
     { label: "AI 解释", icon: "sparkles-outline", onPress: onExplain },
+    { label: "纠错", icon: "flag-outline", onPress: onReport },
   ] as const;
   return <View style={[styles.container, { left: position.left, top: position.top, width: position.width }]}>
     <View style={[styles.actions, { backgroundColor }, !eInk && styles.shadow]}>

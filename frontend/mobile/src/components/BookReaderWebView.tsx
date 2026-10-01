@@ -24,7 +24,12 @@ export function BookReaderWebView({ ref, html, bootstrapScript, onMessage, onLoa
   callbacks.current = { onMessage, onInitializationError };
   const prepared = useMemo(() => {
     const script = `window.__jojoReaderSessionId = ${JSON.stringify(sessionId)};\n${initial.bootstrapScript}`;
-    return { script, source: { html: initial.html.replace("</body>", () => `<script>${script.replace(/<\/script/gi, "<\\/script")}</script></body>`) }, ready: false, page: false };
+    const tag = `<script>${script.replace(/<\/script/gi, "<\\/script")}</script>`;
+    // Chapter bodies are book content and can bring a document shell of their
+    // own, so anchor on the last `</body>`: the reader document's own.
+    const close = initial.html.lastIndexOf("</body>");
+    const html = close < 0 ? `${initial.html}${tag}` : `${initial.html.slice(0, close)}${tag}${initial.html.slice(close)}`;
+    return { script, source: { html }, ready: false, page: false };
   }, [initial, sessionId]);
 
   useLayoutEffect(() => {

@@ -437,8 +437,15 @@ export function SettingsScreen() {
           <View style={styles.sectionGap}>
             <SectionTitle title="反馈" />
             <View style={[styles.panel, { backgroundColor: theme.paper, borderColor: theme.rule }]}>
+              <Pressable accessibilityRole="button" accessibilityHint="在应用内报告问题或提出建议" onPress={() => navigation.navigate("Feedback", { screen: "settings" })} style={styles.actionRow}>
+                <View style={styles.settingCopy}>
+                  <Text style={[styles.settingTitle, { color: theme.ink, fontFamily: theme.serif }]}>问题反馈</Text>
+                  <Text style={[styles.settingDescription, { color: theme.muted, fontFamily: theme.sans }]}>报告内容错误、功能异常，或写下你的建议</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={17} color={theme.muted} />
+              </Pressable>
               <Text style={[styles.aboutParagraph, { color: theme.ink, fontFamily: theme.serif }]}>
-                使用中遇到问题，或有功能建议，可以加入 QQ 群反馈，也可以在 B 站 JOJO看报账号下留言或私信。
+                也可以加入 QQ 群反馈，或在 B 站 JOJO看报账号下留言、私信。
               </Text>
               <View>
                 <View style={[styles.feedbackGroup, { borderTopColor: theme.rule }]}>

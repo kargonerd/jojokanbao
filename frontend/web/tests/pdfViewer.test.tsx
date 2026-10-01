@@ -144,6 +144,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  window.getSelection()?.removeAllRanges();
   window.document.body.innerHTML = "";
 });
 
@@ -679,6 +680,100 @@ describe("PdfViewer demand loading", () => {
   });
 });
 
+
+describe("PdfViewer desktop click zoom", () => {
+  async function renderZoomedViewer() {
+    const { document } = createDocument(1);
+    const scrollContainer = window.document.createElement("div");
+    const host = window.document.createElement("div");
+    scrollContainer.append(host);
+    window.document.body.append(scrollContainer);
+    const root = createRoot(host);
+    const onZoomChange = vi.fn();
+    await act(async () => {
+      root.render(
+        <PdfViewer
+          document={document}
+          zoomEnabled
+          zoom={2}
+          onZoomChange={onZoomChange}
+          scrollContainerRef={{ current: scrollContainer }}
+        />,
+      );
+    });
+    const textLayer = host.querySelector<HTMLElement>("[data-pdf-text-layer]")!;
+    const text = window.document.createElement("span");
+    text.textContent = "可选中文字";
+    textLayer.append(text);
+    return {
+      host,
+      text,
+      onZoomChange,
+      unmount: async () => {
+        await act(async () => root.unmount());
+        scrollContainer.remove();
+      },
+    };
+  }
+
+  it("does not zoom when a mouse click only clears the current selection", async () => {
+    const view = await renderZoomedViewer();
+
+    const range = window.document.createRange();
+    range.selectNodeContents(view.text);
+    const selection = window.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    dispatchPointer(view.text, "pointerdown", { pointerId: 1, pointerType: "mouse", clientX: 120, clientY: 160 });
+    dispatchPointer(view.text, "pointerup", { pointerId: 1, pointerType: "mouse", clientX: 120, clientY: 160 });
+
+    expect(view.onZoomChange).not.toHaveBeenCalled();
+    window.getSelection()?.removeAllRanges();
+    await view.unmount();
+  });
+
+  it("zooms after a short delay when a mouse click lands on selectable text", async () => {
+    const view = await renderZoomedViewer();
+
+    dispatchPointer(view.text, "pointerdown", { pointerId: 1, pointerType: "mouse", clientX: 120, clientY: 160 });
+    dispatchPointer(view.text, "pointerup", { pointerId: 1, pointerType: "mouse", clientX: 120, clientY: 160 });
+    expect(view.onZoomChange).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    });
+    expect(view.onZoomChange).toHaveBeenCalledWith(2.5);
+    await view.unmount();
+  });
+
+  it("does not zoom when double-clicking selectable text", async () => {
+    const view = await renderZoomedViewer();
+
+    dispatchPointer(view.text, "pointerdown", { pointerId: 1, pointerType: "mouse", clientX: 120, clientY: 160 });
+    dispatchPointer(view.text, "pointerup", { pointerId: 1, pointerType: "mouse", clientX: 120, clientY: 160 });
+    dispatchPointer(view.text, "pointerdown", { pointerId: 1, pointerType: "mouse", clientX: 121, clientY: 161 });
+    dispatchPointer(view.text, "pointerup", { pointerId: 1, pointerType: "mouse", clientX: 121, clientY: 161 });
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 600));
+    });
+    expect(view.onZoomChange).not.toHaveBeenCalled();
+    await view.unmount();
+  });
+
+  it("still zooms on a mouse click outside the text layer", async () => {
+    const view = await renderZoomedViewer();
+    const zoomContent = view.host.querySelector<HTMLElement>("[data-pdf-zoom-content]")!;
+    window.getSelection()?.removeAllRanges();
+
+    dispatchPointer(zoomContent, "pointerdown", { pointerId: 1, pointerType: "mouse", clientX: 120, clientY: 160 });
+    dispatchPointer(zoomContent, "pointerup", { pointerId: 1, pointerType: "mouse", clientX: 120, clientY: 160 });
+
+    expect(view.onZoomChange).toHaveBeenCalledWith(2.5);
+    await view.unmount();
+  });
+});
 
 describe("PDF search on touch devices", () => {
   it("keeps the pending search page resident when other pages enter the viewport", async () => {

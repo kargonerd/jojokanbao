@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { ReaderSelectionRect } from "@jojo/ui/reader-selection";
-import { IoCopyOutline, IoCreateOutline, IoSparklesOutline } from "react-icons/io5";
+import { IoCopyOutline, IoCreateOutline, IoFlagOutline, IoSparklesOutline } from "react-icons/io5";
 import { ReaderSelectionPopover } from "../reading/ReaderSelectionPopover";
 import { useAccountSessionStore } from "../account/session";
+import { FeedbackDialog, type FeedbackCorrection } from "../feedback/FeedbackDialog";
 import { AnnotationDiscussionPanel } from "./AnnotationDiscussionPanel";
 import { AnnotationMarkPopover } from "./AnnotationMarkPopover";
 import { CommentVisibilityControl } from "./CommentVisibilityControl";
@@ -38,6 +39,7 @@ export function SelectableAnnotationArticle({
   const [selectedMark, setSelectedMark] = useState<{ id: string; rect: ReaderSelectionRect }>();
   const [notice, setNotice] = useState("");
   const [saving, setSaving] = useState(false);
+  const [correction, setCorrection] = useState<FeedbackCorrection>();
   const active = annotations.threads.find((thread) => thread.id === activeId);
   const ownMark = annotations.threads.find((thread) => thread.id === selectedMark?.id && thread.underlinedByMe);
 
@@ -160,6 +162,17 @@ export function SelectableAnnotationArticle({
     clearSelection();
   }
 
+  function openCorrection() {
+    if (!selection) return;
+    setCorrection({
+      quote: selection.anchor.quote,
+      contentType: "times_article",
+      contentId: subject.contentId,
+      contentTitle: subject.contentTitle,
+    });
+    clearSelection();
+  }
+
   return (
     <>
       <div ref={rootRef} onPointerUp={capturePointerSelection} onKeyUp={captureSelection}>{children}</div>
@@ -169,16 +182,18 @@ export function SelectableAnnotationArticle({
         onDiscuss={() => { setActiveId(ownMark.id); setSelectedMark(undefined); }}
       /> : null}
       {selection ? (
-        <ReaderSelectionPopover rect={selection.rect} width={(1 + Number(access) * 2 + Number(explanationAccess)) * 72}>
+        <ReaderSelectionPopover rect={selection.rect} width={(2 + Number(access) * 2 + Number(explanationAccess)) * 72}>
           <div className="book-selection-actions" role="toolbar" aria-label="选中文字工具">
             <button type="button" onClick={() => void copySelection()} className="reader-selection-action"><IoCopyOutline aria-hidden="true" /><span>复制</span></button>
             {access ? <><button type="button" disabled={saving} onClick={() => void save()} className="reader-selection-action"><span aria-hidden="true" className="book-selection-underline">A</span><span>划线</span></button><button type="button" disabled={saving} onClick={() => setCommentOpen((value) => !value)} className="reader-selection-action"><IoCreateOutline aria-hidden="true" /><span>写想法</span></button></> : null}
             {explanationAccess ? <button type="button" disabled={saving} onClick={explain} className="reader-selection-action" aria-label="AI 解释"><IoSparklesOutline aria-hidden="true" /><span>AI 解释</span></button> : null}
+            <button type="button" onClick={openCorrection} className="reader-selection-action" aria-label="内容纠错"><IoFlagOutline aria-hidden="true" /><span>纠错</span></button>
           </div>
           {commentOpen ? <div className="mt-1 w-72 border border-rule bg-paper p-3 text-ink shadow-[3px_6px_20px_rgba(0,0,0,.16)]"><textarea autoFocus value={comment} maxLength={2000} rows={3} onChange={(event) => setComment(event.target.value)} placeholder="写下此刻的想法……" className="reader-thought-input block w-full resize-none border-0 border-b border-rule bg-transparent px-0 py-1 font-serif text-sm leading-6 text-current" /><div className="mt-2 flex items-center justify-between gap-3"><CommentVisibilityControl value={commentVisibility} onChange={setCommentVisibility} disabled={saving} /><button type="button" disabled={saving || !comment.trim()} onClick={() => void save(comment.trim(), commentVisibility)} className="cursor-pointer border-0 bg-transparent p-0 text-xs font-bold text-red disabled:opacity-30">{saving ? "保存中…" : "保存"}</button></div></div> : null}
         </ReaderSelectionPopover>
       ) : null}
       {notice || annotations.error ? <button type="button" className="annotation-notice" onClick={() => setNotice("")}>{notice || annotations.error}</button> : null}
+      <FeedbackDialog open={Boolean(correction)} onClose={() => setCorrection(undefined)} correction={correction} screen="times_detail" />
       {active && currentUserId ? <AnnotationDiscussionPanel key={active.id}
         thread={active}
         currentUserId={currentUserId}

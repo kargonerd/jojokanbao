@@ -601,21 +601,13 @@ mark[data-book-search-target] {
 .book-toc-list button[aria-current="location"] { color: var(--color-red); font-weight: 600; }
 .book-toc-list button:hover { color: var(--color-red); }
 .book-toc-group { padding: 24px 0 10px; color: var(--color-muted); font-size: 13px; font-weight: 600; }
-.book-progress-stats { display: grid; grid-template-columns: 1.2fr 1.2fr .8fr; margin: 8px 0 32px; }
+.book-progress-stats { display: grid; grid-template-columns: 1.2fr 1.2fr .8fr; margin: 8px 0; }
 .book-progress-stats > * { display: flex; min-width: 0; flex-direction: column; align-items: center; justify-content: center; gap: 10px; border: 0; border-right: 1px solid var(--color-rule); padding: 4px; background: transparent; color: inherit; font: inherit; }
 .book-progress-stats > :last-child { border-right: 0; cursor: pointer; }
 .book-progress-stats strong { font-family: var(--font-sans); font-size: 30px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.2; }
 .book-progress-stats strong.book-progress-duration { font-size: 21px; line-height: 36px; }
 .book-progress-stats small { margin-left: 2px; font-size: 12px; }
 .book-progress-stats span { color: var(--color-muted); font-size: 11px; text-align: center; }
-.book-progress-preview { display: flex; min-height: 30px; align-items: center; justify-content: space-between; gap: 20px; font-size: 13px; }
-.book-progress-preview strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
-.book-progress-preview > span { color: var(--color-red); font-family: var(--font-sans); font-variant-numeric: tabular-nums; }
-.book-progress-rail { display: flex; align-items: center; gap: 14px; margin: 10px 0 2px; }
-.book-progress-rail input { flex: 1; min-width: 0; }
-.book-progress-rail button { flex-shrink: 0; width: 32px; height: 44px; border: 0; background: transparent; color: inherit; font: 28px/1 var(--font-sans); cursor: pointer; }
-.book-progress-rail button:disabled { opacity: .25; cursor: default; }
-.book-progress-endpoints { display: flex; justify-content: space-between; padding: 0 46px; color: var(--color-muted); font-size: 11px; }
 .book-notes-list > p { color: var(--color-muted); font-size: 14px; line-height: 1.9; }
 .book-notes-list > button { width: 100%; margin-bottom: 16px; border: 0; border-bottom: 1px solid var(--color-rule); padding: 4px 0 16px; background: transparent; color: inherit; text-align: left; font: inherit; cursor: pointer; }
 .book-notes-list button > span { color: var(--color-muted); font-size: 12px; }

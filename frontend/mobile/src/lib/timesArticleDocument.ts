@@ -1,5 +1,10 @@
 import type { MobileTimesNewsItem } from "./times";
 import { exactTimesArticleTime, timesSourceName } from "./times";
+import { ANNOTATION_DOM_SCRIPT } from "./annotationDomScript";
+
+function jsonArgument(value: unknown): string {
+  return JSON.stringify(value).replaceAll("</", "<\\/");
+}
 
 function escapeHtml(value: string): string {
   return value
@@ -80,6 +85,7 @@ export function createTimesArticleDocument(news: MobileTimesNewsItem, eInk = fal
     figure{margin:2em 0} img{display:block;width:auto;max-width:100%;max-height:72vh;margin:0 auto;object-fit:contain;cursor:zoom-in}
     figcaption{margin-top:9px;color:var(--muted);font-family:sans-serif;font-size:12px;line-height:1.6;text-align:center}
     a{color:var(--red);font-weight:800;text-decoration:none;border-bottom:1px solid var(--red)}
+    mark[data-annotation-id]{background:transparent;color:inherit;text-decoration-line:underline;text-decoration-style:wavy;text-decoration-color:var(--red);text-decoration-thickness:1px;text-underline-offset:.17em}
     hr{height:1px;margin:2em 0;border:0;background:var(--rule)}
     ::selection{background:${eInk ? "#bbb" : "rgba(139,26,26,.18)"}}
     @media(min-width:720px){body{padding:38px 9vw 64px;font-size:18px}h1{font-size:38px}}
@@ -88,18 +94,19 @@ export function createTimesArticleDocument(news: MobileTimesNewsItem, eInk = fal
 <body>
   <article id="article">
     <p class="meta"><span><span class="source">${escapeHtml(timesSourceName(news.source))}</span> · 发布于 ${escapeHtml(exactTimesArticleTime(news.publishedAt))}</span>${translationBadge}</p>
-    <h1>${escapeHtml(news.title)}</h1>
-    <section id="article-body">${body}</section>
+    <section id="article-body"><h1>${escapeHtml(news.title)}</h1>${body}</section>
   </article>
   <script>
     (function(){
+${ANNOTATION_DOM_SCRIPT}
       var timer=0;
+      function articleBody(){ return document.getElementById('article-body'); }
       function sendSelection(){
         clearTimeout(timer);
         timer=setTimeout(function(){
           var selection=window.getSelection();
           var quote=selection&&selection.toString().replace(/\\s+/g,' ').trim();
-          var root=document.getElementById('article-body');
+          var root=articleBody();
           if(!quote||!selection.rangeCount||!root.contains(selection.getRangeAt(0).commonAncestorContainer)){window.ReactNativeWebView.postMessage(JSON.stringify({type:'selection',quote:''}));return;}
           var range=selection.getRangeAt(0);
           var rect=range.getBoundingClientRect();
@@ -109,11 +116,39 @@ export function createTimesArticleDocument(news: MobileTimesNewsItem, eInk = fal
             type:'selection',quote:quote.slice(0,3000),
             prefix:before.toString().replace(/\\s+/g,' ').slice(-900),
             suffix:after.toString().replace(/\\s+/g,' ').slice(0,900),
+            start:absoluteOffset(root,range.startContainer,range.startOffset),
+            end:absoluteOffset(root,range.endContainer,range.endOffset),
             rect:{left:rect.left,right:rect.right,top:rect.top,bottom:rect.bottom},
             viewport:{width:window.innerWidth,height:window.innerHeight}
           }));
         },90);
       }
+      function applyAnnotation(annotation){
+        if(!annotation||!annotation.id||document.querySelector('mark[data-annotation-id="'+CSS.escape(annotation.id)+'"]'))return;
+        var root=articleBody();
+        if(!root)return;
+        var start=Number(annotation.start);
+        var end=Number(annotation.end);
+        if(typeof annotation.quote==='string'){
+          if(!annotation.quote)return;
+          var source=root.textContent||'';
+          if(!Number.isInteger(start)||!Number.isInteger(end)||start<0||source.slice(start,end)!==annotation.quote){
+            start=locateAnnotationQuote(source,annotation.quote,annotation.prefix,annotation.suffix,start);
+            end=start+annotation.quote.length;
+          }
+        }
+        if(!Number.isInteger(start)||!Number.isInteger(end)||start<0)return;
+        wrapRange(root,annotation.id,start,end,'data-annotation-id');
+      }
+      window.__jojoTimesApplyAnnotations=function(list){
+        (list||[]).slice().sort(function(a,b){return (Number(b.start)||0)-(Number(a.start)||0);}).forEach(applyAnnotation);
+      };
+      window.__jojoTimesRemoveAnnotation=function(id){
+        var root=articleBody();
+        if(!root)return;
+        root.querySelectorAll('mark[data-annotation-id="'+CSS.escape(String(id))+'"]').forEach(unwrapMark);
+        root.normalize();
+      };
       document.addEventListener('selectionchange',sendSelection,{passive:true});
       window.addEventListener('scroll',sendSelection,{passive:true});
       window.addEventListener('resize',sendSelection,{passive:true});
@@ -124,6 +159,12 @@ export function createTimesArticleDocument(news: MobileTimesNewsItem, eInk = fal
           event.preventDefault();
           var figure=image.closest('figure');
           window.ReactNativeWebView.postMessage(JSON.stringify({type:'image',assetId:figure.getAttribute('data-asset-id'),caption:figure.querySelector('figcaption')?.textContent||image.alt}));
+          return;
+        }
+        var annotation=event.target.closest&&event.target.closest('mark[data-annotation-id]');
+        if(annotation){
+          event.preventDefault();
+          window.ReactNativeWebView.postMessage(JSON.stringify({type:'annotation',id:annotation.getAttribute('data-annotation-id')||''}));
           return;
         }
         var link=event.target.closest&&event.target.closest('a[href]');
@@ -137,8 +178,24 @@ export function createTimesArticleDocument(news: MobileTimesNewsItem, eInk = fal
 </html>`;
 }
 
-export function createTimesImageDocument(url: string, caption: string): string {
-  return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=5,user-scalable=yes">
+export interface TimesAnnotationMarker {
+  id: string;
+  start: number;
+  end: number;
+  quote: string;
+  prefix?: string;
+  suffix?: string;
+}
+
+export function createTimesApplyAnnotationsScript(annotations: readonly TimesAnnotationMarker[]): string {
+  return `window.__jojoTimesApplyAnnotations && window.__jojoTimesApplyAnnotations(${jsonArgument(annotations)}); true;`;
+}
+
+export function createTimesRemoveAnnotationScript(id: string): string {
+  return `window.__jojoTimesRemoveAnnotation && window.__jojoTimesRemoveAnnotation(${jsonArgument(id)}); true;`;
+}
+
+export function createTimesImageDocument(url: string, caption: string): string {  return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=5,user-scalable=yes">
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https:; style-src 'unsafe-inline'">
     <style>html,body{margin:0;background:#fff}body{min-height:100vh;display:flex;align-items:center;justify-content:center}img{width:100%;height:auto;object-fit:contain}</style>
     </head><body><img src="${escapeHtml(url)}" alt="${escapeHtml(caption)}"></body></html>`;

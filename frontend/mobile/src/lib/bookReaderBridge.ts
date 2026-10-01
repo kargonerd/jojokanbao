@@ -5,6 +5,7 @@ import { SPEECH_READER_FACTORY } from "@jojo/content/speech-dom-script";
 import type { ReaderSelectionRect } from "@jojo/ui/reader-selection";
 import type { ContinuousChapter } from "./continuousBookScroll";
 import { CONTINUOUS_BOOK_SCROLL_FACTORY } from "./continuousBookScroll.generated";
+import { ANNOTATION_DOM_SCRIPT } from "./annotationDomScript";
 
 export type BookReadingMode = "paged" | "scroll";
 export type BookChapterEdge = "start" | "end";
@@ -280,6 +281,16 @@ export function createBookReaderBridgeScript(
         return continuous ? continuous.root(chapterId) : document.querySelector("article");
       }
 
+      // The paged layout advances one column stride per page, and that stride is
+      // exactly the article's padding box (column width + column gap). Read the
+      // layout width here: window.innerWidth tracks the visual viewport, so it
+      // diverges from the layout while pinch-zoomed, and each turned page then
+      // drifts by that difference.
+      function pageWidth() {
+        var article = document.querySelector("article");
+        return Math.max(1, article && article.clientWidth ? article.clientWidth : window.innerWidth);
+      }
+
       function chapterOf(node) {
         var element = node && (node.nodeType === 1 ? node : node.parentElement);
         var root = element && element.closest && element.closest("article");
@@ -322,50 +333,12 @@ export function createBookReaderBridgeScript(
         speechReader.show(location.segments, location.index, reveal ? function (range) {
           var rect = range.getClientRects()[0];
           if (!rect) return;
-          if (paged) showSpread(Math.floor((Math.max(0, rect.left + currentSpread * window.innerWidth) + 1) / Math.max(1, window.innerWidth)));
+          if (paged) showSpread(Math.floor((Math.max(0, rect.left + currentSpread * pageWidth()) + 1) / pageWidth()));
           else if (rect.top < 80 || rect.bottom > window.innerHeight - 128) window.scrollTo(0, window.scrollY + rect.top - 80);
         } : undefined);
       };
 
-      function textNodes(root) {
-        var nodes = [];
-        var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-        var node;
-        while ((node = walker.nextNode())) nodes.push(node);
-        return nodes;
-      }
-
-      function absoluteOffset(root, node, offset) {
-        var range = document.createRange();
-        range.selectNodeContents(root);
-        range.setEnd(node, offset);
-        return range.toString().length;
-      }
-
-      function wrapRange(id, start, end, attribute, chapterId) {
-        var root = articleRoot(chapterId);
-        if (!root || start < 0 || end <= start) return null;
-        var cursor = 0;
-        var firstMark = null;
-        textNodes(root).forEach(function (node) {
-          var length = node.nodeValue ? node.nodeValue.length : 0;
-          var nodeStart = cursor;
-          var nodeEnd = cursor + length;
-          cursor = nodeEnd;
-          if (nodeEnd <= start || nodeStart >= end || !node.parentNode) return;
-          if (node.parentElement && node.parentElement.closest("mark[" + attribute + "]")) return;
-          var range = document.createRange();
-          range.setStart(node, Math.max(0, start - nodeStart));
-          range.setEnd(node, Math.min(length, end - nodeStart));
-          var mark = document.createElement("mark");
-          mark.setAttribute(attribute, id);
-          try {
-            range.surroundContents(mark);
-            if (!firstMark) firstMark = mark;
-          } catch (_) {}
-        });
-        return firstMark;
-      }
+${ANNOTATION_DOM_SCRIPT}
 
       function applyAnnotation(annotation) {
         if (!annotation || !annotation.id || document.querySelector('mark[data-annotation-id="' + CSS.escape(annotation.id) + '"]')) return;
@@ -384,40 +357,8 @@ export function createBookReaderBridgeScript(
           }
         }
         if (!Number.isInteger(start) || !Number.isInteger(end)) return;
-        wrapRange(annotation.id, start, end, "data-annotation-id", annotation.chapterId);
+        wrapRange(root, annotation.id, start, end, "data-annotation-id");
         scheduleMeasure();
-      }
-
-      function locateAnnotationQuote(source, quote, prefix, suffix, preferredOffset) {
-        var before = typeof prefix === "string" ? prefix.slice(-80) : "";
-        var after = typeof suffix === "string" ? suffix.slice(0, 80) : "";
-        var preferred = Number.isFinite(preferredOffset) && preferredOffset >= 0 ? preferredOffset : 0;
-        var best = -1;
-        var bestScore = -1;
-        var bestDistance = Infinity;
-        for (var index = source.indexOf(quote); index >= 0; index = source.indexOf(quote, index + 1)) {
-          var score = 0;
-          for (var left = 1; left <= before.length && index >= left; left += 1) {
-            if (before.charAt(before.length - left) !== source.charAt(index - left)) break;
-            score += 1;
-          }
-          for (var right = 0; right < after.length && index + quote.length + right < source.length; right += 1) {
-            if (after.charAt(right) !== source.charAt(index + quote.length + right)) break;
-            score += 1;
-          }
-          var distance = Math.abs(index - preferred);
-          if (score > bestScore || (score === bestScore && distance < bestDistance)) {
-            best = index; bestScore = score; bestDistance = distance;
-          }
-        }
-        return best;
-      }
-
-      function unwrapMark(mark) {
-        var parent = mark.parentNode;
-        if (!parent) return;
-        while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
-        parent.removeChild(mark);
       }
 
       function clearSelection(annotation) {
@@ -560,7 +501,7 @@ export function createBookReaderBridgeScript(
       function showSpread(index, animate) {
         window.clearTimeout(pageReportTimer);
         currentSpread = Math.max(0, Math.min(spreadCount - 1, index));
-        var offset = currentSpread * window.innerWidth;
+        var offset = currentSpread * pageWidth();
         var article = document.querySelector("article");
         if (article) {
           article.style.transition = animate && !reduceMotion ? "transform 180ms ease-out" : "none";
@@ -580,8 +521,8 @@ export function createBookReaderBridgeScript(
         });
         if (paged) {
           var rect = target.getClientRects()[0] || target.getBoundingClientRect();
-          var absoluteLeft = rect.left + currentSpread * window.innerWidth;
-          showSpread(Math.floor((Math.max(0, absoluteLeft) + 1) / Math.max(1, window.innerWidth)));
+          var absoluteLeft = rect.left + currentSpread * pageWidth();
+          showSpread(Math.floor((Math.max(0, absoluteLeft) + 1) / pageWidth()));
         } else {
           target.scrollIntoView({ block: "center" });
         }
@@ -613,7 +554,7 @@ export function createBookReaderBridgeScript(
         }
         var oldPageStart = currentSpread * pagesPerSpread;
         pagesPerSpread = window.matchMedia("(orientation: landscape) and (min-width: 900px)").matches ? 2 : 1;
-        var viewport = Math.max(1, window.innerWidth);
+        var viewport = pageWidth();
         var article = document.querySelector("article");
         var contentWidth = Math.max(
           viewport,
@@ -697,7 +638,7 @@ export function createBookReaderBridgeScript(
         var source = root.textContent || "";
         var start = source.indexOf(text);
         if (start < 0) return;
-        var target = wrapRange("active", start, start + text.length, "data-search-target", chapterId);
+        var target = wrapRange(root, "active", start, start + text.length, "data-search-target");
         if (!target) return;
         revealElement(target);
       };
@@ -794,7 +735,7 @@ export function createBookReaderBridgeScript(
           var article = articleRoot();
           if (!article || reduceMotion) return;
           var boundary = (currentSpread === 0 && dx > 0) || (currentSpread === spreadCount - 1 && dx < 0);
-          var offset = -currentSpread * window.innerWidth + (boundary ? dx * .25 : dx);
+          var offset = -currentSpread * pageWidth() + (boundary ? dx * .25 : dx);
           article.style.transition = "none";
           article.style.transform = "translate3d(" + offset + "px, 0, 0)";
         }, { passive: false });
@@ -815,6 +756,14 @@ export function createBookReaderBridgeScript(
           }
         }, { passive: true });
         document.addEventListener("touchcancel", function () { if (draggingPage) showSpread(currentSpread, true); draggingPage = false; }, { passive: true });
+        // A gesture can end without touchend/touchcancel (the app backgrounds, a
+        // system gesture takes over, the WebView is suspended) which used to
+        // leave the article offset by a partial drag. Realign whenever the page
+        // becomes visible again.
+        var realignPage = function () { draggingPage = false; showSpread(currentSpread); };
+        document.addEventListener("visibilitychange", function () { if (!document.hidden) realignPage(); });
+        window.addEventListener("pageshow", realignPage);
+        window.addEventListener("focus", realignPage);
         window.addEventListener("resize", scheduleMeasure);
         document.querySelectorAll("img").forEach(function (image) {
           if (!image.complete) image.addEventListener("load", scheduleMeasure, { once: true });

@@ -46,6 +46,9 @@ const CLICK_ZOOM_STEP = 0.5;
 const WHEEL_ZOOM_STEP = 0.25;
 const RENDER_ZOOM_SETTLE_MS = 180;
 const TEXT_LAYER_SETTLE_MS = 220;
+const TEXT_ZOOM_DELAY_MS = 350;
+const DOUBLE_CLICK_MS = 500;
+const DOUBLE_CLICK_SLOP_PX = 24;
 const MAX_CONSTRAINED_RESIDENT_PAGES = 3;
 
 interface DragState {
@@ -56,6 +59,7 @@ interface DragState {
   scrollTop: number;
   moved: boolean;
   selectingText: boolean;
+  hadSelection: boolean;
 }
 
 interface PointerPosition {
@@ -76,6 +80,11 @@ function clampPage(page: number, numPages: number): number {
 
 function clampZoom(zoom: number): number {
   return Math.min(Math.max(zoom, MIN_ZOOM), MAX_ZOOM);
+}
+
+function hasActiveTextSelection(): boolean {
+  const selection = window.getSelection();
+  return Boolean(selection && selection.rangeCount > 0 && !selection.isCollapsed);
 }
 
 function hasTouchInput(): boolean {
@@ -141,7 +150,11 @@ export function PdfViewer({
   const activeTouchPointersRef = useRef<Map<number, PointerPosition>>(new Map());
   const pinchRef = useRef<PinchState | null>(null);
   const textLayerSettleTimerRef = useRef<number | null>(null);
+  const textZoomTimerRef = useRef<number | null>(null);
+  const lastTextZoomClickRef = useRef<{ time: number; x: number; y: number } | null>(null);
   const effectiveZoom = zoomEnabled ? clampZoom(zoom) : 1;
+  const zoomEnabledRef = useRef(zoomEnabled);
+  zoomEnabledRef.current = zoomEnabled;
   const [renderZoom, setRenderZoom] = useState(effectiveZoom);
   const [touchInput] = useState(hasTouchInput);
   const [constrainedResidency] = useState(() => shouldConstrainPageResidency(touchInput));
@@ -219,6 +232,9 @@ export function PdfViewer({
   useEffect(() => () => {
     if (textLayerSettleTimerRef.current !== null) {
       window.clearTimeout(textLayerSettleTimerRef.current);
+    }
+    if (textZoomTimerRef.current !== null) {
+      window.clearTimeout(textZoomTimerRef.current);
     }
   }, []);
 
@@ -422,13 +438,23 @@ export function PdfViewer({
     }
   };
 
+  const cancelPendingTextZoom = () => {
+    if (textZoomTimerRef.current !== null) {
+      window.clearTimeout(textZoomTimerRef.current);
+      textZoomTimerRef.current = null;
+    }
+  };
+
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.pointerType === "mouse" && event.button !== 0) return;
     if ((event.target as Element).closest("button")) return;
     const scrollContainer = scrollContainerRef?.current;
     if (!scrollContainer) return;
+    // A desktop click that would disturb an existing text selection (clear it
+    // or collapse it) is a selection gesture, not a request to zoom.
     const selectingText = event.pointerType === "mouse"
       && Boolean((event.target as Element).closest("[data-pdf-text-layer] span"));
+    const hadSelection = event.pointerType === "mouse" && hasActiveTextSelection();
 
     if (event.pointerType === "touch") {
       const activePointers = activeTouchPointersRef.current;
@@ -478,6 +504,7 @@ export function PdfViewer({
       scrollTop: scrollContainer.scrollTop,
       moved: false,
       selectingText,
+      hadSelection,
     };
   };
 
@@ -555,6 +582,7 @@ export function PdfViewer({
             scrollTop: scrollContainer.scrollTop,
             moved: true,
             selectingText: false,
+            hadSelection: false,
           };
         }
         return;
@@ -564,9 +592,38 @@ export function PdfViewer({
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
 
-    if (!drag.moved && event.pointerType !== "touch" && event.type === "pointerup" && onZoomChange) {
-      zoomAnchorRef.current = { clientX: event.clientX, clientY: event.clientY };
-      onZoomChange(clampZoom(effectiveZoom + (event.shiftKey ? -CLICK_ZOOM_STEP : CLICK_ZOOM_STEP)));
+    if (
+      !drag.moved
+      && event.pointerType !== "touch"
+      && event.type === "pointerup"
+      && onZoomChange
+      && !drag.hadSelection
+    ) {
+      // Blank-area clicks zoom immediately. Clicks on selectable text zoom
+      // after a short delay so a double click can still select a word without
+      // zooming; a second click near the first cancels the pending zoom.
+      const zoomDelta = event.shiftKey ? -CLICK_ZOOM_STEP : CLICK_ZOOM_STEP;
+      if (!drag.selectingText) {
+        cancelPendingTextZoom();
+        zoomAnchorRef.current = { clientX: event.clientX, clientY: event.clientY };
+        onZoomChange(clampZoom(effectiveZoom + zoomDelta));
+      } else {
+        const now = performance.now();
+        const last = lastTextZoomClickRef.current;
+        const isDoubleClick = last !== null
+          && now - last.time <= DOUBLE_CLICK_MS
+          && Math.hypot(event.clientX - last.x, event.clientY - last.y) <= DOUBLE_CLICK_SLOP_PX;
+        lastTextZoomClickRef.current = { time: now, x: event.clientX, y: event.clientY };
+        cancelPendingTextZoom();
+        if (!isDoubleClick) {
+          zoomAnchorRef.current = { clientX: event.clientX, clientY: event.clientY };
+          textZoomTimerRef.current = window.setTimeout(() => {
+            textZoomTimerRef.current = null;
+            if (!zoomEnabledRef.current) return;
+            onZoomChange(clampZoom(effectiveZoom + zoomDelta));
+          }, TEXT_ZOOM_DELAY_MS);
+        }
+      }
     }
     dragRef.current = null;
     releasePointer(event.currentTarget, event.pointerId);

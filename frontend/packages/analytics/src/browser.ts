@@ -11,6 +11,7 @@ export async function initializeBrowserAnalytics(options: {
   if (started) return;
   started = true;
   const host = analyticsHost(options.host);
+  // Web readers embedded in the mobile app keep their own native analytics.
   const nativeReader = /JOJOKanbaoMobile\//i.test(navigator.userAgent)
     || "ReactNativeWebView" in window || "__jojoNativeReaderBridge" in window;
   if (!options.production || !options.token?.trim() || !host || nativeReader) {

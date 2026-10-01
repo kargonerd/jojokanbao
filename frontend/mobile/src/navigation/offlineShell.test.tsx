@@ -30,6 +30,7 @@ vi.mock("../screens/BookReaderScreen", () => ({ BookReaderScreen: () => null }))
 vi.mock("../screens/LibraryScreen", () => ({ LibraryScreen: () => null }));
 vi.mock("../screens/ReaderScreen", () => ({ ReaderScreen: () => null }));
 vi.mock("../screens/SearchScreen", () => ({ SearchScreen: () => null }));
+vi.mock("../screens/FeedbackScreen", () => ({ FeedbackScreen: () => null }));
 vi.mock("../screens/SettingsScreen", () => ({ SettingsScreen: () => null }));
 vi.mock("../screens/SupportScreen", () => ({ SupportScreen: () => null }));
 vi.mock("../screens/OpenSourceLicensesScreen", () => ({ OpenSourceLicensesScreen: () => null }));

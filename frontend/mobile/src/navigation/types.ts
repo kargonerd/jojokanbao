@@ -36,6 +36,18 @@ export type RootStackParamList = {
     issueDate: string;
     newsId: string;
   };
+  Feedback: {
+    screen?: string;
+    correction?: FeedbackCorrection;
+  } | undefined;
+};
+
+export type FeedbackCorrection = {
+  quote: string;
+  contentType: "book" | "periodical" | "times_article";
+  contentId?: string;
+  contentTitle?: string;
+  section?: string;
 };
 
 export type SettingsSection = "library" | "reading" | "interaction" | "times" | "data" | "about";

@@ -122,6 +122,17 @@ describe("createBookDocument", () => {
     expect(html).toContain("color: #deded8");
   });
 
+  it("styles the semantic attributes produced by the content pipeline", () => {
+    const html = render("第一章", '<p data-role="poem">诗句</p>');
+    expect(html).toContain('[data-indent="none"] { text-indent: 0; }');
+    expect(html).toContain('[data-role="poem"] { margin-left: 2em;');
+    expect(html).toContain('[data-role="attribution"] { margin-left: auto; text-align: right;');
+    expect(html).toContain('span[data-role="inline-image"] img { display: inline-block;');
+    expect(html).toContain('figure[data-width="40"] { max-width: 40%; }');
+    expect(html).toContain("th, td { padding: .4em .6em;");
+    expect(html).toContain('math[display="block"] { display: block;');
+  });
+
   it("renders a two-way footnote link without swallowing following text", () => {
     const html = createBookDocument({
       fragment: {

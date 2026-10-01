@@ -11,6 +11,11 @@ const continuousSource = ts.transpileModule(readFileSync(new URL("../../mobile/s
 }).outputText;
 const nativeContinuous = {} as typeof import("../../mobile/src/lib/continuousBookScroll.generated");
 new Function("exports", continuousSource)(nativeContinuous);
+const annotationDomSource = ts.transpileModule(readFileSync(new URL("../../mobile/src/lib/annotationDomScript.ts", import.meta.url), "utf8"), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
+}).outputText;
+const nativeAnnotationDom = {} as typeof import("../../mobile/src/lib/annotationDomScript");
+new Function("exports", annotationDomSource)(nativeAnnotationDom);
 const nativeSource = ts.transpileModule(readFileSync(new URL("../../mobile/src/lib/bookReaderBridge.ts", import.meta.url), "utf8"), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
 }).outputText;
@@ -19,6 +24,7 @@ new Function("require", "exports", nativeSource)((id: string) => {
   if (id === "@jojo/content") return content;
   if (id === "@jojo/content/speech-dom-script") return { SPEECH_READER_FACTORY };
   if (id === "./continuousBookScroll.generated") return nativeContinuous;
+  if (id === "./annotationDomScript") return nativeAnnotationDom;
   throw new Error(`Unsupported native bridge dependency: ${id}`);
 }, nativeBridge);
 const { createBookReaderBridgeScript, createBookReaderGoToSpreadScript, createBookReaderSpeechHighlightScript, createBookReaderSpeechPositionScript } = nativeBridge;

@@ -1,8 +1,11 @@
 import { MemoryRouter } from "react-router-dom";
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SettingsPage } from './SettingsPage';
+
+const feedbackApi = vi.hoisted(() => ({ submitFeedback: vi.fn(() => 'sent' as const) }));
+vi.mock('@jojo/analytics/feedback', () => feedbackApi);
 
 const getCloseBehavior = vi.fn();
 const saveCloseBehavior = vi.fn();
@@ -49,6 +52,17 @@ beforeEach(() => {
 });
 
 describe('Desktop settings', () => {
+  it('reports a problem from the feedback entry', async () => {
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>);
+
+    fireEvent.click(await screen.findByRole('button', { name: '写反馈' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText('反馈内容'), { target: { value: '自动更新后书架丢失' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: '提交反馈' }));
+
+    await waitFor(() => expect(feedbackApi.submitFeedback).toHaveBeenCalledWith({ topic: 'bug', message: '自动更新后书架丢失', screen: 'settings' }));
+  });
+
   it('loads and updates the persisted close behavior', async () => {
     render(<MemoryRouter><SettingsPage /></MemoryRouter>);
 

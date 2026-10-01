@@ -1,6 +1,6 @@
 import type { MobileTimesNewsItem } from "./times";
 import { describe, expect, it } from "vitest";
-import { createTimesArticleDocument, materializeTimesArticleAssets, sanitizeTimesArticleHtml } from "./timesArticleDocument";
+import { createTimesApplyAnnotationsScript, createTimesArticleDocument, materializeTimesArticleAssets, sanitizeTimesArticleHtml } from "./timesArticleDocument";
 
 describe("mobile times article document", () => {
   it.each([false, true])("limits paragraph indentation to the article body (eInk=%s)", (eInk) => {
@@ -22,8 +22,35 @@ describe("mobile times article document", () => {
     expect(document).toContain('<span class="translation">AI 翻译</span>');
   });
 
-  it("removes executable publisher markup", () => {
-    const safe = sanitizeTimesArticleHtml('<p onclick="steal()">正文</p><script>steal()</script><a href="javascript:steal()">链接</a>');
+  it("anchors saved underlines inside the article script", () => {
+    const news: MobileTimesNewsItem = {
+      id: "news-1", title: "标题", contentStatus: "full",
+      publishedAt: "2026-09-03T00:00:00.000Z", issueDate: "20260903",
+      language: "zh-CN", originalLanguage: "en", translationAvailable: false, usingTranslation: false,
+      source: { id: "nyt", name: "The New York Times", language: "en" },
+      articleObject: "content/newspapers/nyt/articles/a.jox",
+      contentFormat: "text", content: "正文内容。", assets: [],
+    };
+    const document = createTimesArticleDocument(news, false);
+    const styles = document.match(/<style>([\s\S]*?)<\/style>/)?.[1] ?? "";
+    expect(styles).toMatch(/mark\[data-annotation-id\]\{[^}]*text-decoration-line:underline/);
+    // The headline sits inside the selection root so it can be underlined too.
+    expect(document).toMatch(/<section id="article-body"><h1>/);
+    expect(document).toContain("window.__jojoTimesApplyAnnotations");
+    expect(document).toContain("window.__jojoTimesRemoveAnnotation");
+    expect(document).toContain("locateAnnotationQuote");
+    expect(document).toContain("start:absoluteOffset(root,range.startContainer,range.startOffset)");
+    expect(document).toContain("type:'annotation'");
+  });
+
+  it("escapes annotation markup when injecting underline scripts", () => {
+    const script = createTimesApplyAnnotationsScript([{ id: "a1", start: 3, end: 5, quote: "</script>正文" }]);
+    expect(script).toContain("__jojoTimesApplyAnnotations");
+    expect(script).toContain("<\\/script>");
+    expect(script).not.toContain("</script>正文");
+  });
+
+  it("removes executable publisher markup", () => {    const safe = sanitizeTimesArticleHtml('<p onclick="steal()">正文</p><script>steal()</script><a href="javascript:steal()">链接</a>');
     expect(safe).toContain("正文");
     expect(safe).not.toContain("onclick");
     expect(safe).not.toContain("<script");

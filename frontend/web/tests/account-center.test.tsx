@@ -5,6 +5,9 @@ import AccountLogin from "@/account/AccountLogin";
 import { AccountCenterPage } from "@/account/pages/AccountCenterPage";
 import { useTimesPreferencesStore } from "@/times/preferencesStore";
 
+const feedbackApi = vi.hoisted(() => ({ submitFeedback: vi.fn(() => "sent" as const) }));
+vi.mock("@jojo/analytics/feedback", () => feedbackApi);
+
 const account = vi.hoisted(() => ({
   auth: {
     initialized: true,
@@ -137,6 +140,8 @@ describe("account center", () => {
     expect(screen.getByRole("link", { name: /关于 JOJO 看报/ }).getAttribute("href")).toBe("/support");
     expect(screen.getByRole("heading", { name: "阅读偏好" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "时事外文内容默认语言：中文译文" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "帮助与反馈" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "写反馈" })).toBeTruthy();
     expect(screen.getByRole("link", { name: /资料库设置/ }).getAttribute("href")).toBe("/account/library");
     expect(screen.getByRole("link", { name: /时事媒体源/ }).getAttribute("href")).toBe("/account/times-sources");
     expect(screen.queryByText(/Account dossier/i)).toBeNull();
@@ -150,8 +155,24 @@ describe("account center", () => {
     await waitFor(() => expect(account.invitation.load).toHaveBeenCalledWith("reader-1"));
   });
 
-  it("stores the Times language preference with Chinese translation as the default", () => {
-    render(<MemoryRouter><AccountLogin /></MemoryRouter>);
+  it("reports a problem from the account center feedback entry", async () => {
+    render(
+      <MemoryRouter>
+        <AccountCenterPage userId="reader-1" onForgotPassword={() => undefined} />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "写反馈" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByLabelText("反馈内容")).toBeTruthy();
+    fireEvent.change(within(dialog).getByLabelText("反馈内容"), { target: { value: "阅读记录没有同步" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "提交反馈" }));
+
+    await waitFor(() => expect(feedbackApi.submitFeedback).toHaveBeenCalledWith({ topic: "bug", message: "阅读记录没有同步", screen: "account" }));
+    expect(await screen.findByRole("status")).toHaveProperty("textContent", "已提交，感谢你的反馈。");
+  });
+
+  it("stores the Times language preference with Chinese translation as the default", () => {    render(<MemoryRouter><AccountLogin /></MemoryRouter>);
 
     fireEvent.click(screen.getByRole("button", { name: "时事外文内容默认语言：中文译文" }));
     const choices = screen.getByRole("listbox", { name: "时事外文内容默认语言" });

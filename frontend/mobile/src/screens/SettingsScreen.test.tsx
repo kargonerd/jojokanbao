@@ -9,8 +9,11 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("react-native", () => ({
   ActivityIndicator: "progress", Pressable: "button", Text: "span", View: "div", ScrollView: "main", Switch: "input",
+  Modal: "dialog", TextInput: "textarea", KeyboardAvoidingView: "div",
+  Animated: { Value: class { setValue() {} interpolate() { return 0; } }, timing: () => ({ start: (callback?: () => void) => callback?.() }), View: "div" },
+  Easing: { out: (value: unknown) => value, in: (value: unknown) => value, cubic: {} },
   Alert: { alert: vi.fn() }, Linking: { openURL: mocks.openURL },
-  StyleSheet: { create: (styles: unknown) => styles, hairlineWidth: 1 },
+  StyleSheet: { create: (styles: unknown) => styles, hairlineWidth: 1, absoluteFill: {}, absoluteFillObject: {} },
   Platform: { OS: "android", select: (values: { android: string }) => values.android },
 }));
 vi.mock("@expo/vector-icons/Ionicons", () => ({ default: "i" }));
@@ -87,4 +90,9 @@ it("copies the new remote group shown on screen after a configuration update", a
   expect(view.root.findAllByType("span").some(node => node.props.selectable && node.props.children?.includes?.("123456789"))).toBe(true);
   await act(async () => button("复制群号").props.onPress());
   expect(mocks.copy).toHaveBeenLastCalledWith("123456789");
+});
+
+it("navigates to the full-page feedback form from settings", async () => {
+  await act(async () => button("问题反馈").props.onPress());
+  expect(mocks.navigate).toHaveBeenCalledWith("Feedback", { screen: "settings" });
 });

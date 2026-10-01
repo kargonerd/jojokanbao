@@ -1,3 +1,4 @@
+import { FeedbackDialog } from "@jojo/web/desktop";
 import { Link } from "react-router-dom";
 import { useEffect, useState } from 'react';
 
@@ -24,6 +25,7 @@ export function SettingsPage() {
   const [launchMessage, setLaunchMessage] = useState('');
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
   const [updateState, setUpdateState] = useState<DesktopUpdateState>();
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
 
   useEffect(() => {
     const settings = window.jojoDesktop?.settings;
@@ -172,11 +174,25 @@ export function SettingsPage() {
         </div>
       </section>
 
+      <section className="desktop-preference-list" aria-label="反馈">
+        <div className="desktop-preference-row">
+          <div className="desktop-preference-copy">
+            <strong>问题反馈</strong>
+            <small>报告内容错误、功能异常，或写下你的建议</small>
+          </div>
+          <div className="desktop-preference-control">
+            <button type="button" onClick={() => setFeedbackOpen(true)}>写反馈</button>
+          </div>
+        </div>
+      </section>
+
       <footer className="desktop-settings-about" aria-label="关于 JOJO看报">
         <span>JOJO看报</span>
         <span>版本 {appInfo?.version ?? '开发预览'}</span>
         <span>{appInfo ? `${appInfo.platform} · ${appInfo.arch}` : '浏览器预览'}</span>
       </footer>
+
+      <FeedbackDialog open={feedbackOpen} onClose={() => setFeedbackOpen(false)} screen="settings" />
     </main>
   );
 }

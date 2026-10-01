@@ -268,7 +268,6 @@ export function TimesDetailPage({
               原文已更新，中文译文正在同步。
             </p>
           ) : null}
-          <h1 className="mt-4 text-3xl font-black leading-tight xl:text-4xl">{news.title}</h1>
           <SpeechPlayer
             contentId={`news:${articleKey}`}
             miniPlayerTarget={embedded ? miniPlayerTarget : null}
@@ -287,6 +286,7 @@ export function TimesDetailPage({
             contentTitle: news.title,
             contentUrl: window.location.pathname,
           }} onExplain={startExplanation}>
+            <h1 className="mt-4 text-3xl font-black leading-tight xl:text-4xl">{news.title}</h1>
             {articleBody ? (
               <div
                 className="times-article-body prose-editorial mt-8 text-base leading-8 [&_a]:border-b [&_a]:border-red [&_a]:font-black [&_a]:!text-red [&_a]:no-underline [&_a]:transition-colors [&_a:hover]:bg-red/[0.06] [&_a:focus-visible]:outline [&_a:focus-visible]:outline-2 [&_a:focus-visible]:outline-offset-2 [&_a:focus-visible]:outline-red [&_blockquote]:border-l-2 [&_blockquote]:border-red [&_blockquote]:pl-5 [&_figcaption]:mt-2 [&_figcaption]:font-sans [&_figcaption]:text-xs [&_figcaption]:leading-5 [&_figcaption]:text-muted [&_figure]:my-8 [&_h2]:mb-3 [&_h2]:mt-9 [&_h2]:text-2xl [&_h2]:font-black [&_h3]:mb-3 [&_h3]:mt-8 [&_h3]:text-xl [&_h3]:font-black [&_hr]:my-7 [&_hr]:h-px [&_hr]:border-0 [&_hr]:bg-rule [&_img]:mx-auto [&_img]:h-auto [&_img]:max-h-[70vh] [&_img]:max-w-full [&_img]:object-contain [&_li]:my-2 [&_ol]:my-5 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:my-[1.1em] [&_p]:text-justify [&_p]:indent-[2em] [&_ul]:my-5 [&_ul]:list-disc [&_ul]:pl-6"

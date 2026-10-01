@@ -1,6 +1,7 @@
 import { Modal } from "@jojo/ui";
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { FeedbackDialog } from "../../feedback/FeedbackDialog";
 import { useAuthStore } from "../auth";
 import { PersonalInvitationPanel } from "../components/PersonalInvitationPanel";
 import { PasswordInput } from "../components/PasswordInput";
@@ -44,6 +45,7 @@ export function AccountCenterPage({ userId, onForgotPassword }: AccountCenterPag
   const [newPasswordConfirmation, setNewPasswordConfirmation] = useState("");
   const [deletePassword, setDeletePassword] = useState("");
   const [deletePhrase, setDeletePhrase] = useState("");
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const displayName = profile?.display_name?.trim() || "代号待分配";
   const hasDisplayName = Boolean(profile?.display_name?.trim());
@@ -179,6 +181,17 @@ export function AccountCenterPage({ userId, onForgotPassword }: AccountCenterPag
             </div>
           </section>
 
+          <section aria-labelledby="feedback-title" className="grid gap-4 border-t border-rule py-6 sm:grid-cols-[11rem_minmax(0,1fr)] sm:gap-8">
+            <h2 id="feedback-title" className="m-0 font-sans text-xs font-black tracking-[0.16em] text-red">帮助与反馈</h2>
+            <div className="flex items-center justify-between gap-5 border-y border-rule py-4">
+              <div>
+                <h3 className="m-0 font-serif text-base font-black text-ink">问题反馈</h3>
+                <p className="mb-0 mt-1 text-xs font-bold leading-6 text-muted">报告内容错误、功能异常，或写下你的建议。</p>
+              </div>
+              <button type="button" onClick={() => { clearFeedback(); setFeedbackOpen(true); }} className={rowActionClass}>写反馈</button>
+            </div>
+          </section>
+
           <section aria-labelledby="security-title" className="grid gap-4 border-t border-rule py-6 sm:grid-cols-[11rem_minmax(0,1fr)] sm:gap-8">
             <h2 id="security-title" className="m-0 font-sans text-xs font-black tracking-[0.16em] text-red">账号与安全</h2>
             <div className="divide-y divide-rule border-y border-rule">
@@ -211,6 +224,8 @@ export function AccountCenterPage({ userId, onForgotPassword }: AccountCenterPag
           </section>
         </div>
       </article>
+
+      <FeedbackDialog open={feedbackOpen} onClose={() => setFeedbackOpen(false)} screen="account" />
 
       <Modal open={activeDialog === "password"} onClose={closeDialog} size="medium" surface="bare">
         <section role="dialog" aria-modal="true" aria-labelledby="password-dialog-title" className="mx-auto w-full max-w-[30rem] border border-rule-dark border-t-4 border-t-red bg-paper p-6 shadow-[8px_10px_36px_rgba(32,32,32,.18)] sm:p-8">

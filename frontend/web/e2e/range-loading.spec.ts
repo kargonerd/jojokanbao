@@ -48,6 +48,28 @@ function byteLength(value: string): number {
   return Buffer.byteLength(value, "ascii");
 }
 
+// Font metrics move text-layer spans between platforms, so fixed positions
+// cannot be trusted to land on blank page area. Probe the rendered page for a
+// visible point outside the selectable spans instead.
+async function findBlankPagePoint(page: Page, purpose: string) {
+  return page.locator("#page-1").evaluate((element, intent) => {
+    const rect = element.getBoundingClientRect();
+    const xCandidates = [0.8, 0.65, 0.5];
+    const yCandidates = [0.75, 0.6, 0.45];
+    for (const xRatio of xCandidates) {
+      for (const yRatio of yCandidates) {
+        const x = Math.min(window.innerWidth - 24, Math.max(24, rect.left + rect.width * xRatio));
+        const y = Math.min(window.innerHeight - 24, Math.max(24, rect.top + rect.height * yRatio));
+        const target = document.elementFromPoint(x, y);
+        if (target && element.contains(target) && !target.closest("[data-pdf-text-layer] span")) {
+          return { x, y };
+        }
+      }
+    }
+    throw new Error(`No blank PDF page area is visible for the ${intent} gesture`);
+  }, purpose);
+}
+
 // Build a multi-page linearized PDF whose later page objects are deliberately
 // spread across the file. The first page is complete in the initial range, so
 // waiting for every middle chunk before showing its canvas is a regression.
@@ -686,7 +708,18 @@ test("PDF region zooms in place, pans, and exits without a floating lens", async
   });
 
 
-  await interactionLayer.click({ position: { x: 300, y: 300 } });
+  // Double click on selectable text selects the word; the delayed zoom must
+  // be cancelled so the view stays put. Single text clicks zoom after the
+  // delay (covered by unit tests); blank-area clicks zoom immediately.
+  await selectableText.dblclick();
+  await expect(viewer).toHaveAttribute("data-zoom", "1.5");
+  await page.evaluate(() => {
+    window.getSelection()?.removeAllRanges();
+    document.dispatchEvent(new Event("selectionchange"));
+  });
+
+  const zoomClickPoint = await findBlankPagePoint(page, "zoom click");
+  await page.mouse.click(zoomClickPoint.x, zoomClickPoint.y);
   await expect(viewer).toHaveAttribute("data-zoom", "2");
   await expect(viewer).toHaveAttribute("data-render-zoom", "2");
   await expect.poll(() => source.evaluate((canvas) => (canvas as HTMLCanvasElement).width))
@@ -698,22 +731,7 @@ test("PDF region zooms in place, pans, and exits without a floating lens", async
     current: element.scrollLeft,
     maximum: element.scrollWidth - element.clientWidth,
   }));
-  const panStart = await page.locator("#page-1").evaluate((element) => {
-    const rect = element.getBoundingClientRect();
-    const xCandidates = [0.8, 0.65, 0.5];
-    const yCandidates = [0.75, 0.6, 0.45];
-    for (const xRatio of xCandidates) {
-      for (const yRatio of yCandidates) {
-        const x = Math.min(window.innerWidth - 24, Math.max(24, rect.left + rect.width * xRatio));
-        const y = Math.min(window.innerHeight - 24, Math.max(24, rect.top + rect.height * yRatio));
-        const target = document.elementFromPoint(x, y);
-        if (target && element.contains(target) && !target.closest("[data-pdf-text-layer] span")) {
-          return { x, y };
-        }
-      }
-    }
-    throw new Error("No blank PDF page area is visible for the pan gesture");
-  });
+  const panStart = await findBlankPagePoint(page, "pan");
   const panDeltaX = horizontalScroll.current >= horizontalScroll.maximum / 2 ? 120 : -120;
   await page.mouse.move(panStart.x, panStart.y);
   await page.mouse.down();
@@ -722,6 +740,10 @@ test("PDF region zooms in place, pans, and exits without a floating lens", async
   expect(await reader.evaluate((element) => element.scrollLeft)).not.toBe(horizontalScroll.current);
   await expectToolbarPosition();
 
+  // Return the cursor to the page before wheeling: the pan release point can
+  // land outside the viewport, where the wheel event would miss the viewer.
+  const wheelPoint = await findBlankPagePoint(page, "wheel zoom");
+  await page.mouse.move(wheelPoint.x, wheelPoint.y);
   await page.keyboard.down("Control");
   await page.mouse.wheel(0, -100);
   await page.keyboard.up("Control");

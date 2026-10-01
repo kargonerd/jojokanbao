@@ -14,6 +14,9 @@ const annotationApi = vi.hoisted(() => ({
 }));
 vi.mock("../src/annotations/api", () => annotationApi);
 
+const feedbackApi = vi.hoisted(() => ({ submitFeedback: vi.fn(() => "sent" as const) }));
+vi.mock("@jojo/analytics/feedback", () => feedbackApi);
+
 describe("SelectableAnnotationArticle", () => {
   const ownThread: AnnotationThread = {
     id: "annotation-news-1", contentType: "newspaper", contentId: "news-1", sectionId: "body", contentTitle: "新闻标题",
@@ -142,5 +145,30 @@ describe("SelectableAnnotationArticle", () => {
     expect(onExplain).toHaveBeenCalledWith(expect.objectContaining({ quote: "图表中的红色曲线" }));
     expect(screen.queryByRole("button", { name: "复制" })).toBeNull();
     expect(screen.queryByRole("button", { name: "划线" })).toBeNull();
+  });
+
+  it("reports a content correction with the quoted text, without requiring sign-in", async () => {
+    useAccountSessionStore.setState({ initialized: true, userId: null });
+    render(<SelectableAnnotationArticle subject={{ contentType: "newspaper", contentId: "news-1", sectionId: "body", contentTitle: "新闻标题" }}><p>今日耍闻头条</p></SelectableAnnotationArticle>);
+    const paragraph = screen.getByText("今日耍闻头条");
+    const range = document.createRange();
+    range.selectNodeContents(paragraph);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+
+    fireEvent.pointerUp(paragraph);
+    fireEvent.click(await screen.findByRole("button", { name: "内容纠错" }));
+
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("今日耍闻头条")).toBeTruthy();
+    expect(screen.queryByRole("toolbar", { name: "选中文字工具" })).toBeNull();
+    fireEvent.change(screen.getByLabelText("问题说明"), { target: { value: "应为「今日要闻」" } });
+    fireEvent.click(screen.getByRole("button", { name: "提交反馈" }));
+
+    await waitFor(() => expect(feedbackApi.submitFeedback).toHaveBeenCalledWith({
+      topic: "content_correction", message: "应为「今日要闻」", quote: "今日耍闻头条",
+      contentType: "times_article", contentId: "news-1", contentTitle: "新闻标题", screen: "times_detail",
+    }));
+    expect(await screen.findByRole("status")).toHaveProperty("textContent", "已提交，感谢你的反馈。");
   });
 });

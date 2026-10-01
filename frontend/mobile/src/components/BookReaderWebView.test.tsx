@@ -82,6 +82,17 @@ it("keeps the document, bootstrap and controls stable while saved progress reren
   expect(mocks.failure).not.toHaveBeenCalled();
 });
 
+it("injects the bootstrap script before the reader document's own body close", async () => {
+  await act(async () => view.unmount());
+  // A chapter body can carry a document shell of its own; that `</body>` must
+  // not become the injection point.
+  const html = '<body><article>chapter</article><body>nested</body></body></html>';
+  await act(async () => { view = create(<BookReaderWebView {...props} html={html} />); });
+  const injected = native().props.source.html as string;
+  expect(injected.endsWith("</script></body></html>")).toBe(true);
+  expect(injected.indexOf("nested")).toBeLessThan(injected.indexOf("__jojoReaderSessionId"));
+});
+
 it("forwards imperative controls and supplements the native load-end callback", async () => {
   const ref = createRef<WebView>();
   await act(async () => view.update(<BookReaderWebView {...props} ref={ref} />));

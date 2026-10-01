@@ -9,7 +9,8 @@
     "./browser-config": "./src/browser-config.ts",
     "./config-sync": "./src/config-sync.ts",
     "./preferences": "./src/preferences.ts",
-    "./sanitize": "./src/sanitize.ts"
+    "./sanitize": "./src/sanitize.ts",
+    "./feedback": "./src/feedback.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

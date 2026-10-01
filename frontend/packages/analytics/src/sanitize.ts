@@ -4,6 +4,7 @@ const sdkProperties = new Set([
   "token", "distinct_id", "$device_id", "$user_id", "$anon_distinct_id", "$session_id", "$window_id",
   "$lib", "$lib_version", "$is_identified", "$process_person_profile", "$geoip_disable",
   "$exception_list", "$exception_fingerprint", "$exception_level", "$exception_type",
+  "$survey_id", "$survey_name", "$survey_responses", "$survey_completed",
   "client", "platform", "app_version", "release_channel", "app_variant", "signed_in", "installation_id",
   ...propertyNames,
 ]);

@@ -36,12 +36,40 @@ describe('desktop Agent gateway', () => {
     }]);
   });
 
-  it('only permits local loopback overrides in development', () => {
-    expect(resolveDesktopReaderOrigin(undefined, false)).toBe('https://beta.jojokanbao.cn');
+  it('defaults to the production Reader and only permits local loopback overrides in development', () => {
+    expect(resolveDesktopReaderOrigin(undefined, false)).toBe('https://reader.jojokanbao.cn');
     expect(resolveDesktopReaderOrigin('http://127.0.0.1:8787', false)).toBe('http://127.0.0.1:8787');
-    expect(resolveDesktopReaderOrigin('http://127.0.0.1:8787', true)).toBe('https://beta.jojokanbao.cn');
+    expect(resolveDesktopReaderOrigin('http://127.0.0.1:8787', true)).toBe('https://reader.jojokanbao.cn');
     expect(resolveDesktopReaderOrigin('https://reader.jojokanbao.cn', true)).toBe('https://reader.jojokanbao.cn');
-    expect(resolveDesktopReaderOrigin('https://attacker.example', false)).toBe('https://beta.jojokanbao.cn');
+    expect(resolveDesktopReaderOrigin('https://beta.jojokanbao.cn', true)).toBe('https://beta.jojokanbao.cn');
+    expect(resolveDesktopReaderOrigin('https://attacker.example', false)).toBe('https://reader.jojokanbao.cn');
+  });
+
+  it('forwards registration authorization as a JSON POST', async () => {
+    const fetch = vi.fn().mockResolvedValue(Response.json({ authorization: 'receipt' }));
+    const options = { fetch, readerOrigin: 'https://reader.jojokanbao.cn' };
+    const response = await handleDesktopAgentRequest(new Request(
+      'jojo-agent://reader/api/v1/account/signup-authorization',
+      { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'reader@example.com' }) },
+    ), options);
+    const [target, init] = fetch.mock.calls[0] as [URL, RequestInit];
+    expect(String(target)).toBe('https://reader.jojokanbao.cn/api/v1/account/signup-authorization');
+    expect(init.method).toBe('POST');
+    await expect(response.json()).resolves.toEqual({ authorization: 'receipt' });
+    expect((await handleDesktopAgentRequest(new Request('jojo-agent://reader/api/v1/account/signup-authorization'), options)).status).toBe(405);
+  });
+
+  it('rejects an HTML fallback on the registration route', async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response('<!doctype html><title>JOJO</title>', {
+      headers: { 'content-type': 'text/html; charset=utf-8' },
+    }));
+    const response = await handleDesktopAgentRequest(
+      new Request('jojo-agent://reader/api/v1/account/signup-authorization', { method: 'POST', body: '{}' }),
+      { fetch, readerOrigin: 'https://reader.jojokanbao.cn' },
+    );
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toEqual({ error: '注册服务入口返回了无效响应' });
   });
 
   it('forwards an allow-listed streaming request without renderer-only headers', async () => {
