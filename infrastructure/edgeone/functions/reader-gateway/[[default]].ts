@@ -2,12 +2,31 @@ const DEFAULT_AGENT_URL = "https://agent-global.jojokanbao.cn/rag";
 const DEFAULT_TIMES_AGENT_URL = "https://agent-global.jojokanbao.cn/times";
 const MAX_RAG_REQUEST_BYTES = 64 * 1024;
 const MAX_TIMES_REQUEST_BYTES = 6 * 1024 * 1024;
+// Edge functions default a `fetch` to a 15s response timeout, which can be
+// shorter than the agent's time-to-first-byte (Supabase auth + usage accounting
+// + the model's first token all happen before response headers). Raise the read
+// and write budgets to the platform maximum (300s) and keep the connect budget
+// tight; client aborts still travel through `context.request.signal`.
+const UPSTREAM_CONNECT_TIMEOUT_MS = 15_000;
+const UPSTREAM_READ_TIMEOUT_MS = 300_000;
+const UPSTREAM_WRITE_TIMEOUT_MS = 300_000;
 const FORWARDED_HEADERS = [
   "Accept",
   "Authorization",
   "Content-Type",
   "Makers-Conversation-Id",
 ] as const;
+
+/** EdgeOne extension on the standard `RequestInit`. */
+type EdgeFetchInit = RequestInit & {
+  eo?: {
+    timeoutSetting?: {
+      connectTimeout?: number;
+      readTimeout?: number;
+      writeTimeout?: number;
+    };
+  };
+};
 
 type ReaderGatewayContext = {
   env?: Readonly<Record<string, string | undefined>>;
@@ -84,12 +103,19 @@ export async function onRequest(context: ReaderGatewayContext): Promise<Response
     const value = context.request.headers.get(name);
     if (value) headers.set(name, value);
   }
-  const upstreamInit: RequestInit = {
+  const upstreamInit: EdgeFetchInit = {
     method: context.request.method,
     headers,
     body,
     redirect: "manual",
     signal: context.request.signal,
+    eo: {
+      timeoutSetting: {
+        connectTimeout: UPSTREAM_CONNECT_TIMEOUT_MS,
+        readTimeout: UPSTREAM_READ_TIMEOUT_MS,
+        writeTimeout: UPSTREAM_WRITE_TIMEOUT_MS,
+      },
+    },
   };
   let upstream: Response;
   try {

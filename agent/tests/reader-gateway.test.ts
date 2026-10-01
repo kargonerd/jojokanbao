@@ -52,6 +52,23 @@ describe("Reader Agent gateway", () => {
     expect(decodeURIComponent(reported ?? "")).toContain("upstream connect error");
   });
 
+  it("raises the upstream timeout above the 15s edge-default", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("event: done\n\n", {
+      headers: { "Content-Type": "text/event-stream" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await onRequest(context("/gateway/ask"));
+
+    const init = fetchMock.mock.calls[0]![1] as {
+      eo?: { timeoutSetting?: Record<string, number> };
+    };
+    // A slow first byte must not be mistaken for an outage.
+    expect(init.eo?.timeoutSetting?.readTimeout).toBeGreaterThanOrEqual(120_000);
+    expect(init.eo?.timeoutSetting?.writeTimeout).toBeGreaterThanOrEqual(120_000);
+    expect(init.eo?.timeoutSetting?.connectTimeout).toBeLessThanOrEqual(30_000);
+  });
+
   it("rejects unsafe configuration and oversized requests before fetching", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response("event: done\n\n", {
       headers: { "Content-Type": "text/event-stream" },
