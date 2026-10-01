@@ -100,19 +100,7 @@ export async function onRequest(context: ReaderGatewayContext): Promise<Response
     // response so a future investigation does not have to guess.
     const reason = describeFetchError(error);
     console.error("reader-gateway upstream failed", { target: target.origin, reason });
-    const probes: string[] = [];
-    for (const url of DIAG_TARGETS) {
-      const started = Date.now();
-      try {
-        const res = await fetch(url, { method: "GET", redirect: "manual" });
-        probes.push(`${url} -> ${res.status} (${Date.now() - started}ms)`);
-      } catch (probeError) {
-        probes.push(
-          `${url} -> FAIL (${Date.now() - started}ms) ${describeFetchError(probeError)}`,
-        );
-      }
-    }
-    return Response.json({ error: "问答服务暂时不可用", failure: reason, probes }, {
+    return Response.json({ error: "问答服务暂时不可用" }, {
       status: 502,
       headers: { "X-JOJO-Gateway-Failure": encodeURIComponent(reason).slice(0, 400) },
     });
