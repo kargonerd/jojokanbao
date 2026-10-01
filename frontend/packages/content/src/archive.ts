@@ -1,6 +1,7 @@
 export const ARCHIVE_WEB_ORIGIN = "https://reader.jojokanbao.cn";
 export const ARCHIVE_CDN_ORIGIN = "https://blacknews.jojokanbao.cn";
-export const ARCHIVE_SEARCH_API = "https://s1.jojokanbao.cn/search";
+// The legacy `/search` archive endpoint was retired in favour of the unified
+// `/content/search` endpoint; every client now goes through CONTENT_SEARCH_API.
 export const CONTENT_SEARCH_API = "https://s1.jojokanbao.cn/content/search";
 
 export const ARCHIVE_PUBLICATION_NAMES = ["rmrb", "ckxx", "hq", "rmhb", "sjzs"] as const;
