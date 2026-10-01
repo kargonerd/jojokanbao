@@ -91,6 +91,8 @@ interface MobileState {
   timesReadArticleIds: string[];
   timesDisabledSourceIds: string[];
   librarySources: LibrarySourceId[];
+  pdfSaveDirectoryUri: string | null;
+  setPdfSaveDirectoryUri: (uri: string | null) => void;
   setLibrarySourceEnabled: (source: LibrarySourceId, enabled: boolean) => void;
   setHapticsEnabled: (enabled: boolean) => void;
   setTextScale: (scale: MobileState["textScale"]) => void;
@@ -145,6 +147,8 @@ export const useMobileStore = create<MobileState>()(
       timesReadArticleIds: [],
       timesDisabledSourceIds: [],
       librarySources: [...DEFAULT_LIBRARY_SOURCES],
+      pdfSaveDirectoryUri: null,
+      setPdfSaveDirectoryUri: (pdfSaveDirectoryUri) => set({ pdfSaveDirectoryUri }),
       setLibrarySourceEnabled: (source, enabled) => set((state) => ({ librarySources: normalizeLibrarySources(enabled ? [...state.librarySources, source] : state.librarySources.filter((id) => id !== source)) })),
       setHapticsEnabled: (hapticsEnabled) => set({ hapticsEnabled }),
       setTextScale: (textScale) => set({ textScale }),
@@ -277,7 +281,7 @@ export const useMobileStore = create<MobileState>()(
         const persisted = saved as Partial<MobileState> | undefined;
         return { ...current, ...persisted, librarySources: normalizeLibrarySources(persisted?.librarySources ?? current.librarySources) };
       },
-      partialize: ({ analyticsEnabled, hapticsEnabled, textScale, bookLineHeight, bookReadingMode, bookPaperColor, bookFirstLineIndent, keepScreenAwake, allowLandscape, leftTapNext, recentIssues, recentBooks, historyOwnerId, historyClearedAt, historyAccounts, bookReadingSeconds, bookAnnotations, aiConversations, timesLanguage, timesReadArticleIds, timesDisabledSourceIds, librarySources }) => ({
+      partialize: ({ analyticsEnabled, hapticsEnabled, textScale, bookLineHeight, bookReadingMode, bookPaperColor, bookFirstLineIndent, keepScreenAwake, allowLandscape, leftTapNext, recentIssues, recentBooks, historyOwnerId, historyClearedAt, historyAccounts, bookReadingSeconds, bookAnnotations, aiConversations, timesLanguage, timesReadArticleIds, timesDisabledSourceIds, librarySources, pdfSaveDirectoryUri }) => ({
         analyticsEnabled,
         historyOwnerId, historyClearedAt, historyAccounts,
         hapticsEnabled,
@@ -298,6 +302,7 @@ export const useMobileStore = create<MobileState>()(
         timesReadArticleIds,
         timesDisabledSourceIds,
         librarySources,
+        pdfSaveDirectoryUri,
       }),
     },
   ),
