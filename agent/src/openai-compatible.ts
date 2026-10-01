@@ -16,15 +16,47 @@ import {
  */
 export const OPENAI_COMPATIBLE_PROVIDER_ID = "openai-compatible";
 export const OPENAI_COMPATIBLE_API_KEY_ENV_VAR = "JOJO_AGENT_API_KEY";
+export const OPENAI_COMPATIBLE_INPUT_ENV_VAR = "JOJO_AGENT_MODEL_INPUT";
 
 const DEFAULT_CONTEXT_WINDOW = 128_000;
 const DEFAULT_MAX_TOKENS = 16_384;
+const INPUT_MODALITIES = ["text", "image"] as const;
+
+export type OpenAICompatibleInputModality = typeof INPUT_MODALITIES[number];
+
+/**
+ * The endpoint does not publish a capability catalog, so the operator declares
+ * what the configured model accepts. Defaulting to image matters for the Times
+ * agent, which attaches up to four article images; declaring text-only makes the
+ * handler reject those requests outright. Override with
+ * `JOJO_AGENT_MODEL_INPUT=text` when the model has no vision support.
+ */
+export function parseModelInput(value: string | undefined): OpenAICompatibleInputModality[] {
+  if (value === undefined || value.trim() === "") return [...INPUT_MODALITIES];
+  const parsed: OpenAICompatibleInputModality[] = [];
+  for (const entry of value.split(",")) {
+    const token = entry.trim().toLowerCase();
+    if (!token) continue;
+    if (!INPUT_MODALITIES.includes(token as OpenAICompatibleInputModality)) {
+      throw new Error(
+        `${OPENAI_COMPATIBLE_INPUT_ENV_VAR} only accepts ${INPUT_MODALITIES.join(" or ")}: ${entry.trim()}`,
+      );
+    }
+    const modality = token as OpenAICompatibleInputModality;
+    if (!parsed.includes(modality)) parsed.push(modality);
+  }
+  if (!parsed.length) {
+    throw new Error(`${OPENAI_COMPATIBLE_INPUT_ENV_VAR} must list at least one modality`);
+  }
+  return parsed;
+}
 
 export interface OpenAICompatibleProviderOptions {
   baseUrl: string;
   model: string;
   contextWindow?: number;
   maxTokens?: number;
+  input?: readonly OpenAICompatibleInputModality[];
 }
 
 export function openAICompatibleProvider(
@@ -37,7 +69,7 @@ export function openAICompatibleProvider(
     provider: OPENAI_COMPATIBLE_PROVIDER_ID,
     baseUrl: options.baseUrl,
     reasoning: false,
-    input: ["text"],
+    input: [...(options.input ?? INPUT_MODALITIES)],
     // The endpoint does not publish pricing; usage is still reported in
     // tokens, only the cost estimate stays zero.
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
