@@ -7,7 +7,7 @@ import {
   resolveDesktopSearchOrigin,
 } from '../../electron/search-gateway.js';
 
-function jsonResponse(body, init = {}) {
+function jsonResponse(body: unknown, init: { status?: number; headers?: Record<string, string> } = {}) {
   return new Response(JSON.stringify(body), {
     status: 200,
     headers: { 'content-type': 'application/json' },
