@@ -281,6 +281,16 @@ export function createBookReaderBridgeScript(
         return continuous ? continuous.root(chapterId) : document.querySelector("article");
       }
 
+      // The paged layout advances one column stride per page, and that stride is
+      // exactly the article's padding box (column width + column gap). Read the
+      // layout width here: window.innerWidth tracks the visual viewport, so it
+      // diverges from the layout while pinch-zoomed, and each turned page then
+      // drifts by that difference.
+      function pageWidth() {
+        var article = document.querySelector("article");
+        return Math.max(1, article && article.clientWidth ? article.clientWidth : window.innerWidth);
+      }
+
       function chapterOf(node) {
         var element = node && (node.nodeType === 1 ? node : node.parentElement);
         var root = element && element.closest && element.closest("article");
@@ -323,7 +333,7 @@ export function createBookReaderBridgeScript(
         speechReader.show(location.segments, location.index, reveal ? function (range) {
           var rect = range.getClientRects()[0];
           if (!rect) return;
-          if (paged) showSpread(Math.floor((Math.max(0, rect.left + currentSpread * window.innerWidth) + 1) / Math.max(1, window.innerWidth)));
+          if (paged) showSpread(Math.floor((Math.max(0, rect.left + currentSpread * pageWidth()) + 1) / pageWidth()));
           else if (rect.top < 80 || rect.bottom > window.innerHeight - 128) window.scrollTo(0, window.scrollY + rect.top - 80);
         } : undefined);
       };
@@ -491,7 +501,7 @@ ${ANNOTATION_DOM_SCRIPT}
       function showSpread(index, animate) {
         window.clearTimeout(pageReportTimer);
         currentSpread = Math.max(0, Math.min(spreadCount - 1, index));
-        var offset = currentSpread * window.innerWidth;
+        var offset = currentSpread * pageWidth();
         var article = document.querySelector("article");
         if (article) {
           article.style.transition = animate && !reduceMotion ? "transform 180ms ease-out" : "none";
@@ -511,8 +521,8 @@ ${ANNOTATION_DOM_SCRIPT}
         });
         if (paged) {
           var rect = target.getClientRects()[0] || target.getBoundingClientRect();
-          var absoluteLeft = rect.left + currentSpread * window.innerWidth;
-          showSpread(Math.floor((Math.max(0, absoluteLeft) + 1) / Math.max(1, window.innerWidth)));
+          var absoluteLeft = rect.left + currentSpread * pageWidth();
+          showSpread(Math.floor((Math.max(0, absoluteLeft) + 1) / pageWidth()));
         } else {
           target.scrollIntoView({ block: "center" });
         }
@@ -544,7 +554,7 @@ ${ANNOTATION_DOM_SCRIPT}
         }
         var oldPageStart = currentSpread * pagesPerSpread;
         pagesPerSpread = window.matchMedia("(orientation: landscape) and (min-width: 900px)").matches ? 2 : 1;
-        var viewport = Math.max(1, window.innerWidth);
+        var viewport = pageWidth();
         var article = document.querySelector("article");
         var contentWidth = Math.max(
           viewport,
@@ -725,7 +735,7 @@ ${ANNOTATION_DOM_SCRIPT}
           var article = articleRoot();
           if (!article || reduceMotion) return;
           var boundary = (currentSpread === 0 && dx > 0) || (currentSpread === spreadCount - 1 && dx < 0);
-          var offset = -currentSpread * window.innerWidth + (boundary ? dx * .25 : dx);
+          var offset = -currentSpread * pageWidth() + (boundary ? dx * .25 : dx);
           article.style.transition = "none";
           article.style.transform = "translate3d(" + offset + "px, 0, 0)";
         }, { passive: false });
@@ -746,6 +756,14 @@ ${ANNOTATION_DOM_SCRIPT}
           }
         }, { passive: true });
         document.addEventListener("touchcancel", function () { if (draggingPage) showSpread(currentSpread, true); draggingPage = false; }, { passive: true });
+        // A gesture can end without touchend/touchcancel (the app backgrounds, a
+        // system gesture takes over, the WebView is suspended) which used to
+        // leave the article offset by a partial drag. Realign whenever the page
+        // becomes visible again.
+        var realignPage = function () { draggingPage = false; showSpread(currentSpread); };
+        document.addEventListener("visibilitychange", function () { if (!document.hidden) realignPage(); });
+        window.addEventListener("pageshow", realignPage);
+        window.addEventListener("focus", realignPage);
         window.addEventListener("resize", scheduleMeasure);
         document.querySelectorAll("img").forEach(function (image) {
           if (!image.complete) image.addEventListener("load", scheduleMeasure, { once: true });

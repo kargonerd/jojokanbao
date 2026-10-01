@@ -179,7 +179,9 @@ export function createBookDocument({ fragment, assetUrls, textScale, lineHeight,
   const muted = effectivePaperColor === "dark" ? "#a8aaa6" : "#68645f";
   const accent = eInk ? "#000000" : effectivePaperColor === "dark" ? "#d46666" : "#8b1a1a";
   const highlight = eInk ? "transparent" : effectivePaperColor === "dark" ? "rgba(212, 102, 102, .28)" : "rgba(139, 26, 26, .16)";
+  const softAccent = eInk ? "transparent" : effectivePaperColor === "dark" ? "rgba(212, 102, 102, .14)" : "rgba(139, 26, 26, .06)";
   const gutter = eInk ? "#8a8a8a" : "rgba(139, 26, 26, .22)";
+  const rule = effectivePaperColor === "dark" ? "#3c403d" : "#d8d8d8";
   const readingLayout = readingMode === "paged" ? `
   html, body { width: 100%; height: 100%; overflow: hidden; overscroll-behavior: none; }
   body { touch-action: pan-y pinch-zoom; }
@@ -243,6 +245,40 @@ export function createBookDocument({ fragment, assetUrls, textScale, lineHeight,
   figure img, article > img { display: block; max-width: 100%; height: auto; margin: 0 auto; ${eInk ? "filter: grayscale(1) contrast(1.15);" : ""} }
   span[data-asset-id] img { display: inline-block; max-width: 100%; height: auto; vertical-align: middle; }
   figcaption { margin-top: .65rem; color: ${muted}; font-family: sans-serif; font-size: .75rem; text-align: center; }
+  [data-align="left"] { text-align: left; }
+  [data-align="center"] { text-align: center; text-indent: 0; }
+  [data-align="right"] { text-align: right; text-indent: 0; }
+  [data-indent="none"] { text-indent: 0; }
+  [data-role="poem"] { margin-left: 2em; text-align: left; white-space: pre-wrap; }
+  [data-role="translation"] { color: ${muted}; }
+  [data-role="note"] { color: ${muted}; font-size: .86em; line-height: 1.75; text-indent: 0; }
+  [data-role="annotation"] { margin: 1.15em 0 1.15em 1.5em; color: ${muted}; font-size: .9em; text-indent: 0; }
+  [data-role="salutation"] { text-indent: 0; }
+  [data-role="attribution"] { margin-left: auto; text-align: right; text-indent: 0; }
+  [data-role="subheading"] { margin-top: 1.7em; color: ${accent}; font-weight: 700; }
+  [data-role="aside"] { margin: 1.5em 0; padding: .8em 1em; border-left: 2px solid ${accent}; background: ${softAccent}; }
+  [data-role="highlight"] { padding: .05em .16em; background: ${softAccent}; }
+  [data-role="caption"] { color: ${muted}; font-family: sans-serif; font-size: .76em; text-align: center; text-indent: 0; }
+  [data-font="kai"] { font-family: "STKaiti", "KaiTi", "Noto Serif SC", serif; }
+  [data-font="fang-song"] { font-family: "STFangsong", "FangSong", "Noto Serif SC", serif; }
+  [data-size="small"] { font-size: .82em; }
+  [data-break-before="page"] { break-before: column; page-break-before: always; }
+  table { width: 100%; margin: 1.2em 0; border-collapse: collapse; font-size: .9em; break-inside: avoid; }
+  caption { margin-bottom: .35em; color: ${muted}; font-family: sans-serif; font-size: .8em; text-align: center; text-indent: 0; }
+  th, td { padding: .4em .6em; border: 1px solid ${rule}; text-align: left; text-indent: 0; overflow-wrap: anywhere; }
+  math[display="block"] { display: block; margin: 1em 0; max-width: 100%; overflow-x: auto; text-indent: 0; }
+  span[data-role="inline-image"] { display: inline-block; width: auto; height: 1em; margin: 0 .1em; line-height: 1; text-indent: 0; vertical-align: -.08em; }
+  span[data-role="inline-image"] img { display: inline-block; width: auto; max-width: none; height: 1em; margin: 0; vertical-align: baseline; }
+  figure[data-role="signature"] { margin-right: 0; margin-left: auto; text-align: right; }
+  figure[data-role="cover"] { width: min(72%, 28em); max-width: 100%; margin-right: auto; margin-left: auto; }
+  figure[data-role="cover"] img, figure[data-role="full-width"] img, figure[data-role="table-image"] img { width: 100%; height: auto; }
+  figure[data-role="full-width"], figure[data-role="table-image"] { width: 100%; max-width: 100%; }
+  figure[data-width="30"] { max-width: 30%; }
+  figure[data-width="40"] { max-width: 40%; }
+  figure[data-width="50"] { max-width: 50%; }
+  figure[data-width="60"] { max-width: 60%; }
+  figure[data-width="70"] { max-width: 70%; }
+  figure[data-width="80"] { max-width: 80%; }
   a[href], a[data-target-id], a[data-anchor-id] { color: ${accent}; }
   hr { margin: 2rem 0; border: 0; border-top: 1px solid #aaa; }
   .notes { margin-top: 4rem; padding-top: 1.5rem; border-top: 1px solid #aaa; font-size: .84rem; }
@@ -254,7 +290,7 @@ export function createBookDocument({ fragment, assetUrls, textScale, lineHeight,
   [data-book-jump-target] { outline: 2px solid ${accent}; outline-offset: 3px; background: ${highlight}; }
   ::selection { background: ${eInk ? "#b8b8b8" : effectivePaperColor === "dark" ? "#765252" : "#e6c5c5"}; color: ${ink}; }
   mark[data-annotation-id] { background: transparent; color: inherit; text-decoration-line: underline; text-decoration-style: wavy; text-decoration-color: ${accent}; text-decoration-thickness: 1px; text-underline-offset: .17em; }
-  mark[data-search-target] { background: ${eInk ? "transparent" : "rgba(224, 174, 61, .28)"}; color: inherit; outline: 1px solid ${accent}; }
+  mark[data-search-target] { background: ${eInk ? "transparent" : "rgba(139, 26, 26, .2)"}; color: inherit; box-shadow: inset 0 -2px 0 ${accent}; }
   h1, h2, h3, h4 { break-after: avoid-column; }
   figure, blockquote, .notes { break-inside: avoid-column; }
   ${readingLayout}

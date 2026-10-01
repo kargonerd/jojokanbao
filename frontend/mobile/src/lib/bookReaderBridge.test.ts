@@ -192,6 +192,18 @@ describe("book reader bridge", () => {
     expect(root.style.transition).toBe("none");
   });
 
+  it("steps pages by the layout width and realigns after the view returns", () => {
+    const { handlers, root, window } = readerHarness("paged");
+    // window.innerWidth is 100 in the harness; the laid-out page is wider, which
+    // is what used to make every turned page drift.
+    root.clientWidth = 120;
+    window.__jojoReaderGoToSpread(1);
+    expect(root.style.transform).toBe("translate3d(-120px, 0, 0)");
+    root.style.transform = "translate3d(-104px, 0, 0)";
+    handlers.get("visibilitychange")!();
+    expect(root.style.transform).toBe("translate3d(-120px, 0, 0)");
+  });
+
   it("leaves native scroll gestures free without chapter boundary jumps or chapter buttons", () => {
     const { handlers, messages, scrolling } = readerHarness("scroll");
     scrolling.scrollTop = 400;
@@ -270,7 +282,7 @@ function readerHarness(mode: "paged" | "scroll", anchors: Record<string, number>
   const messages: Array<{ type: string; [key: string]: unknown }> = [];
   const nodes: Record<string, any> = {};
   const createElement = () => ({ style: {} as Record<string, string>, textContent: "", setAttribute() {}, addEventListener() {}, appendChild() {}, querySelectorAll: () => [{ style: {} }, { style: {} }] });
-  const root = { ...createElement(), scrollWidth: 400 };
+  const root = { ...createElement(), scrollWidth: 400, clientWidth: 0 };
   for (const [id, left] of Object.entries(anchors)) nodes[id] = { getBoundingClientRect: () => ({ left: left + Number(root.style.transform?.match(/translate3d\((-?[\d.]+)px/)?.[1] ?? 0), top: 20 }) };
   const scrolling = { scrollTop: 0, scrollHeight: 500 };
   const document = {
