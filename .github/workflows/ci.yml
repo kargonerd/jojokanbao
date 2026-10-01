@@ -421,7 +421,7 @@ jobs:
           node infrastructure/edgeone/prepare-web-deploy.mjs
           test -f .edgeone/web-deploy/index.html
           test -f .edgeone/web-deploy/cloud-functions/api/index.py
-          test -f '.edgeone/web-deploy/cloud-functions/gateway/[[default]].ts'
+          test -f '.edgeone/web-deploy/edge-functions/gateway/[[default]].ts'
           test -f .edgeone/web-deploy/cloud-functions/app/application.py
           test ! -e .edgeone/web-deploy/cloud-functions/app/main.py
           test -f .edgeone/web-deploy/cloud-functions/requirements.txt
