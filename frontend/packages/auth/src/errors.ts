@@ -15,7 +15,8 @@ const AUTH_ERROR_MESSAGES: Record<string, string> = {
   signup_disabled: "当前暂未开放注册。",
   user_already_exists: "这个邮箱已经注册，请直接登录。",
   weak_password: "密码强度不足，请至少使用 8 位字符。",
-  signup_service_unreachable: "无法连接注册服务，请检查网络后重试。",
+  signup_service_unreachable: "暂时无法连接注册服务，请检查网络后重试（可尝试切换 Wi-Fi 与移动网络）。",
+  signup_service_timeout: "连接注册服务超时，请检查网络后重试。",
   remote_config_unavailable: "注册服务暂时不可用，请稍后重试。",
   signup_authorization_failed: "注册服务暂时不可用，请稍后重试。",
   database_unavailable: "账号服务暂时不可用，请稍后重试。",
@@ -63,7 +64,15 @@ export function getAuthErrorMessage(error: unknown): string {
     return "你的邀请码已被停用，请联系管理员。";
   }
   if (message.includes("rate limit")) return "请求过于频繁，请稍后再试。";
-  if (message.includes("failed to fetch")) return "暂时无法连接账号服务，请检查网络后重试。";
+  // An unreachable host surfaces as "Failed to fetch" in browsers and as
+  // "Network request failed" in React Native. Both mean the request never
+  // completed, so the guidance must not blame the submitted credentials.
+  if (message.includes("failed to fetch") || message.includes("network request failed")) {
+    return "暂时无法连接账号服务，请检查网络后重试（可尝试切换 Wi-Fi 与移动网络）。";
+  }
+  if (message.includes("timeout") || message.includes("aborted") || message.includes("timed out")) {
+    return "连接账号服务超时，请检查网络后重试。";
+  }
   return candidate.status && candidate.status >= 500
     ? "账号服务暂时不可用，请稍后再试。"
     : "操作没有完成，请检查填写内容后重试。";

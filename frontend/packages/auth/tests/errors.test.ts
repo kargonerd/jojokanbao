@@ -46,7 +46,7 @@ describe("getAuthErrorMessage", () => {
   it("names the registration service instead of blaming the form", () => {
     expect(getAuthErrorMessage({ code: "remote_config_unavailable", status: 503 })).toBe("注册服务暂时不可用，请稍后重试。");
     expect(getAuthErrorMessage({ code: "signup_authorization_failed", status: 502 })).toBe("注册服务暂时不可用，请稍后重试。");
-    expect(getAuthErrorMessage({ code: "signup_service_unreachable" })).toBe("无法连接注册服务，请检查网络后重试。");
+    expect(getAuthErrorMessage({ code: "signup_service_unreachable" })).toBe("暂时无法连接注册服务，请检查网络后重试（可尝试切换 Wi-Fi 与移动网络）。");
     expect(getAuthErrorMessage({ code: "invitation_required", status: 400 })).toBe("注册需要 6 位邀请码，请填写邀请码后重试。");
     expect(getAuthErrorMessage({ status: 503, message: "注册服务暂时不可用，请稍后重试。" })).toBe("账号服务暂时不可用，请稍后再试。");
   });
@@ -55,5 +55,16 @@ describe("getAuthErrorMessage", () => {
     expect(getAuthErrorMessage({ message: "Registration authorization is invalid or expired. Please retry signup." })).toBe(
       "注册授权已过期，请重新发送验证码后再试。",
     );
+  });
+
+  it("separates an unreachable service from a timeout on every client", () => {
+    const unreachable = "暂时无法连接账号服务，请检查网络后重试（可尝试切换 Wi-Fi 与移动网络）。";
+    // Browsers and React Native report the same condition with different text.
+    expect(getAuthErrorMessage(new TypeError("Failed to fetch"))).toBe(unreachable);
+    expect(getAuthErrorMessage(new TypeError("Network request failed"))).toBe(unreachable);
+
+    expect(getAuthErrorMessage(new Error("The operation was aborted due to timeout")))
+      .toBe("连接账号服务超时，请检查网络后重试。");
+    expect(getAuthErrorMessage({ code: "signup_service_timeout" })).toBe("连接注册服务超时，请检查网络后重试。");
   });
 });

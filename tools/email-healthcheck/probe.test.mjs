@@ -307,9 +307,22 @@ test('every scan requires a valid dedicated test recipient before fetching any m
   }
 });
 
+test('accepts the project custom Supabase domain host', async () => {
+  const posts = [];
+  let reads = 0;
+  const result = await probe({ ...manual, VITE_SUPABASE_URL: 'https://api.jojokanbao.cn' }, async (url, options) => {
+    if (options.method === 'POST') { posts.push(url); return Response.json({}); }
+    reads += 1;
+    return reads === 1 ? page() : page([message(20, { created_at: new Date(NOW).toISOString(), to: [monitorAddress], last_event: 'delivered' })]);
+  }, clock());
+  assert.deepEqual(posts, ['https://api.jojokanbao.cn/auth/v1/recover']);
+  assert.equal(result.transportProbe.outcome, 'success');
+});
+
 test('rejects non-project Auth endpoints without sending', async (t) => {
   for (const bad of [
-    { VITE_SUPABASE_URL: 'https://evil.example' }, { VITE_SUPABASE_URL: 'http://testproject.supabase.co' },
+    { VITE_SUPABASE_URL: 'https://evil.example' }, { VITE_SUPABASE_URL: 'https://api.jojokanbao.cn.evil' },
+    { VITE_SUPABASE_URL: 'https://notjojokanbao.cn' }, { VITE_SUPABASE_URL: 'http://testproject.supabase.co' },
     { VITE_SUPABASE_URL: 'https://testproject.supabase.co:444' }, { VITE_SUPABASE_URL: 'https://testproject.supabase.co/other' },
     { VITE_SUPABASE_URL: 'https://private-token@testproject.supabase.co' }, { VITE_SUPABASE_PUBLISHABLE_KEY: '' },
   ]) {
