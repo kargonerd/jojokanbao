@@ -1,8 +1,16 @@
 // Native counterpart of frontend/web/src/archive/pdfDownloadBridge.ts. The web
 // reader cannot trigger a download from inside a WebView (blob URLs and
 // <a download> are ignored on Android and iOS), so it streams the decrypted
-// PDF bytes over the one-way postMessage bridge in base64 chunks. This module
-// validates, reassembles, and hands the file to the system share sheet.
+// PDF bytes over the one-way postMessage bridge in base64 chunks.
+//
+// On Android 11+ the chunks are written straight into a user-selected SAF
+// directory (picked once, persisted in mobileStore) and no share sheet is
+// shown — MIUI and several other ROMs expose no "save file" share target.
+// Everywhere else (iOS, older Android, declined permission, SAF failure) the
+// bytes land in a temporary file and the system share sheet takes over.
+
+import { Alert, Platform } from "react-native";
+import { useMobileStore } from "../store/mobileStore";
 
 export type PdfDownloadMessage =
   | { type: "pdf-download-start"; downloadId: string; filename: string; totalBytes: number; totalChunks: number; chunkSize?: number }
@@ -58,9 +66,25 @@ export function base64ToBytes(base64: string): Uint8Array {
   return bytes;
 }
 
+function base64ByteLength(base64: string): number {
+  const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
+  return Math.floor(base64.length / 4) * 3 - padding;
+}
+
 function safeFilename(filename: string, downloadId: string): string {
   const sanitized = filename.replace(/[^\w.\-()（）]/g, "_").replace(/^\.+/, "");
   return sanitized.endsWith(".pdf") ? sanitized : `${sanitized || downloadId}.pdf`;
+}
+
+// SAF's createFileAsync derives the extension from the MIME type, so the base
+// name must arrive without ".pdf".
+function safeBaseName(filename: string): string {
+  const sanitized = filename.replace(/\.pdf$/i, "").replace(/[^\w\-()（）]/g, "_").replace(/^\.+/, "");
+  return sanitized || "document";
+}
+
+function supportsStorageAccessFramework(): boolean {
+  return Platform.OS === "android" && Number(Platform.Version) >= 30;
 }
 
 interface PdfDownloadSession {
@@ -68,7 +92,8 @@ interface PdfDownloadSession {
   filename: string;
   totalBytes: number;
   totalChunks: number;
-  chunks: Uint8Array[];
+  /** Base64 exactly as received; decoded only when the share fallback runs. */
+  chunks: string[];
   receivedBytes: number;
 }
 
@@ -117,9 +142,8 @@ export class PdfDownloadAssembler {
       this.reset();
       return;
     }
-    const bytes = base64ToBytes(message.data);
-    session.chunks.push(bytes);
-    session.receivedBytes += bytes.length;
+    session.chunks.push(message.data);
+    session.receivedBytes += base64ByteLength(message.data);
     if (session.receivedBytes > session.totalBytes) {
       this.reset();
       return;
@@ -136,12 +160,65 @@ export class PdfDownloadAssembler {
     }
     this.finishing = true;
     this.disarmTimeout();
+    try {
+      const saved = await this.saveWithStorageAccessFramework(session).catch(() => false);
+      if (!saved) await this.shareViaTemporaryFile(session);
+    } catch {
+      // Both saving paths are best effort; never surface native errors from a
+      // background message handler.
+    } finally {
+      this.finishing = false;
+      this.session = null;
+    }
+  }
+
+  private async saveWithStorageAccessFramework(session: PdfDownloadSession): Promise<boolean> {
+    if (!supportsStorageAccessFramework()) return false;
+    let directoryUri = useMobileStore.getState().pdfSaveDirectoryUri;
+    if (!directoryUri) {
+      const confirmed = await new Promise<boolean>((resolve) => {
+        Alert.alert(
+          "保存 PDF",
+          "首次保存需要选择保存位置（选择一次即可，之后自动保存到该文件夹）。",
+          [
+            { text: "取消", style: "cancel", onPress: () => resolve(false) },
+            { text: "选择位置", onPress: () => resolve(true) },
+          ],
+        );
+      });
+      if (!confirmed) return false;
+      const { StorageAccessFramework } = await import("expo-file-system/legacy");
+      const permission = await StorageAccessFramework.requestDirectoryPermissionsAsync(null);
+      if (!permission.granted) return false;
+      directoryUri = permission.directoryUri;
+      useMobileStore.getState().setPdfSaveDirectoryUri(directoryUri);
+    }
+    try {
+      const { StorageAccessFramework } = await import("expo-file-system/legacy");
+      const fileUri = await StorageAccessFramework.createFileAsync(directoryUri, safeBaseName(session.filename), "application/pdf");
+      for (const [index, data] of session.chunks.entries()) {
+        // 768KB chunks are multiples of three bytes, so their base64 forms
+        // append into a valid stream without re-encoding the whole file.
+        await StorageAccessFramework.writeAsStringAsync(fileUri, data, { encoding: "base64", append: index > 0 });
+      }
+      Alert.alert("已保存 PDF", "文件已保存到你选择的文件夹。");
+      return true;
+    } catch {
+      // The persisted grant may have been revoked; drop it so the next run
+      // asks again, and let the share sheet take this request.
+      useMobileStore.getState().setPdfSaveDirectoryUri(null);
+      return false;
+    }
+  }
+
+  private async shareViaTemporaryFile(session: PdfDownloadSession): Promise<void> {
     const { File, Directory, Paths } = await import("expo-file-system");
     const Sharing = await import("expo-sharing");
     try {
       const bytes = new Uint8Array(session.totalBytes);
       let offset = 0;
-      for (const chunk of session.chunks) {
+      for (const data of session.chunks) {
+        const chunk = base64ToBytes(data);
         bytes.set(chunk, offset);
         offset += chunk.length;
       }
@@ -156,9 +233,6 @@ export class PdfDownloadAssembler {
     } catch {
       // The share sheet is best effort; never surface native errors from a
       // background message handler.
-    } finally {
-      this.finishing = false;
-      this.session = null;
     }
   }
 
