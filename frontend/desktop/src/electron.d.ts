@@ -13,6 +13,13 @@ declare global {
     checkedAt?: string;
   }
 
+  interface DesktopSearchResponse {
+    ok: boolean;
+    status?: number;
+    data?: unknown;
+    error?: string;
+  }
+
   interface JojoDesktopBridge {
     appName: string;
     platform?: NodeJS.Platform;
@@ -21,6 +28,7 @@ declare global {
     onNavigate?: (callback: (path: string) => void) => () => void;
     onCloseChoiceRequested?: (callback: () => void) => () => void;
     respondToCloseChoice?: (choice: 'tray' | 'quit' | 'cancel') => void;
+    search?: (payload: Record<string, unknown>) => Promise<DesktopSearchResponse>;
     settings?: {
       getCloseBehavior: () => Promise<'ask' | 'tray' | 'quit'>;
       saveCloseBehavior: (behavior: 'ask' | 'tray' | 'quit') => Promise<'ask' | 'tray' | 'quit'>;

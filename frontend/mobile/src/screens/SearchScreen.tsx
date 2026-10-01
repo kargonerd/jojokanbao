@@ -1,4 +1,9 @@
-import { searchResultTitle } from "@jojo/content";
+import {
+  ARCHIVE_PUBLICATION_BY_ID,
+  ARCHIVE_PUBLICATION_NAMES,
+  searchResultTitle,
+  type ArchivePublicationName,
+} from "@jojo/content";
 import { useNavigation, type NavigationProp } from "@react-navigation/native";
 import { analytics } from "@jojo/analytics";
 import { memo, useEffect, useRef, useState } from "react";
@@ -22,6 +27,14 @@ import { useMobileStore } from "../store/mobileStore";
 import { mobileTheme, type MobileTheme } from "../theme/tokens";
 
 const PAGE_SIZE = 10;
+
+// Results carry their own dataset id, so a periodical added to the content
+// index renders under its real name without another client change.
+function publicationOf(datasetId: string) {
+  return ARCHIVE_PUBLICATION_NAMES.includes(datasetId as ArchivePublicationName)
+    ? ARCHIVE_PUBLICATION_BY_ID[datasetId as ArchivePublicationName]
+    : ARCHIVE_PUBLICATION_BY_ID.rmrb;
+}
 
 const SearchResultRow = memo(function SearchResultRow({
   item,
@@ -48,7 +61,7 @@ const SearchResultRow = memo(function SearchResultRow({
           <Text style={[styles.resultTitle, { color: theme.ink, fontFamily: theme.serif }]}>{item.title || "未命名文章"}</Text>
         </Pressable>
         <View style={styles.tags}>
-          <Text style={[styles.tag, { color: theme.red, borderColor: theme.rule, fontFamily: theme.sans }]}>人民日报</Text>
+          <Text style={[styles.tag, { color: theme.red, borderColor: theme.rule, fontFamily: theme.sans }]}>{publicationOf(item.datasetId).title}</Text>
           <Text style={[styles.tag, { color: theme.muted, borderColor: theme.rule, fontFamily: theme.sans }]}>{item.date}</Text>
           {item.page > 0 ? <Text style={[styles.tag, { color: theme.muted, borderColor: theme.rule, fontFamily: theme.sans }]}>第 {item.page} 版</Text> : null}
         </View>
@@ -175,7 +188,7 @@ export function SearchScreen() {
           ref={listRef}
           data={results}
           extraData={expandedResults}
-          keyExtractor={(item, index) => `${item.date}:${item.page}:${index}`}
+          keyExtractor={(item, index) => `${item.datasetId}:${item.date}:${item.page}:${index}`}
           renderItem={({ item, index }) => (
             <SearchResultRow
               item={item}
@@ -189,7 +202,7 @@ export function SearchScreen() {
                 return next;
               })}
               onPress={() => navigation.navigate("Reader", {
-                publication: "rmrb",
+                publication: publicationOf(item.datasetId).id,
                 issueId: item.date.replaceAll("-", ""),
                 page: item.page || undefined,
                 searchQuery: submittedQuery,

@@ -28,9 +28,10 @@ const runtime = await createPlatformModelRuntime({
 });
 
 if (!runtime.configured) {
-  throw new Error(
-    `${config.provider}/${config.model} is not configured. Run auth:${config.provider === "antigravity" ? "antigravity" : "codex"} first.`,
-  );
+  const hint = config.provider === "openai-compatible"
+    ? "Set JOJO_AGENT_API_KEY first"
+    : `Run auth:${config.provider === "antigravity" ? "antigravity" : "codex"} first`;
+  throw new Error(`${config.provider}/${config.model} is not configured. ${hint}`);
 }
 
 const result = await runPlatformAgent({

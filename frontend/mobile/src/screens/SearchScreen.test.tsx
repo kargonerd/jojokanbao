@@ -23,7 +23,7 @@ vi.mock("../lib/haptics", () => ({ impactHaptic: vi.fn() }));
 vi.mock("../lib/search", () => ({ searchArchive: mocks.search }));
 vi.mock("../store/mobileStore", () => ({ useMobileStore: (select: (state: { hapticsEnabled: boolean }) => unknown) => select({ hapticsEnabled: false }) }));
 
-const article = { title: "测试文章", content: "第一段正文。\n第二段正文。\n第三段正文。\n完整文章的结尾。", date: "1965-01-01", page: 2 };
+const article = { title: "测试文章", content: "第一段正文。\n第二段正文。\n第三段正文。\n完整文章的结尾。", date: "1965-01-01", page: 2, datasetId: "rmrb" };
 let view: ReactTestRenderer;
 function button(label: string, index = 0) {
   return view.root.findAllByType("button").filter((node) => node.findAllByType("span").some((child) => child.props.children === label))[index]!;

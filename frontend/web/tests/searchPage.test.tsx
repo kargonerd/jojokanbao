@@ -868,3 +868,43 @@ describe("SearchPage pagination", () => {
     expect(container.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "instant" });
   });
 });
+
+describe("SearchPage desktop transport", () => {
+  const desktopResult = {
+    type: "newspaper",
+    datasetId: "rmrb",
+    itemId: "19660701",
+    source: "人民日报",
+    title: defaultResult.title,
+    content: defaultResult.content,
+    date: defaultResult.date,
+    metadata: { page: defaultResult.page },
+  };
+
+  afterEach(() => {
+    Reflect.deleteProperty(window, "jojoDesktop");
+  });
+
+  it("relays searches through the Electron main process instead of the renderer", async () => {
+    const search = vi.fn().mockResolvedValue({ ok: true, status: 200, data: { data: { total: 1, results: [desktopResult] } } });
+    Object.defineProperty(window, "jojoDesktop", { configurable: true, value: { appName: "jojo-desktop", search } });
+
+    renderSearch("/search?keyword=大寨");
+
+    await waitFor(() => expect(search).toHaveBeenCalledTimes(1));
+    expect(search.mock.calls[0]?.[0]).toMatchObject({ query: "大寨", page: 1, size: 10, types: ["newspaper"] });
+    await screen.findByRole("heading", { name: highlightedTitleName });
+    expect(axios.post).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a failed desktop transport like a network failure", async () => {
+    const search = vi.fn().mockResolvedValue({ ok: false, status: 502, error: "搜索服务暂时不可用" });
+    Object.defineProperty(window, "jojoDesktop", { configurable: true, value: { appName: "jojo-desktop", search } });
+
+    renderSearch("/search?keyword=大寨");
+
+    await waitFor(() => expect(search).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText(/搜索失败/)).toBeTruthy();
+    expect(axios.post).not.toHaveBeenCalled();
+  });
+});

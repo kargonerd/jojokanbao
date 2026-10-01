@@ -13,6 +13,7 @@ import {
   type ArchivePublicationName,
 } from "@jojo/content";
 import { Button, Tag, Pagination, DateRangePicker, Select, type DateRangeValue } from "@jojo/ui";
+import { getDesktopSearchTransport } from "../../hostBridge";
 import { useAccountSessionStore } from "../../account/session";
 import { getLatestRmrbAvailableDate } from "../dateAvailability";
 import { archiveIssuePath } from "../../routes";
@@ -64,6 +65,13 @@ interface UnifiedSearchResult {
   metadata?: unknown;
   titleHighlights?: unknown;
   highlights?: unknown;
+}
+
+interface UnifiedSearchResponseBody {
+  data?: {
+    total?: number;
+    results?: UnifiedSearchResult[];
+  };
 }
 
 const SORT_OPTIONS = [
@@ -426,26 +434,40 @@ export function SearchPage({
     const periodicalDatasetIds = nextDatasetId
       ? [nextDatasetId]
       : PERIODICAL_DATASETS.map((dataset) => dataset.id);
+    const requestBody = {
+      query: keyword,
+      page: nextPage,
+      size: pageSize,
+      ...(nextContentType === "book"
+        ? { sources: scopedBookDatasets.map((dataset) => dataset.label) }
+        : nextContentType === "periodical"
+          ? { datasetIds: periodicalDatasetIds }
+          : {}),
+      types: unifiedTypes,
+      ...(nextSort ? { sort: nextSort } : {}),
+      ...(nextStartDate && nextEndDate
+        ? {
+            startDate: formatSearchApiDate(nextStartDate),
+            endDate: formatSearchApiDate(nextEndDate),
+          }
+        : {}),
+    };
     // Vite forwards local searches so development ports do not depend on the
-    // public search service's browser-origin allowlist.
-    const request = axios.post(import.meta.env.DEV ? "/search-api/content/search" : CONTENT_SEARCH_API, {
-          query: keyword,
-          page: nextPage,
-          size: pageSize,
-          ...(nextContentType === "book"
-            ? { sources: scopedBookDatasets.map((dataset) => dataset.label) }
-            : nextContentType === "periodical"
-              ? { datasetIds: periodicalDatasetIds }
-              : {}),
-          types: unifiedTypes,
-          ...(nextSort ? { sort: nextSort } : {}),
-          ...(nextStartDate && nextEndDate
-            ? {
-                startDate: formatSearchApiDate(nextStartDate),
-                endDate: formatSearchApiDate(nextEndDate),
-              }
-            : {}),
-        }, { signal: controller.signal });
+    // public search service's browser-origin allowlist. Packaged desktop builds
+    // go one step further and relay through the Electron main process: their
+    // renderer loads from file://, so the page origin is "null" and never
+    // matches that allowlist in the first place.
+    const desktopSearch = getDesktopSearchTransport();
+    const request: Promise<{ data: UnifiedSearchResponseBody }> = desktopSearch
+      ? desktopSearch(requestBody).then((result) => {
+          if (!result.ok || !result.data) throw new Error(result.error ?? "Desktop search failed");
+          return { data: result.data as UnifiedSearchResponseBody };
+        })
+      : axios.post<UnifiedSearchResponseBody>(
+          import.meta.env.DEV ? "/search-api/content/search" : CONTENT_SEARCH_API,
+          requestBody,
+          { signal: controller.signal },
+        );
 
     void request
       .then((response) => {

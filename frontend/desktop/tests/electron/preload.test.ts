@@ -52,6 +52,7 @@ describe('preload bridge', () => {
         setFeatureAvailability: (features: { rag: boolean; times: boolean }) => void;
         onCloseChoiceRequested: (callback: () => void) => () => void;
         respondToCloseChoice: (choice: 'tray' | 'quit' | 'cancel') => void;
+        search: (payload: Record<string, unknown>) => Promise<unknown>;
         settings: {
           getCloseBehavior: () => Promise<'ask' | 'tray' | 'quit'>;
           saveCloseBehavior: (behavior: 'ask' | 'tray' | 'quit') => Promise<'ask' | 'tray' | 'quit'>;
@@ -69,6 +70,8 @@ describe('preload bridge', () => {
     expect(exposedBridge.selectPdf).toBeUndefined();
     expect(exposedBridge.engine).toBeUndefined();
     expect(exposedBridge.getAppInfo).toEqual(expect.any(Function));
+    exposedBridge.search({ query: '大寨', page: 1 });
+    expect(invoke).toHaveBeenCalledWith('jojo-search:query', { query: '大寨', page: 1 });
     exposedBridge.setFeatureAvailability({ rag: false, times: false });
     expect(send).toHaveBeenCalledWith('jojo-desktop:feature-availability', { rag: false, times: false });
 
@@ -131,6 +134,7 @@ describe('preload bridge', () => {
     expect(mainSource).not.toContain("ipcMain.handle('jojo-engine:invoke'");
     expect(mainSource).not.toContain("ipcMain.handle('jojo-desktop:select-pdf'");
     expect(mainSource).toContain('registerDesktopAgentScheme(protocol)');
+    expect(mainSource).toContain("ipcMain.handle(DESKTOP_SEARCH_CHANNEL");
     expect(gatewaySource).toContain("export const DESKTOP_AGENT_SCHEME = 'jojo-agent'");
     expect(gatewaySource).not.toContain('jojo-pdf');
   });
