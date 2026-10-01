@@ -29,15 +29,19 @@ export const ANNOTATION_DOM_SCRIPT = `
           cursor = nodeEnd;
           if (nodeEnd <= start || nodeStart >= end || !node.parentNode) return;
           if (node.parentElement && node.parentElement.closest("mark[" + attribute + "]")) return;
-          var range = document.createRange();
-          range.setStart(node, Math.max(0, start - nodeStart));
-          range.setEnd(node, Math.min(length, end - nodeStart));
+          // Split the text instead of Range.surroundContents: the latter throws
+          // (and used to be swallowed silently, dropping that part of the range)
+          // whenever the text sits inside another inline element, such as an
+          // existing annotation underline.
+          var from = Math.max(0, start - nodeStart);
+          var to = Math.min(length, end - nodeStart);
+          var piece = from > 0 ? node.splitText(from) : node;
+          if (to < length) piece.splitText(to - from);
           var mark = document.createElement("mark");
           mark.setAttribute(attribute, id);
-          try {
-            range.surroundContents(mark);
-            if (!firstMark) firstMark = mark;
-          } catch (_) {}
+          piece.parentNode.insertBefore(mark, piece);
+          mark.appendChild(piece);
+          if (!firstMark) firstMark = mark;
         });
         return firstMark;
       }
