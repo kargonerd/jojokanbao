@@ -76,7 +76,7 @@ describe("postPdfDownloadToNative", () => {
       totalBytes: bytes.length,
       totalChunks: 1,
     });
-    expect(posted[posted.length - 1]).toMatchObject({ type: "pdf-download-end", downloadId: posted[0].downloadId });
+    expect(posted[posted.length - 1]).toMatchObject({ type: "pdf-download-end", downloadId: posted[0]!.downloadId });
   });
 
   it("splits large PDFs into ordered chunks that reassemble byte for byte", async () => {
@@ -88,7 +88,7 @@ describe("postPdfDownloadToNative", () => {
     expect(posted[0]).toMatchObject({ totalBytes: bytes.length, totalChunks: chunks.length, chunkSize: CHUNK_BYTES });
     expect(chunks.map((chunk) => chunk.seq)).toEqual(chunks.map((_, index) => index));
 
-    const downloadId = posted[0].downloadId;
+    const downloadId = posted[0]!.downloadId;
     expect(chunks.every((chunk) => chunk.downloadId === downloadId)).toBe(true);
     const reassembled = new Uint8Array(bytes.length);
     let offset = 0;
