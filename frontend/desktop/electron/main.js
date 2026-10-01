@@ -9,6 +9,11 @@ import {
   registerDesktopAgentScheme,
   resolveDesktopReaderOrigin,
 } from './agent-gateway.js';
+import {
+  DESKTOP_SEARCH_CHANNEL,
+  handleDesktopSearchRequest,
+  resolveDesktopSearchOrigin,
+} from './search-gateway.js';
 import { getDefaultWindowBounds, getRestorableWindowBounds } from './window-state.js';
 import { setupDesktopUpdater, stopDesktopUpdater } from './updater.js';
 
@@ -18,6 +23,13 @@ const windowsIconPath = path.join(currentDir, 'assets/icon.ico');
 const appIconPath = process.platform === 'win32' ? windowsIconPath : brandIconPath;
 const rendererUrl = process.env.JOJO_DESKTOP_RENDERER_URL;
 const remoteDebuggingPort = process.env.JOJO_DESKTOP_REMOTE_DEBUGGING_PORT;
+// Packaged builds load the renderer from file://, whose origin serializes as
+// "null" and never matches the search service's browser-origin allowlist, so
+// searches go through the main process instead of the renderer's fetch().
+const searchOrigin = resolveDesktopSearchOrigin(
+  process.env.JOJO_DESKTOP_SEARCH_ORIGIN,
+  app.isPackaged,
+);
 let mainWindow;
 let tray;
 let isQuitting = false;
@@ -306,6 +318,14 @@ ipcMain.handle('jojo-desktop:app-info', () => ({
   platform: process.platform,
   arch: process.arch
 }));
+
+ipcMain.handle(DESKTOP_SEARCH_CHANNEL, async (event, payload) => {
+  if (!mainWindow || event.sender !== mainWindow.webContents) throw new Error('unauthorized');
+  return handleDesktopSearchRequest(payload, {
+    fetch: (target, init) => net.fetch(target, init),
+    searchOrigin,
+  });
+});
 
 ipcMain.handle('jojo-settings:close-behavior:get', (event) => {
   if (!mainWindow || event.sender !== mainWindow.webContents) throw new Error('unauthorized');

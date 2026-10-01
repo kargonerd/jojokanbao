@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('jojoDesktop', {
     if (!['tray', 'quit', 'cancel'].includes(choice)) return;
     ipcRenderer.send('jojo-desktop:close-choice', choice);
   },
+  search: (payload) => ipcRenderer.invoke('jojo-search:query', payload),
   settings: {
     getCloseBehavior: () => ipcRenderer.invoke('jojo-settings:close-behavior:get'),
     saveCloseBehavior: (behavior) => ipcRenderer.invoke('jojo-settings:close-behavior:save', behavior),
