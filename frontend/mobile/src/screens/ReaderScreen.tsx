@@ -20,6 +20,7 @@ import { IS_EINK_RELEASE } from "../config/appVariant";
 import { ReaderEnvironment } from "../components/ReaderEnvironment";
 import { useReadingProgress } from "../reading/useReadingProgress";
 import { impactHaptic } from "../lib/haptics";
+import { PdfDownloadAssembler, parsePdfDownloadMessage } from "../lib/pdfDownloadReceive";
 import { parseArchiveReaderUrl, readerAppearanceScript, readerBootstrapScript } from "../lib/readerBridge";
 import type { RootStackParamList } from "../navigation/types";
 import { useMobileStore } from "../store/mobileStore";
@@ -61,11 +62,14 @@ export function ReaderScreen({ route, navigation }: ReaderScreenProps) {
     if (readingAttempt.current.key !== key) readingAttempt.current = { key, attempt: createReadingAttempt("periodical", key) };
     return readingAttempt.current.attempt;
   }
+  const pdfDownloadAssembler = useRef(new PdfDownloadAssembler());
   const allowedHosts = useMemo(() => new Set([safeHost(configuredReaderOrigin), safeHost(ARCHIVE_CDN_ORIGIN)]), []);
 
   useEffect(() => {
     webViewRef.current?.injectJavaScript(readerAppearanceScript({ eInkRelease: IS_EINK_RELEASE, textScale }));
   }, [textScale]);
+
+  useEffect(() => () => pdfDownloadAssembler.current.dispose(), []);
 
   useFocusEffect(useCallback(() => {
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
@@ -87,6 +91,13 @@ export function ReaderScreen({ route, navigation }: ReaderScreenProps) {
 
   function handleMessage(event: WebViewMessageEvent) {
     try {
+      // PDF download transfers use their own message contract; hand them to
+      // the assembler before the regular reader bridge parsing.
+      const pdfDownload = parsePdfDownloadMessage(event.nativeEvent.data);
+      if (pdfDownload) {
+        pdfDownloadAssembler.current.handle(pdfDownload);
+        return;
+      }
       const message = JSON.parse(event.nativeEvent.data) as ReaderMessage;
       syncUrl(message.url);
       if (message.type === "page") {

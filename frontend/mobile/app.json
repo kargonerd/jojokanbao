@@ -46,6 +46,7 @@
     "plugins": [
       "@react-native-community/datetimepicker",
       "expo-font",
+      "expo-sharing",
       ["expo-audio", { "microphonePermission": false, "recordAudioAndroid": false, "enableBackgroundRecording": false, "enableBackgroundPlayback": true }]
     ],
     "extra": {
