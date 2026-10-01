@@ -9,6 +9,7 @@ import { archiveIssuePath } from "../../routes";
 import { useRecentReadingStore } from "../../library/recentReadingStore";
 import { ReadingLoadingState } from "../../reading/ReadingLoadingState";
 import { useArchivePdf } from "../useArchivePdf";
+import { isNativeReader, postPdfDownloadToNative } from "../pdfDownloadBridge";
 
 const PAGE_SCROLL_GAP = 16;
 const READER_TOOLBAR_MAX_HEIGHT = 61;
@@ -460,6 +461,12 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
           setDownloadProgress(Math.min(100, Math.round((loadedBytes / totalBytes) * 100)));
         },
       });
+      // Android and iOS WebViews never trigger a save for blob URLs, so hand
+      // the decrypted bytes to the native shell through the reader bridge.
+      if (isNativeReader()) {
+        await postPdfDownloadToNative(bytes, downloadFilename);
+        return;
+      }
       const blob = new Blob([bytes.buffer as ArrayBuffer], { type: "application/pdf" });
       const objectUrl = URL.createObjectURL(blob);
       const anchor = document.createElement("a");

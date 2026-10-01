@@ -26,6 +26,13 @@ const pdfMocks = vi.hoisted(() => ({
   viewerProps: [] as Array<Record<string, unknown>>,
 }));
 
+const pdfDownloadBridgeMocks = vi.hoisted(() => ({
+  isNativeReader: vi.fn(() => false),
+  postPdfDownloadToNative: vi.fn(async () => undefined),
+}));
+
+vi.mock("../src/archive/pdfDownloadBridge", () => pdfDownloadBridgeMocks);
+
 vi.mock("@jojo/pdf-viewer", async () => ({
   ...await import("../../packages/pdf-viewer/src/outline"),
   fetchPdfDownloadBytes: pdfMocks.fetchPdfDownloadBytes,
@@ -125,6 +132,8 @@ beforeEach(() => {
   pdfMocks.fetchPdfDownloadBytes.mockReset();
   pdfMocks.usePdfDocument.mockReset();
   pdfMocks.viewerProps.length = 0;
+  pdfDownloadBridgeMocks.isNativeReader.mockReturnValue(false);
+  pdfDownloadBridgeMocks.postPdfDownloadToNative.mockReset().mockResolvedValue(undefined);
   setPdfState();
   readyDocument.getOutline.mockReset().mockResolvedValue([]);
   readyDocument.getDestination.mockReset().mockResolvedValue(null);
@@ -615,6 +624,30 @@ describe("ReaderPage toolbar interactions", () => {
     expect(URL.createObjectURL).toHaveBeenCalledWith(expect.objectContaining({ type: "application/pdf" }));
     expect(clickedDownload).toEqual({ href: "blob:archive-pdf", download: "rmrb-19761009.pdf" });
     await waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:archive-pdf"));
+  });
+
+  it("hands decrypted PDF bytes to the native shell inside the mobile WebView", async () => {
+    pdfDownloadBridgeMocks.isNativeReader.mockReturnValue(true);
+    const bytes = new Uint8Array([37, 80, 68, 70]);
+    pdfMocks.fetchPdfDownloadBytes.mockResolvedValue({ bytes, protected: true });
+    renderReader("/rmrb/19761009");
+
+    fireEvent.click(screen.getByRole("button", { name: "下载 PDF" }));
+    await waitFor(() => expect(pdfDownloadBridgeMocks.postPdfDownloadToNative).toHaveBeenCalledWith(bytes, "rmrb-19761009.pdf"));
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+    expect((screen.getByRole("button", { name: "下载 PDF" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("falls back to the copy-link hint when the native hand-off fails", async () => {
+    pdfDownloadBridgeMocks.isNativeReader.mockReturnValue(true);
+    pdfMocks.fetchPdfDownloadBytes.mockResolvedValue({ bytes: new Uint8Array([37, 80, 68, 70]), protected: true });
+    pdfDownloadBridgeMocks.postPdfDownloadToNative.mockRejectedValue(new Error("文件过大，请复制链接在浏览器中打开后下载"));
+    renderReader("/rmrb/19761009");
+
+    fireEvent.click(screen.getByRole("button", { name: "下载 PDF" }));
+    await waitFor(() => expect(window.alert).toHaveBeenCalledWith("文件过大，请复制链接在浏览器中打开后下载"));
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+    expect((screen.getByRole("button", { name: "下载 PDF" }) as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("prevents duplicate downloads and surfaces a download error", async () => {
