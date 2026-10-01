@@ -1,9 +1,9 @@
 export const DESKTOP_AGENT_SCHEME = 'jojo-agent';
 
-const DEFAULT_READER_ORIGIN = 'https://beta.jojokanbao.cn';
+const DEFAULT_READER_ORIGIN = 'https://reader.jojokanbao.cn';
 const TRUSTED_READER_ORIGINS = new Set([
   DEFAULT_READER_ORIGIN,
-  'https://reader.jojokanbao.cn',
+  'https://beta.jojokanbao.cn',
 ]);
 const DESKTOP_AGENT_HOST = 'reader';
 const ROUTE_LIMITS = new Map([
@@ -11,7 +11,10 @@ const ROUTE_LIMITS = new Map([
   ['/gateway/times/explain', 6 * 1024 * 1024],
   ['/api/v1/speech/providers', 0],
   ['/api/v1/speech', 8 * 1024],
+  ['/api/v1/account/signup-authorization', 8 * 1024],
 ]);
+const GET_ROUTES = new Set(['/api/v1/speech/providers']);
+const JSON_ROUTES = new Set(['/api/v1/account/signup-authorization']);
 const FORWARDED_REQUEST_HEADERS = [
   'accept',
   'authorization',
@@ -92,8 +95,12 @@ export async function handleDesktopAgentRequest(request, { fetch, readerOrigin }
   if (request.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: responseHeaders() });
   }
-  const method = incoming.pathname === '/api/v1/speech/providers' ? 'GET' : 'POST';
+  const method = GET_ROUTES.has(incoming.pathname) ? 'GET' : 'POST';
   const speech = incoming.pathname.startsWith('/api/v1/speech');
+  const json = JSON_ROUTES.has(incoming.pathname);
+  const tooLarge = json ? '请求内容过长' : '问答内容过长';
+  const invalidResponse = json ? '注册服务入口返回了无效响应' : '问答服务入口返回了无效响应';
+  const unavailable = json ? '注册服务暂时不可用' : '问答服务暂时不可用';
   if (request.method !== method) {
     return jsonError(405, 'Method not allowed', { allow: `${method}, OPTIONS` });
   }
@@ -106,9 +113,9 @@ export async function handleDesktopAgentRequest(request, { fetch, readerOrigin }
   const target = new URL(`${incoming.pathname}${incoming.search}`, readerOrigin);
   try {
     const declaredLength = Number(request.headers.get('content-length') ?? '0');
-    if (declaredLength > maxBytes) return jsonError(413, '问答内容过长');
+    if (declaredLength > maxBytes) return jsonError(413, tooLarge);
     const body = await request.arrayBuffer();
-    if (body.byteLength > maxBytes) return jsonError(413, '问答内容过长');
+    if (body.byteLength > maxBytes) return jsonError(413, tooLarge);
     const upstream = await fetch(target, {
       method,
       headers,
@@ -118,16 +125,18 @@ export async function handleDesktopAgentRequest(request, { fetch, readerOrigin }
     const contentType = upstream.headers.get('content-type')?.toLowerCase() ?? '';
     const validType = speech
       ? contentType.startsWith('application/json') || (method === 'POST' && contentType.startsWith('audio/'))
-      : contentType.includes('text/event-stream');
+      : json
+        ? contentType.startsWith('application/json')
+        : contentType.includes('text/event-stream');
     if (upstream.ok && !validType) {
       await upstream.body?.cancel().catch(() => undefined);
-      return jsonError(502, '问答服务入口返回了无效响应');
+      return jsonError(502, invalidResponse);
     }
     return new Response(upstream.body, {
       status: upstream.status,
       headers: responseHeaders(upstream.headers),
     });
   } catch {
-    return jsonError(502, '问答服务暂时不可用');
+    return jsonError(502, unavailable);
   }
 }

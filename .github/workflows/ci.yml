@@ -182,7 +182,10 @@ jobs:
   mobile-ios:
     name: Mobile iOS native build
     needs: changes
-    if: needs.changes.outputs.mobile_ios == 'true'
+    # iOS is not shipping short-term, so the macOS build is disabled. Restore
+    # the changed-path condition below when App Store work resumes.
+    if: false
+    # if: needs.changes.outputs.mobile_ios == 'true'
     runs-on: macos-latest
     # A Maven outage may require the pinned source fallback. Leave time for
     # the simulator smoke test after that slower compile finishes.

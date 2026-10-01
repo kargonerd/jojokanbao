@@ -31,7 +31,7 @@ export const mobilePersonalInvitationRepository =
 const controller = createJojoAuthStore(mobileAuthClient, {
   readPersistedSession: () => readMobilePersistedSession(AsyncStorage),
   startSignupPolicy,
-  authorizeSignup: (email, code) => authorizeSignup(`${process.env.EXPO_PUBLIC_READER_API_BASE?.replace(/\/$/, "") || "https://beta.jojokanbao.cn"}/api/v1/account/signup-authorization`, email, code),
+  authorizeSignup: (email, code) => authorizeSignup(`${process.env.EXPO_PUBLIC_READER_API_BASE?.replace(/\/$/, "") || "https://reader.jojokanbao.cn"}/api/v1/account/signup-authorization`, email, code),
 });
 
 export const useMobileAuthStore = controller.useAuthStore;
