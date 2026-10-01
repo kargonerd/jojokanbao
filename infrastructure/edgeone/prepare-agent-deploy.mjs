@@ -28,6 +28,15 @@ await cp(
   path.join(cloudFunctionsOutput, "gateway"),
   { recursive: true },
 );
+// TEMPORARY probe: verify whether a plain edge function under the Agent domain
+// survives a browser preflight (the `/rag` agent route does not).
+const edgeFunctionsOutput = path.join(outputDirectory, "edge-functions");
+await mkdir(edgeFunctionsOutput, { recursive: true });
+await cp(
+  path.join(edgeoneRoot, "functions", "cors-probe"),
+  path.join(edgeFunctionsOutput, "cors-probe"),
+  { recursive: true },
+);
 await cp(
   path.join(edgeoneRoot, "agent-middleware.ts"),
   path.join(outputDirectory, "middleware.ts"),
