@@ -5,6 +5,8 @@
  * platform layer, before any of our code runs. If this route answers 2xx, the
  * platform restriction is specific to `agents/` routes and a same-origin relay
  * under the Agent domain is viable.
+ *
+ * Named `index.ts` (not `[[default]].ts`) so it answers at `/cors-probe` itself.
  */
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -13,7 +15,7 @@ const CORS_HEADERS = {
   "Access-Control-Max-Age": "86400",
 };
 
-export async function onRequest(context: { request: Request }): Promise<Response> {
+export function onRequest(context: { request: Request }): Response {
   if (context.request.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: CORS_HEADERS });
   }
