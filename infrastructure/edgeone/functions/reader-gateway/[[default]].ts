@@ -19,6 +19,19 @@ type ReaderGatewayContext = {
  * header. EdgeOne surfaces a generic "TypeError: fetch failed"; the useful
  * detail (ENOTFOUND / ECONNREFUSED / TLS) only exists on `error.cause`.
  */
+/**
+ * TEMPORARY host matrix: find which hosts this edge runtime can actually reach.
+ * Removed as soon as the egress question is answered.
+ */
+const DIAG_TARGETS = [
+  "https://agent-global.jojokanbao.cn/rag/health",
+  "https://jojo-agent-global-dpu6m5jdsxlx.edgeone.dev/rag/health",
+  "https://api.0-0.pro/v1/models",
+  "https://api.github.com/zen",
+  "https://www.baidu.com/",
+  "https://www.cloudflare.com/cdn-cgi/trace",
+];
+
 function describeFetchError(error: unknown): string {
   if (!(error instanceof Error)) return String(error);
   const parts = [`${error.name}: ${error.message}`];
@@ -100,7 +113,19 @@ export async function onRequest(context: ReaderGatewayContext): Promise<Response
     // response so a future investigation does not have to guess.
     const reason = describeFetchError(error);
     console.error("reader-gateway upstream failed", { target: target.origin, reason });
-    return Response.json({ error: "问答服务暂时不可用" }, {
+    const probes: string[] = [];
+    for (const url of DIAG_TARGETS) {
+      const started = Date.now();
+      try {
+        const res = await fetch(url, { method: "GET", redirect: "manual" });
+        probes.push(`${url} -> ${res.status} (${Date.now() - started}ms)`);
+      } catch (probeError) {
+        probes.push(
+          `${url} -> FAIL (${Date.now() - started}ms) ${describeFetchError(probeError)}`,
+        );
+      }
+    }
+    return Response.json({ error: "问答服务暂时不可用", failure: reason, probes }, {
       status: 502,
       headers: { "X-JOJO-Gateway-Failure": encodeURIComponent(reason).slice(0, 400) },
     });
