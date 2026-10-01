@@ -21,6 +21,8 @@ the environments that need different runners or dependencies:
 - Web browser tests
 - Desktop renderer browser tests
 - Mobile iOS native Release compilation and Simulator launch smoke test
+  (currently disabled because iOS is not shipping; re-enable the `mobile-ios`
+  job condition in `ci.yml` when App Store work resumes)
 - root-level Homepage content
 - Supabase migrations and the shared Auth contract
 - EdgeOne Python Cloud API tests

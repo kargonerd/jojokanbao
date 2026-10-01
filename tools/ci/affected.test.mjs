@@ -208,7 +208,9 @@ test("required checks remain stable and native validation uses its consumer flag
   const outputNames = Object.keys(workflow.jobs.changes.outputs)
     .filter((name) => !["base_sha", "head_sha"].includes(name)).sort();
   assert.deepEqual(Object.keys(check([]).flags).sort(), outputNames);
-  assert.equal(workflow.jobs["mobile-ios"].if, "needs.changes.outputs.mobile_ios == 'true'");
+  // iOS is not shipping short-term: the job is disabled via `if: false` and
+  // the original changed-path condition is kept as a comment for re-enabling.
+  assert.equal(workflow.jobs["mobile-ios"].if, false);
   assert.ok(workflow.jobs.changes.steps.some((step) => step.run?.includes("pnpm --filter @jojo/ci test")));
   assert.ok(workflow.jobs["mobile-ios"].steps.some((step) => step.run?.includes("smoke-ios-simulator.sh")));
 });
