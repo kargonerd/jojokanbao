@@ -14,6 +14,45 @@ type ReaderGatewayContext = {
   request: Request;
 };
 
+/** Temporary probes: distinguish "this host is unreachable" from "all egress is down". */
+const DIAG_TARGETS = [
+  "https://agent-global.jojokanbao.cn/rag/health",
+  "https://api.0-0.pro/v1/models",
+  "https://www.cloudflare.com/cdn-cgi/trace",
+];
+
+function describeFetchError(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+  const parts = [`${error.name}: ${error.message}`];
+  const cause = (error as { cause?: unknown }).cause;
+  if (cause instanceof Error) {
+    parts.push(`cause=${cause.name}: ${cause.message}`);
+    for (const key of ["code", "errno", "syscall", "hostname"] as const) {
+      const value = (cause as unknown as Record<string, unknown>)[key];
+      if (value !== undefined) parts.push(`${key}=${String(value)}`);
+    }
+    const inner = (cause as { cause?: unknown }).cause;
+    if (inner instanceof Error) parts.push(`inner=${inner.name}: ${inner.message}`);
+  } else if (cause !== undefined) {
+    parts.push(`cause=${String(cause)}`);
+  }
+  return parts.join(" | ");
+}
+
+async function probeUpstreams(): Promise<string[]> {
+  const results: string[] = [];
+  for (const url of DIAG_TARGETS) {
+    const started = Date.now();
+    try {
+      const res = await fetch(url, { method: "GET", redirect: "manual" });
+      results.push(`${url} -> ${res.status} (${Date.now() - started}ms)`);
+    } catch (error) {
+      results.push(`${url} -> FAIL (${Date.now() - started}ms) ${describeFetchError(error)}`);
+    }
+  }
+  return results;
+}
+
 export async function onRequest(context: ReaderGatewayContext): Promise<Response> {
   const incoming = new URL(context.request.url);
   const pathname = incoming.pathname.replace(/\/+$/, "");
@@ -74,15 +113,18 @@ export async function onRequest(context: ReaderGatewayContext): Promise<Response
   try {
     upstream = await fetch(target, upstreamInit);
   } catch (error) {
-    // EdgeOne defaults an edge-function fetch to a 15s timeout, which can be
-    // shorter than the agent's time-to-first-byte. Report the cause on the
-    // response so a timeout can be told apart from a real agent outage, and
-    // keep it in the platform log as well.
-    const reason = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
-    console.error("reader-gateway upstream failed", { target: target.origin, reason });
-    return Response.json({ error: "问答服务暂时不可用" }, {
+    // TEMPORARY DIAGNOSTIC: record the transport-level cause and probe whether
+    // other hosts are reachable from the same edge runtime.
+    const reason = describeFetchError(error);
+    const probes = await probeUpstreams();
+    console.error("reader-gateway upstream failed", { target: target.origin, reason, probes });
+    return Response.json({
+      error: "问答服务暂时不可用",
+      failure: reason,
+      probes,
+    }, {
       status: 502,
-      headers: { "X-JOJO-Gateway-Failure": encodeURIComponent(reason).slice(0, 180) },
+      headers: { "X-JOJO-Gateway-Failure": encodeURIComponent(reason).slice(0, 400) },
     });
   }
   const responseHeaders = new Headers();
