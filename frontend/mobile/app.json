@@ -2,7 +2,7 @@
   "expo": {
     "name": "JOJO看报",
     "slug": "mobile",
-    "version": "0.0.10",
+    "version": "0.0.11",
     "scheme": "jojokanbao",
     "orientation": "default",
     "icon": "./assets/icon.png",
