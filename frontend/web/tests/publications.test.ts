@@ -18,22 +18,12 @@ describe("publication catalog invariants", () => {
     ]);
   });
 
-  it("keeps every configured issue list sorted, unique, and positive", () => {
-    for (const publication of Object.values(PUBLICATIONS)) {
-      for (const [year, issues] of Object.entries(publication.seqConfig ?? {})) {
-        expect(issues, `${publication.name} ${year} must not contain duplicates`).toEqual([...new Set(issues)]);
-        expect(issues, `${publication.name} ${year} must be sorted`).toEqual([...issues].sort((a, b) => a - b));
-        expect(issues.every((issue) => Number.isInteger(issue) && issue > 0)).toBe(true);
-      }
-    }
-  });
-
   it("defers availability to the Delivery data layer", () => {
     // 期数表与缺档黑名单已全部删除：杂志由数据集索引枚举期次，
     // 报纸由索引中的自适应日历判定日期。默认期是否可读由数据层校验。
     for (const publication of Object.values(PUBLICATIONS)) {
-      expect(publication.seqConfig, `${publication.name} must not carry a local issue table`).toBeUndefined();
-      expect(publication.disabledDate, `${publication.name} must not carry a local date blacklist`).toBeUndefined();
+      expect("seqConfig" in publication, `${publication.name} must not carry a local issue table`).toBe(false);
+      expect("disabledDate" in publication, `${publication.name} must not carry a local date blacklist`).toBe(false);
     }
   });
 
@@ -63,8 +53,8 @@ describe("人民日报 configuration", () => {
 describe("magazine issue availability", () => {
   it("keeps 红旗 supplement labels", () => {
     const hq = PUBLICATIONS.hq!;
-    expect(hq.seqConfig).toBeUndefined();
-    expect(hq.disabledDate).toBeUndefined();
+    expect("seqConfig" in hq).toBe(false);
+    expect("disabledDate" in hq).toBe(false);
     expect(hq.genSeqText?.(19)).toBe("第19期");
     expect(hq.genSeqText?.(91)).toBe("增刊1");
     expect(hq.genSeqText?.(92)).toBe("增刊2");
