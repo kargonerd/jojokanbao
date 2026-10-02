@@ -2,14 +2,14 @@ import { useParams, useNavigate, useSearchParams, useLocation } from "react-rout
 import { type CSSProperties, useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useReadingAnalytics } from "../../analytics/useReadingAnalytics";
 import { fetchPdfDownloadBytes, findPdfOutlineLocation, resolvePdfOutlineDestination, PdfViewer, usePdfDocument, type PdfOutlineItem, type PdfOutlineLocation, type PdfSearchResult } from "@jojo/pdf-viewer";
-import { formatArchiveIssueLabel } from "@jojo/content";
+import { formatArchiveIssueLabel, isAdaptiveCalendarDateAvailable } from "@jojo/content";
 import { EmptyState, DatePicker, Toolbar, YearPicker } from "@jojo/ui";
 import { PUBLICATIONS, type PublicationName } from "../publications";
 import { archiveIssuePath } from "../../routes";
 import { useRecentReadingStore } from "../../library/recentReadingStore";
 import { ReadingLoadingState } from "../../reading/ReadingLoadingState";
 import { useArchivePdf } from "../useArchivePdf";
-import { useArchiveIssueIndex } from "../useArchiveIssueIndex";
+import { useArchiveIssueOptions } from "../useArchiveIssueOptions";
 import { isNativeReader, postPdfDownloadToNative } from "../pdfDownloadBridge";
 
 const PAGE_SCROLL_GAP = 16;
@@ -229,11 +229,10 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   const searchActive = Boolean(searchText);
   const requestedSearchPage = Number(searchParams.get("searchPage"));
   const config = PUBLICATIONS[name];
-  const dynamicIssues = type === "magazine" && config.dynamicIssues === true;
-  const issueIndex = useArchiveIssueIndex(dynamicIssues ? name : null);
-  const seqConfig = dynamicIssues ? issueIndex.yearSeqMap : config.seqConfig;
-  // 索引加载中或失败时不拦截路由：深链阅读由 Delivery 数据层兜底校验。
-  const issueIndexReady = !issueIndex.loading && !issueIndex.error;
+  // 期次/日历选项由 Delivery 数据层推导；加载中或失败时不拦截路由，
+  // 深链阅读由数据层兜底校验。
+  const issueOptions = useArchiveIssueOptions(name);
+  const issueOptionsReady = !issueOptions.loading && !issueOptions.error;
 
   // Route params are the source of truth. Deriving these synchronously avoids
   // issuing a PDF request with stale state while switching publications.
@@ -245,9 +244,8 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
     ? "链接中的日期或期数格式不正确。"
     : type === "newspaper" && !isCalendarDate(rawId)
       ? "链接中的日期不是有效日期。"
-      : type === "magazine" && (dynamicIssues
-        ? issueIndexReady && !seqConfig?.[candidateYear]?.includes(candidateSeq)
-        : !config.seqConfig?.[candidateYear]?.includes(candidateSeq))
+      : type === "magazine" && issueOptionsReady
+        && !issueOptions.yearSeqMap?.[candidateYear]?.includes(candidateSeq)
         ? "该年份没有对应的杂志期数。"
         : null;
   const routeId = routeError ? "" : rawId;
@@ -641,11 +639,14 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   }, [name, id]);
 
   // ─── Seq options for magazines ───
-  const seqOptions = seqConfig?.[date] || [];
+  const seqOptions = issueOptions.yearSeqMap[date] || [];
   const selectedSeqText = config?.genSeqText?.(seq) || `第${seq}期`;
   const fallbackYear = Number(config.defaultId.slice(0, 4));
-  const yearMin = dynamicIssues ? Number(issueIndex.years[0] ?? fallbackYear) : name === "sjzs" ? 1934 : 1950;
-  const yearMax = dynamicIssues ? Number(issueIndex.years[issueIndex.years.length - 1] ?? fallbackYear) : name === "rmhb" ? 1976 : 2025;
+  const yearMin = Number(issueOptions.years[0] ?? fallbackYear);
+  const yearMax = Number(issueOptions.years[issueOptions.years.length - 1] ?? fallbackYear);
+  const disabledDate = type === "newspaper" && issueOptions.pdfCalendar
+    ? (dateStr: string) => !isAdaptiveCalendarDateAvailable(issueOptions.pdfCalendar!, dateStr)
+    : undefined;
 
   const handleVisiblePageChange = useCallback((pageNumber: number) => {
     setCurrentPage(pageNumber);
@@ -808,12 +809,12 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
             <YearPicker
               value={date}
               onChange={(y) => {
-                const options = seqConfig?.[y];
+                const options = issueOptions.yearSeqMap?.[y];
                 if (!options?.length) return;
                 const firstSeq = options[0];
                 navigate(archiveIssuePath(name, `${y}${String(firstSeq).padStart(2, '0')}`), { replace: true });
               }}
-              disabledYear={(year) => !seqConfig?.[year]?.length}
+              disabledYear={(year) => !issueOptions.yearSeqMap?.[year]?.length}
               min={yearMin}
               max={yearMax}
               className="min-w-0 flex-1 sm:flex-none"
@@ -843,16 +844,16 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
             {seqDropdownOpen && (
               <div ref={seqDropdownPanelRef} className="absolute left-0 top-full z-[90] mt-1 w-[160px] overscroll-y-contain border-2 border-red bg-paper shadow-[4px_4px_0_rgba(139,26,26,.14)] min-[390px]:left-auto min-[390px]:right-0">
                 <div ref={seqListboxRef} className="max-h-64 overflow-y-auto overscroll-y-contain py-1" role="listbox" aria-label="期数">
-                  {dynamicIssues && issueIndex.error ? (
+                  {issueOptions.error ? (
                     <button
                       type="button"
                       className="block h-9 w-full px-4 text-left text-sm text-red transition-colors hover:bg-red/10"
-                      onClick={issueIndex.retry}
+                      onClick={issueOptions.retry}
                     >
                       期数加载失败，点击重试
                     </button>
                   ) : null}
-                  {dynamicIssues && issueIndex.loading && seqOptions.length === 0 ? (
+                  {issueOptions.loading && seqOptions.length === 0 ? (
                     <span className="block h-9 px-4 text-left text-sm leading-9 text-muted">正在加载期数…</span>
                   ) : null}
                   {seqOptions.map((option) => {
@@ -897,7 +898,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
             <DatePicker
               value={date}
               onChange={(ds) => navigate(archiveIssuePath(name, ds), { replace: true })}
-              disabledDate={config?.disabledDate}
+              disabledDate={disabledDate}
               unavailableLabel="暂无该期"
               className="min-w-0 flex-1 sm:flex-none"
             />

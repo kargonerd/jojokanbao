@@ -6,9 +6,11 @@ import {
   getLatestRmrbAvailableDate,
   isArchiveNewspaperIssueAvailable,
   isArchiveIssueId,
+  isAdaptiveCalendarDateAvailable,
   issueIdToDate,
   stripSearchHighlights,
 } from "../src/archive";
+import type { JojoAdaptiveCalendar } from "../src/types";
 
 describe("archive shared domain", () => {
   it("builds reader URLs", () => {
@@ -46,5 +48,48 @@ describe("archive shared domain", () => {
     expect(isArchiveNewspaperIssueAvailable("ckxx", "19890601", afterCutoff)).toBe(false);
     expect(isArchiveNewspaperIssueAvailable("ckxx", "19900102", afterCutoff)).toBe(true);
     expect(isArchiveNewspaperIssueAvailable("ckxx", "19990229", afterCutoff)).toBe(false);
+  });
+});
+
+describe("adaptive calendar availability", () => {
+  // Fixture mirrors the published rmrb/ckxx calendars: default available,
+  // per-year excludes as dates/ranges/months, and an empty include year.
+  const calendar: JojoAdaptiveCalendar = {
+    format: "adaptive-calendar/1",
+    startDate: "1957-03-01",
+    endDate: "1998-12-31",
+    default: "available",
+    years: {
+      "1957": { exclude: { dates: ["05-02"], ranges: [["08-25", "08-31"]] } },
+      "1958": { exclude: { months: ["02"] } },
+      "1989": { include: {} },
+    },
+  };
+
+  it("applies the published start and end boundaries", () => {
+    expect(isAdaptiveCalendarDateAvailable(calendar, "19570228")).toBe(false);
+    expect(isAdaptiveCalendarDateAvailable(calendar, "19570301")).toBe(true);
+    expect(isAdaptiveCalendarDateAvailable(calendar, "19981231")).toBe(true);
+    expect(isAdaptiveCalendarDateAvailable(calendar, "19990101")).toBe(false);
+  });
+
+  it("supports exclude dates, ranges, and whole months", () => {
+    expect(isAdaptiveCalendarDateAvailable(calendar, "19570502")).toBe(false);
+    expect(isAdaptiveCalendarDateAvailable(calendar, "19570503")).toBe(true);
+    expect(isAdaptiveCalendarDateAvailable(calendar, "19570825")).toBe(false);
+    expect(isAdaptiveCalendarDateAvailable(calendar, "19570831")).toBe(false);
+    expect(isAdaptiveCalendarDateAvailable(calendar, "19570901")).toBe(true);
+    expect(isAdaptiveCalendarDateAvailable(calendar, "19580210")).toBe(false);
+    expect(isAdaptiveCalendarDateAvailable(calendar, "19580301")).toBe(true);
+  });
+
+  it("treats an empty include year as fully unavailable", () => {
+    expect(isAdaptiveCalendarDateAvailable(calendar, "19890101")).toBe(false);
+    expect(isAdaptiveCalendarDateAvailable(calendar, "19891231")).toBe(false);
+  });
+
+  it("rejects malformed issue ids", () => {
+    expect(isAdaptiveCalendarDateAvailable(calendar, "1957030")).toBe(false);
+    expect(isAdaptiveCalendarDateAvailable(calendar, "not-a-date")).toBe(false);
   });
 });

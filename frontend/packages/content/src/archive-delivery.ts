@@ -1,10 +1,24 @@
 import { ARCHIVE_PUBLICATION_BY_ID, type ArchivePublicationName } from "./archive";
 import { JoxClient, resolveJoxObject } from "./jox";
 import { asJojoCatalog, asJojoDatasetIndex, asJojoItemManifest } from "./validation";
+import type { JojoAdaptiveCalendar, JojoDatasetIndex } from "./types";
 
 export interface ArchivePdfSource {
   url: string;
   objectKey: string;
+}
+
+async function fetchArchiveDatasetIndex(
+  client: JoxClient,
+  publication: ArchivePublicationName,
+  signal?: AbortSignal,
+): Promise<{ entry: { indexObject: string }; index: JojoDatasetIndex & { items: NonNullable<JojoDatasetIndex["items"]> } }> {
+  const catalog = asJojoCatalog(await client.fetchJson("catalog.jox", signal));
+  const entry = catalog.datasets.find((row) => row.datasetId === publication && row.publicationStatus !== "draft");
+  if (!entry) throw new Error("该报刊尚未发布");
+  const index = asJojoDatasetIndex(await client.fetchJson(entry.indexObject, signal));
+  if (index.datasetId !== publication || index.publicationStatus === "draft") throw new Error("报刊索引不匹配");
+  return { entry, index };
 }
 
 /** Resolve the published asset; filenames and directories belong to the manifest. */
@@ -20,11 +34,7 @@ export async function loadArchivePdf(
     || new Date(day).toISOString().slice(0, 10) !== day : !/^\d{6}$/.test(issueId)) {
     throw new Error("报刊日期或期号无效");
   }
-  const catalog = asJojoCatalog(await client.fetchJson("catalog.jox", signal));
-  const entry = catalog.datasets.find((row) => row.datasetId === publication && row.publicationStatus !== "draft");
-  if (!entry) throw new Error("该报刊尚未发布");
-  const index = asJojoDatasetIndex(await client.fetchJson(entry.indexObject, signal));
-  if (index.datasetId !== publication || index.publicationStatus === "draft") throw new Error("报刊索引不匹配");
+  const { entry, index } = await fetchArchiveDatasetIndex(client, publication, signal);
   const itemKey = newspaper ? day : issueId;
   const item = index.items.find((row) => row.itemKey === itemKey || row.itemId === `${publication}:${itemKey}`);
   const path = item?.manifestObject ?? (newspaper ? index.itemPath
@@ -57,13 +67,29 @@ export async function loadArchiveIssueKeys(
   if (ARCHIVE_PUBLICATION_BY_ID[publication].type !== "magazine") {
     throw new Error("该报刊不提供期数索引");
   }
-  const catalog = asJojoCatalog(await client.fetchJson("catalog.jox", signal));
-  const entry = catalog.datasets.find((row) => row.datasetId === publication && row.publicationStatus !== "draft");
-  if (!entry) throw new Error("该报刊尚未发布");
-  const index = asJojoDatasetIndex(await client.fetchJson(entry.indexObject, signal));
-  if (index.datasetId !== publication || index.publicationStatus === "draft") throw new Error("报刊索引不匹配");
+  const { index } = await fetchArchiveDatasetIndex(client, publication, signal);
   return index.items
     .filter((item) => item.publicationStatus !== "draft")
     .map((item) => item.itemKey)
     .sort();
+}
+
+/**
+ * The PDF availability calendar of a newspaper Dataset ("rmrb"/"ckxx").
+ * Newspapers derive their items from itemPath instead of enumerating dates, so
+ * the dataset index publishes a jojo-periodical-availability adaptive calendar
+ * describing exactly which days have PDFs; date pickers should gate on it.
+ */
+export async function loadArchivePdfCalendar(
+  client: JoxClient,
+  publication: ArchivePublicationName,
+  signal?: AbortSignal,
+): Promise<JojoAdaptiveCalendar | null> {
+  if (ARCHIVE_PUBLICATION_BY_ID[publication].type !== "newspaper") {
+    throw new Error("该报刊不提供日期日历");
+  }
+  const { index } = await fetchArchiveDatasetIndex(client, publication, signal);
+  const periodical = index.availability && "formatVersion" in index.availability ? index.availability : null;
+  const pdf = periodical?.pdf ?? null;
+  return pdf && pdf.format === "adaptive-calendar/1" ? pdf : null;
 }
