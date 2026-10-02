@@ -51,7 +51,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
-      EXPO_PUBLIC_AGENT_API_URL: https://agent-global.jojokanbao.cn/rag
+      EXPO_PUBLIC_AGENT_API_URL: https://agent-global.jojokanbao.cn/ask
       EXPO_PUBLIC_RELEASE_CDN_BASE: ${{ vars.DOWNLOAD_CDN_BASE || 'https://blacknews.jojokanbao.cn' }}/releases
       EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
       EXPO_PUBLIC_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}

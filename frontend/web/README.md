@@ -51,11 +51,12 @@ Git worktree 自己没有 `.env` 时，Web、Desktop 和本地 Agent 会自动�
 不需要另行启动搜索后端。Web 与 Desktop 共用此开发代理；生产构建仍使用原来的搜索服务地址。
 
 报刊、书籍、RAG 馆藏与 Times 都通过 `VITE_CONTENT_CDN_BASE` 读取 B2 CDN 已发布的
-Jox 内容，不为不同模块配置额外的内容源。Agent 请求走
-`/gateway/ask`，再由 Reader Cloud Function 转发到国际 Agent。浏览器不配置模块 API
-Base 或直连 Agent 域名。AI 与时事入口仍只向已登录读者显示；账号、Agent 和划线评论等
-写操作继续校验 Supabase access token。本地 Vite 服务器使用服务端
-`JOJO_AGENT_URL` 把同一个 `/gateway/ask` 路径流式转发到国际 `/rag`。
+Jox 内容，不为不同模块配置额外的内容源。Agent 请求直连国际 Agent 的统一入口
+`https://agent-global.jojokanbao.cn/ask`（Times 为 `/ask/times`），与 Mobile、Desktop
+共用同一路径；该入口自带 CORS 与 `OPTIONS` 预检应答，可以覆盖默认值，见
+`VITE_AGENT_API_BASE`。Reader 自家 API（语音、注册授权）留在 Web 自身 origin，可用
+`VITE_READER_API_BASE` 覆盖。AI 与时事入口仍只向已登录读者显示；账号、Agent 和划线评论等
+写操作继续校验 Supabase access token。
 历史记录按登录账号保存在浏览器 IndexedDB，不设置自动过期。每轮请求只携带最近 20
 条用户/助手消息，国际问答服务不保存聊天历史。以后云同步只需同步同一套会话、消息和
 引用结构。单本提问
@@ -94,9 +95,11 @@ pnpm --filter @jojo/web dev
 ```
 
 本地 Agent 默认监听 `127.0.0.1:8789`，读取本机 Codex OAuth。Web 对话保存在浏览器
-IndexedDB，因此重启本地 Agent 不会清空历史。`.env.local` 可用
-`JOJO_AGENT_URL=http://127.0.0.1:8789/rag` 让 Web 开发代理连接它。正式环境不使用这套
-进程内聊天存储；国际 EdgeOne Makers Agent 只负责流式回答，Web 历史仍留在用户浏览器。
+IndexedDB，因此重启本地 Agent 不会清空历史。本地调试时在 `.env.local` 里设置
+`VITE_AGENT_API_BASE=http://127.0.0.1:8080` 与
+`JOJO_AGENT_URL=http://127.0.0.1:8789/rag`：Vite 会把发往 `/ask` 的请求代理到本地 Agent，
+并重写到内部 `/rag`。正式环境不使用这套进程内聊天存储；国际 EdgeOne Makers Agent 只负责
+流式回答，Web 历史仍留在用户浏览器。
 
 书架、共享批注、听读是登录后可用的常规功能，访问权限由服务端校验。小型运行配置统一见 [PostHog 接入](../../docs/posthog.md)。
 

@@ -1,10 +1,10 @@
 import type { JojoAssetDescriptor } from "@jojo/content";
 import { readerExplanationRequest, type ExplanationRequest } from "@jojo/ui/reader-explanation";
 import type { TextAnchor } from "../annotations/types";
-import { agentGatewayUrl } from "../api/agentGateway";
+import { agentAskUrl } from "../api/agentGateway";
 import { timesApi, type TimesNewsItem } from "./api";
 
-const AGENT_URL = agentGatewayUrl("/gateway/times/explain");
+const AGENT_URL = agentAskUrl("/ask/times");
 const MAX_IMAGES = 4;
 const MAX_IMAGE_BYTES = 700_000;
 const MAX_IMAGE_EDGE = 1_280;

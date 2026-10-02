@@ -87,5 +87,8 @@ export async function middleware(
 }
 
 export const config = {
-  matcher: ["/rag", "/times", "/cors-probe"],
+  // `/ask` and `/ask/times` are the unified client entry points (plain Edge
+  // Functions). They handle their own OPTIONS preflight and must not be forced
+  // through the POST-only Agent middleware.
+  matcher: ["/rag", "/times"],
 };

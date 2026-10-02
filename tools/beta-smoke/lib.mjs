@@ -51,7 +51,7 @@ export async function request(env, path, { token, key = env.VITE_SUPABASE_PUBLIS
 }
 
 export async function readerRequest(env, path, body, token) {
-  const base = env.VITE_AGENT_GATEWAY_BASE || env.EXPO_PUBLIC_READER_API_BASE || env.READER_BASE_URL;
+  const base = env.VITE_READER_API_BASE || env.EXPO_PUBLIC_READER_API_BASE || env.READER_BASE_URL;
   if (!base) throw new Error('Set READER_BASE_URL to the deployed Reader API origin');
   const response = await fetch(`${base.replace(/\/$/, '')}/api/v1/${path}`, {
     method: 'POST', redirect: 'error', signal: AbortSignal.timeout(30_000),

@@ -60,7 +60,7 @@ describe("mobile book agent stream", () => {
     const [target, init] = fetchMock.mock.calls[0]!;
     expect(nativeFetch).not.toHaveBeenCalled();
     expect(new Headers(init.headers).get("accept")).toBe("text/event-stream");
-    expect(String(target)).toBe("https://agent-global.jojokanbao.cn/rag");
+    expect(String(target)).toBe("https://agent-global.jojokanbao.cn/ask");
     expect(new Headers(init.headers).get("authorization")).toBe("Bearer mobile-token");
     expect(JSON.parse(String(init.body))).toMatchObject({
       message: "继续解释",

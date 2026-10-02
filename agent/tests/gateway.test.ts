@@ -12,6 +12,8 @@ function context(pathname: string) {
 
 describe("EdgeOne gateway", () => {
   it("does not expose the removed buffered Agent proxy", async () => {
+    // `/ask` is now a plain Edge Function (see tests/ask.test.ts), and the
+    // buffered `/gateway/ask` proxy was removed entirely.
     const response = await onRequest(context("/gateway/ask"));
     expect(response.status).toBe(404);
   });

@@ -1,18 +1,26 @@
 export const DESKTOP_AGENT_SCHEME = 'jojo-agent';
 
 const DEFAULT_READER_ORIGIN = 'https://reader.jojokanbao.cn';
+const DEFAULT_AGENT_ORIGIN = 'https://agent-global.jojokanbao.cn';
 const TRUSTED_READER_ORIGINS = new Set([
   DEFAULT_READER_ORIGIN,
   'https://beta.jojokanbao.cn',
 ]);
+const TRUSTED_AGENT_ORIGINS = new Set([
+  DEFAULT_AGENT_ORIGIN,
+  'https://beta-agent.jojokanbao.cn',
+]);
 const DESKTOP_AGENT_HOST = 'reader';
 const ROUTE_LIMITS = new Map([
-  ['/gateway/ask', 64 * 1024],
-  ['/gateway/times/explain', 6 * 1024 * 1024],
+  ['/ask', 64 * 1024],
+  ['/ask/times', 6 * 1024 * 1024],
   ['/api/v1/speech/providers', 0],
   ['/api/v1/speech', 8 * 1024],
   ['/api/v1/account/signup-authorization', 8 * 1024],
 ]);
+// Agent entry points live on the international Agent project; the remaining
+// routes are served by Reader itself. See frontend/web/src/api/agentGateway.ts.
+const AGENT_ROUTES = new Set(['/ask', '/ask/times']);
 const GET_ROUTES = new Set(['/api/v1/speech/providers']);
 const JSON_ROUTES = new Set(['/api/v1/account/signup-authorization']);
 const FORWARDED_REQUEST_HEADERS = [
@@ -81,7 +89,22 @@ export function resolveDesktopReaderOrigin(configuredOrigin, isPackaged) {
   return DEFAULT_READER_ORIGIN;
 }
 
-export async function handleDesktopAgentRequest(request, { fetch, readerOrigin }) {
+export function resolveDesktopAgentOrigin(configuredOrigin, isPackaged) {
+  if (!configuredOrigin?.trim()) return DEFAULT_AGENT_ORIGIN;
+  try {
+    const candidate = new URL(configuredOrigin.trim());
+    const loopback = ['127.0.0.1', '::1', 'localhost'].includes(candidate.hostname);
+    if (!isPackaged && candidate.protocol === 'http:' && loopback) return candidate.origin;
+    if (candidate.protocol === 'https:' && TRUSTED_AGENT_ORIGINS.has(candidate.origin)) {
+      return candidate.origin;
+    }
+  } catch {
+    // Invalid and unsafe overrides fall back to the production Agent.
+  }
+  return DEFAULT_AGENT_ORIGIN;
+}
+
+export async function handleDesktopAgentRequest(request, { fetch, readerOrigin, agentOrigin = DEFAULT_AGENT_ORIGIN }) {
   let incoming;
   try {
     incoming = new URL(request.url);
@@ -110,7 +133,8 @@ export async function handleDesktopAgentRequest(request, { fetch, readerOrigin }
     const value = request.headers.get(name);
     if (value) headers.set(name, value);
   }
-  const target = new URL(`${incoming.pathname}${incoming.search}`, readerOrigin);
+  const targetOrigin = AGENT_ROUTES.has(incoming.pathname) ? agentOrigin : readerOrigin;
+  const target = new URL(`${incoming.pathname}${incoming.search}`, targetOrigin);
   try {
     const declaredLength = Number(request.headers.get('content-length') ?? '0');
     if (declaredLength > maxBytes) return jsonError(413, tooLarge);

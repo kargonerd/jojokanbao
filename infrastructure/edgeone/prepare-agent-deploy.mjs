@@ -28,13 +28,14 @@ await cp(
   path.join(cloudFunctionsOutput, "gateway"),
   { recursive: true },
 );
-// TEMPORARY probe: verify whether a plain edge function under the Agent domain
-// survives a browser preflight (the `/rag` agent route does not).
+// Unified client entry (`/ask`, `/ask/times`). Edge Functions, not `agents`
+// routes: the platform gates `agents` routes with a preflight no browser can
+// satisfy, so clients talk to this relay instead of `/rag` directly.
 const edgeFunctionsOutput = path.join(outputDirectory, "edge-functions");
 await mkdir(edgeFunctionsOutput, { recursive: true });
 await cp(
-  path.join(edgeoneRoot, "functions", "cors-probe"),
-  path.join(edgeFunctionsOutput, "cors-probe"),
+  path.join(edgeoneRoot, "functions", "ask"),
+  path.join(edgeFunctionsOutput, "ask"),
   { recursive: true },
 );
 await cp(

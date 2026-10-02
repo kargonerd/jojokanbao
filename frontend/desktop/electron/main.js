@@ -7,6 +7,7 @@ import {
   DESKTOP_AGENT_SCHEME,
   handleDesktopAgentRequest,
   registerDesktopAgentScheme,
+  resolveDesktopAgentOrigin,
   resolveDesktopReaderOrigin,
 } from './agent-gateway.js';
 import {
@@ -378,9 +379,14 @@ if (!hasSingleInstanceLock) {
       process.env.JOJO_DESKTOP_READER_ORIGIN,
       app.isPackaged,
     );
+    const agentOrigin = resolveDesktopAgentOrigin(
+      process.env.JOJO_DESKTOP_AGENT_ORIGIN,
+      app.isPackaged,
+    );
     protocol.handle(DESKTOP_AGENT_SCHEME, (request) => handleDesktopAgentRequest(request, {
       fetch: (target, init) => net.fetch(target, init),
       readerOrigin,
+      agentOrigin,
     }));
     closeBehavior = await readCloseBehavior();
     setupApplicationMenu();

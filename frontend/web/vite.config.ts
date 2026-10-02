@@ -43,15 +43,20 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/content-cdn/, ""),
         },
-        "/gateway": {
+        // The unified entry point (`/ask`, `/ask/times`) normally lives on the
+        // international Agent origin, which a dev build would have to reach over
+        // the public Internet. Point `VITE_AGENT_API_BASE` at this dev server
+        // and this proxy forwards `/ask` to a locally running Agent instead,
+        // rewriting it to the internal `/rag` (or `/times`) route.
+        "/ask": {
           target: agentTarget.origin,
           changeOrigin: true,
           headers: { Origin: "" },
           rewrite: (path) => {
-            if (/^\/gateway\/times\/explain(?=\?|$)/.test(path)) {
-              return path.replace(/^\/gateway\/times\/explain(?=\?|$)/, "/times");
+            if (/^\/ask\/times(?=\?|$)/.test(path)) {
+              return path.replace(/^\/ask\/times(?=\?|$)/, "/times");
             }
-            return path.replace(/^\/gateway\/ask(?=\?|$)/, agentPath);
+            return path.replace(/^\/ask(?=\?|$)/, agentPath);
           },
         },
       },
