@@ -1,10 +1,6 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { PUBLICATIONS } from "../src/archive/publications";
-import { getLatestRmrbAvailableDate, RMRB_DAILY_AVAILABLE_HOUR } from "../src/archive/dateAvailability";
-
-afterEach(() => {
-  vi.useRealTimers();
-});
+import { yearSeqMapFromItemKeys } from "../src/archive/useArchiveIssueOptions";
 
 describe("publication catalog invariants", () => {
   it("keeps all five route keys, labels, types, and defaults stable", () => {
@@ -22,25 +18,12 @@ describe("publication catalog invariants", () => {
     ]);
   });
 
-  it("keeps every configured issue list sorted, unique, and positive", () => {
+  it("defers availability to the Delivery data layer", () => {
+    // 期数表与缺档黑名单已全部删除：杂志由数据集索引枚举期次，
+    // 报纸由索引中的自适应日历判定日期。默认期是否可读由数据层校验。
     for (const publication of Object.values(PUBLICATIONS)) {
-      for (const [year, issues] of Object.entries(publication.seqConfig ?? {})) {
-        expect(issues, `${publication.name} ${year} must not contain duplicates`).toEqual([...new Set(issues)]);
-        expect(issues, `${publication.name} ${year} must be sorted`).toEqual([...issues].sort((a, b) => a - b));
-        expect(issues.every((issue) => Number.isInteger(issue) && issue > 0)).toBe(true);
-      }
-    }
-  });
-
-  it("keeps every default route inside its publication availability", () => {
-    for (const publication of Object.values(PUBLICATIONS)) {
-      if (publication.type === "newspaper") {
-        expect(publication.disabledDate?.(publication.defaultId)).toBe(false);
-        continue;
-      }
-      const year = publication.defaultId.slice(0, 4);
-      const issue = Number(publication.defaultId.slice(4));
-      expect(publication.seqConfig?.[year]).toContain(issue);
+      expect("seqConfig" in publication, `${publication.name} must not carry a local issue table`).toBe(false);
+      expect("disabledDate" in publication, `${publication.name} must not carry a local date blacklist`).toBe(false);
     }
   });
 
@@ -51,56 +34,7 @@ describe("publication catalog invariants", () => {
   });
 });
 
-describe("人民日报 availability", () => {
-  const disabled = PUBLICATIONS.rmrb!.disabledDate!;
-
-  it.each([
-    ["19460514", true],
-    ["19460515", false],
-  ])("applies the archive boundary for %s", (date, expected) => {
-    expect(disabled(date)).toBe(expected);
-  });
-
-  it("exposes today's issue only after the daily sync completion window", () => {
-    expect(RMRB_DAILY_AVAILABLE_HOUR).toBe(19);
-    expect(getLatestRmrbAvailableDate(new Date("2026-07-17T10:59:59Z"))).toBe("20260716");
-    expect(getLatestRmrbAvailableDate(new Date("2026-07-17T11:00:00Z"))).toBe("20260717");
-    expect(getLatestRmrbAvailableDate(new Date("2026-01-01T02:00:00Z"))).toBe("20251231");
-
-    vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(new Date("2026-07-17T10:59:59Z"));
-    expect(disabled("20260716")).toBe(false);
-    expect(disabled("20260717")).toBe(true);
-
-    vi.setSystemTime(new Date("2026-07-17T11:00:00Z"));
-    expect(disabled("20260717")).toBe(false);
-    expect(disabled("20260718")).toBe(true);
-  });
-
-  it("keeps the newly published 1999–2007 archive selectable", () => {
-    expect(disabled("19990701")).toBe(false);
-    expect(disabled("20050701")).toBe(false);
-    expect(disabled("19980701")).toBe(false);
-    expect(disabled("20080701")).toBe(false);
-  });
-
-  it("blocks only known B2 gaps and permits adjacent uploaded issues", () => {
-    expect(disabled("19460628")).toBe(true);
-    expect(disabled("19460630")).toBe(true);
-    expect(disabled("19460701")).toBe(false);
-    expect(disabled("19540101")).toBe(false);
-    expect(disabled("20030418")).toBe(true);
-    expect(disabled("20030420")).toBe(false);
-    expect(disabled("20041206")).toBe(true);
-    expect(disabled("20070101")).toBe(true);
-    expect(disabled("20070102")).toBe(false);
-    expect(disabled("20100620")).toBe(true);
-    expect(disabled("20100701")).toBe(false);
-    expect(disabled("20130701")).toBe(true);
-    expect(disabled("20140110")).toBe(true);
-    expect(disabled("20140111")).toBe(false);
-  });
-
+describe("人民日报 configuration", () => {
   it("loads page outlines only for years that contain edition-level bookmarks", () => {
     const available = PUBLICATIONS.rmrb!.pageOutlineAvailable!;
     expect(available("19460515")).toBe(true);
@@ -116,75 +50,59 @@ describe("人民日报 availability", () => {
   });
 });
 
-describe("参考消息 availability", () => {
-  const disabled = PUBLICATIONS.ckxx!.disabledDate!;
-
-  it.each([
-    ["19570228", true],
-    ["19570301", false],
-    ["19981231", false],
-    ["19990101", true],
-  ])("applies the archive boundary for %s", (date, expected) => {
-    expect(disabled(date)).toBe(expected);
-  });
-
-  it("blocks the excluded 1989 archive year", () => {
-    expect(disabled("19890101")).toBe(true);
-    expect(disabled("19891231")).toBe(true);
-    expect(disabled("19881231")).toBe(false);
-    expect(disabled("19900102")).toBe(false);
-  });
-
-  it("preserves individual blacklist gaps", () => {
-    expect(disabled("19580707")).toBe(true);
-    expect(disabled("19580708")).toBe(false);
-    expect(disabled("19960224")).toBe(true);
-    expect(disabled("19960225")).toBe(false);
-  });
-});
-
 describe("magazine issue availability", () => {
-  it("keeps 红旗 regular issues and supplement labels", () => {
+  it("keeps 红旗 supplement labels", () => {
     const hq = PUBLICATIONS.hq!;
-    expect(hq.seqConfig?.["1964"]).toEqual([...Array.from({ length: 24 }, (_, index) => index + 1), 91, 92]);
-    expect(hq.seqConfig?.["1965"]).toEqual([...Array.from({ length: 13 }, (_, index) => index + 1), 91]);
+    expect("seqConfig" in hq).toBe(false);
+    expect("disabledDate" in hq).toBe(false);
     expect(hq.genSeqText?.(19)).toBe("第19期");
     expect(hq.genSeqText?.(91)).toBe("增刊1");
     expect(hq.genSeqText?.(92)).toBe("增刊2");
   });
 
-  it("keeps 人民画报 missing years/issues and supplement issues", () => {
-    const rmhb = PUBLICATIONS.rmhb!;
-    expect(rmhb.disabledDate?.("19491231")).toBe(true);
-    expect(rmhb.disabledDate?.("19500101")).toBe(false);
-    expect(rmhb.disabledDate?.("19750101")).toBe(true);
-    expect(rmhb.disabledDate?.("19760101")).toBe(false);
-    expect(rmhb.seqConfig?.["1972"]).not.toContain(11);
-    expect(rmhb.seqConfig?.["1972"]).toEqual(expect.arrayContaining([91, 92, 93, 94]));
-    expect(rmhb.seqConfig?.["1976"]).not.toContain(7);
-    expect(rmhb.seqConfig?.["1976"]).toContain(91);
+  it("derives 红旗 year issue lists from Delivery item keys", () => {
+    const itemKeys = [
+      "195801", "195814",
+      "196401", "196419", "196424", "196491", "196492",
+      "197612",
+      "197701", "197712",
+      "198001", "198024",
+      "198601", "198618", "198620", "198624",
+      "198801", "198812",
+    ];
+    const map = yearSeqMapFromItemKeys(itemKeys);
+    expect(Object.keys(map)).toEqual([
+      "1958", "1964", "1976", "1977", "1980", "1986", "1988",
+    ]);
+    expect(map["1964"]).toEqual([1, 19, 24, 91, 92]);
+    expect(map["1977"]).toEqual([1, 12]);
+    expect(map["1986"]).toEqual([1, 18, 20, 24]);
+    expect(map["1986"]).not.toContain(19);
+    expect(map["1988"]).toEqual([1, 12]);
   });
 
-  it("keeps 世界知识 archive year gaps", () => {
-    const disabled = PUBLICATIONS.sjzs!.disabledDate!;
-    expect(disabled("19330101")).toBe(true);
-    expect(disabled("19340101")).toBe(false);
-    expect(disabled("19420101")).toBe(true);
-    expect(disabled("19450101")).toBe(false);
-    expect(disabled("19670101")).toBe(true);
-    expect(disabled("19780101")).toBe(false);
-    expect(disabled("20250101")).toBe(false);
-    expect(disabled("20260101")).toBe(true);
+  it("ignores non-magazine item keys when deriving issue lists", () => {
+    expect(yearSeqMapFromItemKeys(["rmrb:19760910", "19760910", "abc123", "196419"])).toEqual({
+      "1964": [19],
+    });
   });
 
-  it("keeps 世界知识 historical issue gaps", () => {
-    const issues = PUBLICATIONS.sjzs!.seqConfig!;
-    expect(issues["1940"]).not.toContain(5);
-    expect(issues["1940"]).not.toContain(6);
-    expect(issues["1941"]).toEqual([9, 10, 11, 12, 13, 14, 15]);
-    expect(issues["1946"]).not.toContain(4);
-    expect(issues["1951"]).not.toContain(34);
-    expect(issues["2009"]).not.toContain(6);
-    expect(issues["2025"]).not.toContain(13);
+  it("derives 人民画报 and 世界知识 issue lists the same way", () => {
+    const rmhbMap = yearSeqMapFromItemKeys([
+      "195007", "195012", "197211", "197212", "197691",
+      "197501",
+    ]);
+    expect(rmhbMap["1950"]).toEqual([7, 12]);
+    expect(rmhbMap["1972"]).toEqual([11, 12]);
+    expect(rmhbMap["1976"]).toEqual([91]);
+    expect(rmhbMap["1975"]).toEqual([1]);
+
+    const sjzsMap = yearSeqMapFromItemKeys([
+      "194001", "194004", "194007", "194101", "194115",
+      "194501", "194512",
+    ]);
+    expect(sjzsMap["1940"]).toEqual([1, 4, 7]);
+    expect(sjzsMap["1941"]).toEqual([1, 15]);
+    expect(sjzsMap["1945"]).toEqual([1, 12]);
   });
 });

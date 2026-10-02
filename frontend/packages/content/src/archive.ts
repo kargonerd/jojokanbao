@@ -1,3 +1,5 @@
+import type { JojoAdaptiveCalendar, JojoAdaptiveCalendarMembers } from "./types";
+
 export const ARCHIVE_WEB_ORIGIN = "https://reader.jojokanbao.cn";
 export const ARCHIVE_CDN_ORIGIN = "https://blacknews.jojokanbao.cn";
 // The legacy `/search` archive endpoint was retired in favour of the unified
@@ -170,6 +172,35 @@ export function isArchiveNewspaperIssueAvailable(
   }
   if (issueId < "19570301" || issueId > "19981231") return false;
   return !isCkxxMissing(issueId, parsed.year, parsed.dayIndex);
+}
+
+function isAdaptiveCalendarMember(
+  issueId: string,
+  members: JojoAdaptiveCalendarMembers,
+): boolean {
+  const monthDay = issueId.slice(4, 6) + "-" + issueId.slice(6, 8);
+  if (members.months?.includes(issueId.slice(4, 6))) return true;
+  if (members.dates?.includes(monthDay)) return true;
+  return members.ranges?.some(([start, end]) => monthDay >= start && monthDay <= end) ?? false;
+}
+
+/**
+ * Evaluate a delivery adaptive calendar ("adaptive-calendar/1") for an
+ * yyyyMMdd issue id. Mirrors the publisher's evaluator in
+ * tools/content-pipeline/jojo_format.py: unlisted years inherit `default`,
+ * `include` replaces the year's availability, `exclude` removes members.
+ */
+export function isAdaptiveCalendarDateAvailable(
+  calendar: JojoAdaptiveCalendar,
+  issueId: string,
+): boolean {
+  if (!/^\d{8}$/.test(issueId)) return false;
+  const iso = `${issueId.slice(0, 4)}-${issueId.slice(4, 6)}-${issueId.slice(6, 8)}`;
+  if (iso < calendar.startDate || iso > calendar.endDate) return false;
+  const rule = calendar.years?.[issueId.slice(0, 4)];
+  if (!rule) return calendar.default === "available";
+  const member = isAdaptiveCalendarMember(issueId, "include" in rule ? rule.include : rule.exclude);
+  return "include" in rule ? member : !member;
 }
 
 export function toSearchApiDate(issueId: string): string {

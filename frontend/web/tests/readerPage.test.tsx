@@ -20,6 +20,50 @@ vi.mock("../src/archive/useArchivePdf", () => ({
   },
 }));
 
+// 期次/日历选项改为 Delivery 数据推导；测试固定为各报刊的既有可用数据。
+vi.mock("../src/archive/useArchiveIssueOptions", () => {
+  const yearSeqMapFromItemKeys = (itemKeys: string[]) => {
+    const map: Record<string, number[]> = {};
+    for (const itemKey of itemKeys) {
+      if (!/^\d{6}$/.test(itemKey)) continue;
+      (map[itemKey.slice(0, 4)] ??= []).push(Number(itemKey.slice(4)));
+    }
+    for (const seqs of Object.values(map)) seqs.sort((a, b) => a - b);
+    return map;
+  };
+  const magazines: Record<string, { years: string[]; yearSeqMap: Record<string, number[]> }> = {
+    hq: {
+      years: ["1964", "1965"],
+      yearSeqMap: {
+        "1964": [...Array.from({ length: 24 }, (_, index) => index + 1), 91, 92],
+        "1965": [...Array.from({ length: 13 }, (_, index) => index + 1), 91],
+      },
+    },
+    rmhb: { years: ["1972"], yearSeqMap: { "1972": Array.from({ length: 12 }, (_, index) => index + 1) } },
+    sjzs: { years: ["1965"], yearSeqMap: { "1965": Array.from({ length: 24 }, (_, index) => index + 1) } },
+  };
+  // 人民日报日历：1946-06-28..30 缺档（与真实发布的日历一致）。
+  const rmrbCalendar = {
+    format: "adaptive-calendar/1",
+    startDate: "1946-05-15",
+    endDate: "2026-10-01",
+    default: "available",
+    years: { "1946": { exclude: { ranges: [["06-28", "06-30"]] } } },
+  };
+  return {
+    yearSeqMapFromItemKeys,
+    useArchiveIssueOptions: (publication: string | null) => {
+      if (publication && publication in magazines) {
+        return { ...magazines[publication], pdfCalendar: null, loading: false, error: null, retry: () => {} };
+      }
+      if (publication === "rmrb") {
+        return { yearSeqMap: {}, years: [], pdfCalendar: rmrbCalendar, loading: false, error: null, retry: () => {} };
+      }
+      return { yearSeqMap: {}, years: [], pdfCalendar: null, loading: false, error: null, retry: () => {} };
+    },
+  };
+});
+
 const pdfMocks = vi.hoisted(() => ({
   fetchPdfDownloadBytes: vi.fn(),
   usePdfDocument: vi.fn(),
