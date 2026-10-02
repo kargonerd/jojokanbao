@@ -59,18 +59,27 @@ export function createJojoAuthStore(
   const loadProfile = (userId: string) => {
     const pending = pendingProfiles.get(userId);
     if (pending) return pending;
-    const abort = new AbortController();
-    let timer: ReturnType<typeof setTimeout>;
-    const timeout = new Promise<never>((_resolve, reject) => {
-      timer = setTimeout(() => {
-        reject({ code: "profile_request_timeout" });
-        abort.abort();
-      }, 12_000);
+    const attempt = () => {
+      const abort = new AbortController();
+      let timer: ReturnType<typeof setTimeout>;
+      const timeout = new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => {
+          reject({ code: "profile_request_timeout" });
+          abort.abort();
+        }, 12_000);
+      });
+      // Bound hydration even if the network or token refresh never settles, so a
+      // later foreground/manual retry is not trapped behind a stale promise.
+      return Promise.race([profiles.getOrCreate(userId, abort.signal), timeout])
+        .finally(() => clearTimeout(timer));
+    };
+    // Relay paths through cross-border edges can stall a single connection for
+    // many seconds while the service is otherwise healthy. One fresh-connection
+    // retry absorbs those stalls; only a repeated timeout reaches the reader.
+    const promise = attempt().catch((error) => {
+      if ((error as { code?: string } | null)?.code !== "profile_request_timeout") throw error;
+      return attempt();
     });
-    // Bound hydration even if the network or token refresh never settles, so a
-    // later foreground/manual retry is not trapped behind a stale promise.
-    const promise = Promise.race([profiles.getOrCreate(userId, abort.signal), timeout])
-      .finally(() => clearTimeout(timer));
     pendingProfiles.set(userId, promise);
     void promise.then(
       () => { if (pendingProfiles.get(userId) === promise) pendingProfiles.delete(userId); },
