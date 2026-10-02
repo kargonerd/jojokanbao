@@ -62,7 +62,6 @@ def test_assembly_excludes_local_entry_and_keeps_cloud_factory(tmp_path):
         "infrastructure/edgeone/prepare-web-deploy.mjs",
         "infrastructure/edgeone/edgeone.json",
         "infrastructure/edgeone/functions/api/index.py",
-        "infrastructure/edgeone/functions/reader-gateway/[[default]].ts",
         "infrastructure/edgeone/web-middleware.ts",
         "backend/src/app/main.py",
         "backend/src/app/application.py",

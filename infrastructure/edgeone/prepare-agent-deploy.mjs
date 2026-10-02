@@ -28,6 +28,16 @@ await cp(
   path.join(cloudFunctionsOutput, "gateway"),
   { recursive: true },
 );
+// Unified client entry (`/ask`, `/ask/times`). Edge Functions, not `agents`
+// routes: the platform gates `agents` routes with a preflight no browser can
+// satisfy, so clients talk to this relay instead of `/rag` directly.
+const edgeFunctionsOutput = path.join(outputDirectory, "edge-functions");
+await mkdir(edgeFunctionsOutput, { recursive: true });
+await cp(
+  path.join(edgeoneRoot, "functions", "ask"),
+  path.join(edgeFunctionsOutput, "ask"),
+  { recursive: true },
+);
 await cp(
   path.join(edgeoneRoot, "agent-middleware.ts"),
   path.join(outputDirectory, "middleware.ts"),

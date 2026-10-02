@@ -14,6 +14,8 @@ export default defineConfig(({ mode }) => ({
   define: {
     "import.meta.env.VITE_APP_VERSION": JSON.stringify(JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")).version),
     "import.meta.env.VITE_AGENT_GATEWAY_BASE": JSON.stringify("jojo-agent://reader"),
+    "import.meta.env.VITE_AGENT_API_BASE": JSON.stringify("jojo-agent://reader"),
+    "import.meta.env.VITE_READER_API_BASE": JSON.stringify("jojo-agent://reader"),
   },
   publicDir: resolve(__dirname, "../web/public"),
   plugins: [

@@ -2,7 +2,7 @@ import { useMobileStore } from "../store/mobileStore";
 import { fetch } from "expo/fetch";
 
 const AGENT_URL = process.env.EXPO_PUBLIC_AGENT_API_URL?.trim()
-  || "https://agent-global.jojokanbao.cn/rag";
+  || "https://agent-global.jojokanbao.cn/ask";
 
 export interface MobileBookAgentRequest {
   datasetId: string;

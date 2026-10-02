@@ -1,6 +1,6 @@
 import { useLibraryPreferencesStore } from "../library/preferencesStore";
 import { libraryBookPolicy, supportsJojoDatasetAi } from "@jojo/content";
-import { agentGatewayUrl } from "../api/agentGateway";
+import { agentAskUrl } from "../api/agentGateway";
 import { loadCatalog, loadDataset } from "./content";
 import type {
   RagAnswerMetadata,
@@ -11,7 +11,7 @@ import type {
   RagSource,
 } from "./types";
 
-const AGENT_URL = agentGatewayUrl("/gateway/ask");
+const AGENT_URL = agentAskUrl("/ask");
 const MAX_HISTORY_MESSAGES = 20;
 const MAX_HISTORY_CHARACTERS = 100_000;
 const MAX_USER_HISTORY_CHARACTERS = 10_000;

@@ -47,11 +47,14 @@ pnpm --filter @jojo/mobile start:eink
 EXPO_PUBLIC_READER_BASE=https://reader.jojokanbao.cn
 EXPO_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
-# 默认 https://agent-global.jojokanbao.cn/rag
-EXPO_PUBLIC_AGENT_API_URL=https://agent-global.jojokanbao.cn/rag
-# 默认 https://agent-global.jojokanbao.cn/times
-EXPO_PUBLIC_TIMES_AGENT_API_URL=https://agent-global.jojokanbao.cn/times
+# 默认 https://agent-global.jojokanbao.cn/ask
+EXPO_PUBLIC_AGENT_API_URL=https://agent-global.jojokanbao.cn/ask
+# 默认 https://agent-global.jojokanbao.cn/ask/times
+EXPO_PUBLIC_TIMES_AGENT_API_URL=https://agent-global.jojokanbao.cn/ask/times
 ```
+
+`EXPO_PUBLIC_AGENT_API_URL` 指向三端共用的统一入口 `/ask`（Times 为 `/ask/times`），
+与 Web、Desktop 一致。`/rag` 与 `/times` 已降级为 Agent 项目内部路由，客户端不再直连。
 
 质量检查：
 

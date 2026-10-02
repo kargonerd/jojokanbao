@@ -145,3 +145,37 @@ jobs:
             echo "Agent route health check returned HTTP $status; expected $expected_status" >&2
             exit 1
           fi
+
+      - name: Verify the unified /ask entry point answers the browser preflight
+        if: steps.edgeone_deploy.outcome == 'success'
+        run: |
+          # `/ask` is the only route browsers can reach: it is a plain Edge
+          # Function, so it must answer OPTIONS itself. The platform gates
+          # `/rag` with a preflight no browser can satisfy, so a regression here
+          # would silently break every Web/Mobile/Desktop client.
+          sed -E $'s/\033\[[0-9;]*[mK]//g' "$RUNNER_TEMP/edgeone-deploy.log" > "$RUNNER_TEMP/edgeone-deploy-clean.log"
+          deploy_url="$(grep -oE 'https://[^[:space:]]+\.edgeone\.dev\?eo_token=[^[:space:]]+' "$RUNNER_TEMP/edgeone-deploy-clean.log" | tail -1)"
+          test -n "$deploy_url" || (echo "Preview URL was not reported" >&2 && exit 1)
+          base_url="${deploy_url%%\?*}"
+          query="${deploy_url#*\?}"
+          check_url="$base_url/ask?$query"
+          status=""
+          for attempt in $(seq 1 6); do
+            status="$(curl --silent --show-error --output "$RUNNER_TEMP/ask-preflight.txt" \
+              --connect-timeout 5 \
+              --max-time 10 \
+              --write-out '%{http_code}' \
+              --request OPTIONS \
+              --header 'Origin: https://reader.jojokanbao.cn' \
+              --header 'Access-Control-Request-Method: POST' \
+              --header 'Access-Control-Request-Headers: authorization,content-type,makers-conversation-id' \
+              "$check_url")" || status="000"
+            [ "$status" != "000" ] && [ "$status" != "404" ] && break
+            sleep 10
+          done
+          if [ "$status" != "204" ]; then
+            echo "Unified /ask entry point returned HTTP $status for OPTIONS; expected 204" >&2
+            cat "$RUNNER_TEMP/ask-preflight.txt" >&2 || true
+            exit 1
+          fi
+          echo "Unified /ask entry point answered the browser preflight with 204."

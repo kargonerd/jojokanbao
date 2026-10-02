@@ -48,6 +48,7 @@ test.describe('Real Electron client', () => {
           ...process.env,
           JOJO_DESKTOP_RENDERER_URL: '',
           JOJO_DESKTOP_READER_ORIGIN: `http://127.0.0.1:${gatewayPort}`,
+          JOJO_DESKTOP_AGENT_ORIGIN: `http://127.0.0.1:${gatewayPort}`,
         },
       });
       const page = await application.firstWindow();
@@ -75,7 +76,7 @@ test.describe('Real Electron client', () => {
       });
 
       const agentResponse = await page.evaluate(async () => {
-        const response = await fetch('jojo-agent://reader/gateway/ask', {
+        const response = await fetch('jojo-agent://reader/ask', {
           method: 'POST',
           headers: {
             authorization: 'Bearer desktop-test-token',

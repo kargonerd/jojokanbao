@@ -8,7 +8,6 @@ const webDist = path.join(repositoryRoot, "frontend", "web", "dist");
 const apiRoot = path.join(repositoryRoot, "backend");
 const functionSource = path.join(apiRoot, "src", "app");
 const functionEntry = path.join(repositoryRoot, "infrastructure", "edgeone", "functions", "api");
-const gatewayEntry = path.join(repositoryRoot, "infrastructure", "edgeone", "functions", "reader-gateway");
 const middlewareEntry = path.join(repositoryRoot, "infrastructure", "edgeone", "web-middleware.ts");
 const outputDirectory = path.join(repositoryRoot, ".edgeone", "web-deploy");
 
@@ -35,7 +34,6 @@ function includeFunctionFile(source) {
 
 await requireFile(path.join(webDist, "index.html"));
 await requireFile(path.join(functionEntry, "index.py"));
-await requireFile(path.join(gatewayEntry, "[[default]].ts"));
 await requireFile(middlewareEntry);
 await requireFile(path.join(apiRoot, "requirements.txt"));
 
@@ -45,7 +43,10 @@ await cp(webDist, outputDirectory, { recursive: true });
 const functionsOutput = path.join(outputDirectory, "cloud-functions");
 await mkdir(functionsOutput, { recursive: true });
 await cp(functionEntry, path.join(functionsOutput, "api"), { recursive: true });
-await cp(gatewayEntry, path.join(functionsOutput, "gateway"), { recursive: true });
+// Web no longer ships an Agent relay: all clients call the unified `/ask`
+// entry point on the international Agent project directly
+// (see infrastructure/edgeone/functions/ask). Only the Python business API
+// stays in the Shanghai cloud-function region.
 await cp(middlewareEntry, path.join(outputDirectory, "middleware.ts"));
 await cp(functionSource, path.join(functionsOutput, "app"), {
   recursive: true,

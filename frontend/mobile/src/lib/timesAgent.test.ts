@@ -56,7 +56,7 @@ describe("mobile times agent", () => {
       });
     });
 
-    expect(String(fetchMock.mock.calls[0]?.[0])).toBe("https://agent-global.jojokanbao.cn/times");
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe("https://agent-global.jojokanbao.cn/ask/times");
     expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get("authorization")).toBe("Bearer mobile-token");
     expect(completed).toEqual({ answer: "这是解释。", imageCount: 0 });
     expect(nativeFetch).not.toHaveBeenCalled();
