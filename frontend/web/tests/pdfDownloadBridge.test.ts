@@ -40,6 +40,20 @@ function decodeBase64(base64: string): Uint8Array {
   return bytes;
 }
 
+// `expect(largeUint8Array).toEqual(other)` falls back to vitest's generic
+// deep-equality, which builds a structural diff per element: comparing two
+// 1.5MB buffers costs ~6s locally and pushed this file past its 30s timeout on
+// slower CI runners. Compare the bytes directly instead — same coverage, and it
+// reports the first mismatch rather than an unusable megabyte-sized diff.
+function expectSameBytes(actual: Uint8Array, expected: Uint8Array): void {
+  expect(actual.length).toBe(expected.length);
+  for (let index = 0; index < expected.length; index += 1) {
+    if (actual[index] !== expected[index]) {
+      throw new Error(`byte ${index} differs: expected ${expected[index]}, received ${actual[index]}`);
+    }
+  }
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });
@@ -98,7 +112,7 @@ describe("postPdfDownloadToNative", () => {
       offset += decoded.length;
     }
     expect(offset).toBe(bytes.length);
-    expect(reassembled).toEqual(bytes);
+    expectSameBytes(reassembled, bytes);
   });
 
   it("encodes multi-megabyte arrays without overflowing the call stack", async () => {
