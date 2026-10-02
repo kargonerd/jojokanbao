@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PUBLICATIONS } from "../src/archive/publications";
+import { yearSeqMapFromItemKeys } from "../src/archive/useArchiveIssueIndex";
 import { getLatestRmrbAvailableDate, RMRB_DAILY_AVAILABLE_HOUR } from "../src/archive/dateAvailability";
 
 afterEach(() => {
@@ -38,6 +39,7 @@ describe("publication catalog invariants", () => {
         expect(publication.disabledDate?.(publication.defaultId)).toBe(false);
         continue;
       }
+      if (publication.dynamicIssues) continue; // 期次由 Delivery 索引推导，默认期是否可读由数据层校验
       const year = publication.defaultId.slice(0, 4);
       const issue = Number(publication.defaultId.slice(4));
       expect(publication.seqConfig?.[year]).toContain(issue);
@@ -144,13 +146,41 @@ describe("参考消息 availability", () => {
 });
 
 describe("magazine issue availability", () => {
-  it("keeps 红旗 regular issues and supplement labels", () => {
+  it("keeps 红旗 supplement labels and Delivery-derived issue options", () => {
     const hq = PUBLICATIONS.hq!;
-    expect(hq.seqConfig?.["1964"]).toEqual([...Array.from({ length: 24 }, (_, index) => index + 1), 91, 92]);
-    expect(hq.seqConfig?.["1965"]).toEqual([...Array.from({ length: 13 }, (_, index) => index + 1), 91]);
+    expect(hq.dynamicIssues).toBe(true);
+    expect(hq.seqConfig).toBeUndefined();
+    expect(hq.disabledDate).toBeUndefined();
     expect(hq.genSeqText?.(19)).toBe("第19期");
     expect(hq.genSeqText?.(91)).toBe("增刊1");
     expect(hq.genSeqText?.(92)).toBe("增刊2");
+  });
+
+  it("derives 红旗 year issue lists from Delivery item keys", () => {
+    const itemKeys = [
+      "195801", "195814",
+      "196401", "196419", "196424", "196491", "196492",
+      "197612",
+      "197701", "197712",
+      "198001", "198024",
+      "198601", "198618", "198620", "198624",
+      "198801", "198812",
+    ];
+    const map = yearSeqMapFromItemKeys(itemKeys);
+    expect(Object.keys(map)).toEqual([
+      "1958", "1964", "1976", "1977", "1980", "1986", "1988",
+    ]);
+    expect(map["1964"]).toEqual([1, 19, 24, 91, 92]);
+    expect(map["1977"]).toEqual([1, 12]);
+    expect(map["1986"]).toEqual([1, 18, 20, 24]);
+    expect(map["1986"]).not.toContain(19);
+    expect(map["1988"]).toEqual([1, 12]);
+  });
+
+  it("ignores non-magazine item keys when deriving issue lists", () => {
+    expect(yearSeqMapFromItemKeys(["rmrb:19760910", "19760910", "abc123", "196419"])).toEqual({
+      "1964": [19],
+    });
   });
 
   it("keeps 人民画报 missing years/issues and supplement issues", () => {

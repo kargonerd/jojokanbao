@@ -20,6 +20,34 @@ vi.mock("../src/archive/useArchivePdf", () => ({
   },
 }));
 
+// 红旗期次改为 Delivery 索引推导；测试固定为 1964/1965 两年的既有期次表。
+vi.mock("../src/archive/useArchiveIssueIndex", () => ({
+  yearSeqMapFromItemKeys: (itemKeys: string[]) => {
+    const map: Record<string, number[]> = {};
+    for (const itemKey of itemKeys) {
+      if (!/^\d{6}$/.test(itemKey)) continue;
+      (map[itemKey.slice(0, 4)] ??= []).push(Number(itemKey.slice(4)));
+    }
+    for (const seqs of Object.values(map)) seqs.sort((a, b) => a - b);
+    return map;
+  },
+  useArchiveIssueIndex: (publication: string | null) => {
+    if (publication !== "hq") {
+      return { yearSeqMap: {}, years: [], loading: false, error: null, retry: () => {} };
+    }
+    return {
+      yearSeqMap: {
+        "1964": [...Array.from({ length: 24 }, (_, index) => index + 1), 91, 92],
+        "1965": [...Array.from({ length: 13 }, (_, index) => index + 1), 91],
+      },
+      years: ["1964", "1965"],
+      loading: false,
+      error: null,
+      retry: () => {},
+    };
+  },
+}));
+
 const pdfMocks = vi.hoisted(() => ({
   fetchPdfDownloadBytes: vi.fn(),
   usePdfDocument: vi.fn(),

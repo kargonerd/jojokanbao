@@ -42,3 +42,28 @@ export async function loadArchivePdf(
   url.searchParams.set("v", pdf.sha256);
   return { url: url.href, objectKey };
 }
+
+/**
+ * Published issue keys of a magazine Dataset (e.g. "hq" → "195801"…"198812"),
+ * in ascending order. Magazines list every issue in the dataset index, unlike
+ * itemPath-driven newspapers whose calendars are derived per date, so this is
+ * what pickers should offer instead of a hardcoded issue table.
+ */
+export async function loadArchiveIssueKeys(
+  client: JoxClient,
+  publication: ArchivePublicationName,
+  signal?: AbortSignal,
+): Promise<string[]> {
+  if (ARCHIVE_PUBLICATION_BY_ID[publication].type !== "magazine") {
+    throw new Error("该报刊不提供期数索引");
+  }
+  const catalog = asJojoCatalog(await client.fetchJson("catalog.jox", signal));
+  const entry = catalog.datasets.find((row) => row.datasetId === publication && row.publicationStatus !== "draft");
+  if (!entry) throw new Error("该报刊尚未发布");
+  const index = asJojoDatasetIndex(await client.fetchJson(entry.indexObject, signal));
+  if (index.datasetId !== publication || index.publicationStatus === "draft") throw new Error("报刊索引不匹配");
+  return index.items
+    .filter((item) => item.publicationStatus !== "draft")
+    .map((item) => item.itemKey)
+    .sort();
+}

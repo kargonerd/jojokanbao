@@ -1,14 +1,6 @@
 import { useEffect, useState } from "react";
-import {
-  ARCHIVE_CDN_ORIGIN, JoxClient, ResourceCache, browserContentCache, loadArchivePdf,
-  type ArchivePdfSource, type ArchivePublicationName,
-} from "@jojo/content";
-
-const client = new JoxClient(
-  import.meta.env.VITE_CONTENT_CDN_BASE || ARCHIVE_CDN_ORIGIN,
-  (input, init) => fetch(input, init),
-  new ResourceCache(browserContentCache()),
-);
+import { loadArchivePdf, type ArchivePdfSource, type ArchivePublicationName } from "@jojo/content";
+import { archiveClient } from "./archiveClient";
 
 interface State {
   key: string;
@@ -24,7 +16,7 @@ export function useArchivePdf(publication: ArchivePublicationName, issueId: stri
     const controller = new AbortController();
     setState({ key, source: null, loading: Boolean(issueId), error: null });
     if (issueId) {
-      void loadArchivePdf(client, publication, issueId, controller.signal).then(
+      void loadArchivePdf(archiveClient, publication, issueId, controller.signal).then(
         (source) => { if (!controller.signal.aborted) setState({ key, source, loading: false, error: null }); },
         (error: unknown) => {
           if (!controller.signal.aborted) setState({ key, source: null, loading: false, error: error instanceof Error ? error.message : String(error) });

@@ -11,29 +11,8 @@ import {
 
 // ─── 期数选项 ───
 
-const HQ_SEQ: Record<string, number[]> = {
-  '1958': Array.from({ length: 14 }, (_, i) => i + 1),
-  '1959': Array.from({ length: 24 }, (_, i) => i + 1),
-  '1960': Array.from({ length: 24 }, (_, i) => i + 1),
-  '1961': Array.from({ length: 24 }, (_, i) => i + 1),
-  '1962': Array.from({ length: 21 }, (_, i) => i + 1),
-  '1963': Array.from({ length: 24 }, (_, i) => i + 1),
-  '1964': Array.from({ length: 24 }, (_, i) => i + 1),
-  '1965': Array.from({ length: 13 }, (_, i) => i + 1),
-  '1966': Array.from({ length: 15 }, (_, i) => i + 1),
-  '1967': Array.from({ length: 16 }, (_, i) => i + 1),
-  '1968': Array.from({ length: 5 }, (_, i) => i + 1),
-  '1969': Array.from({ length: 12 }, (_, i) => i + 1),
-  '1970': Array.from({ length: 12 }, (_, i) => i + 1),
-  '1971': Array.from({ length: 13 }, (_, i) => i + 1),
-  '1972': Array.from({ length: 12 }, (_, i) => i + 1),
-  '1973': Array.from({ length: 12 }, (_, i) => i + 1),
-  '1974': Array.from({ length: 12 }, (_, i) => i + 1),
-  '1975': Array.from({ length: 12 }, (_, i) => i + 1),
-  '1976': Array.from({ length: 12 }, (_, i) => i + 1),
-};
-HQ_SEQ['1964']!.push(91, 92);
-HQ_SEQ['1965']!.push(91);
+// 红旗不再维护本地期数表：选择器期次由 Delivery 数据集索引
+// （loadArchiveIssueKeys）推导，见 ReaderPage 的 dynamicIssues 分支。
 
 const SJZS_SEQ: Record<string, number[]> = {
   '1934': Array.from({ length: 6 }, (_, i) => i + 1),
@@ -223,6 +202,8 @@ export interface PublicationConfig {
   pageOutlineAvailable?: (id: string) => boolean;
   enableTextLayer?: boolean;
   resolutionControl?: boolean;
+  /** 年份与期数从 Delivery 数据集索引推导，而非本地 seqConfig。 */
+  dynamicIssues?: boolean;
 }
 
 function genSeqTextDefault(seq: number): string {
@@ -284,11 +265,7 @@ export const PUBLICATIONS: Record<PublicationName, PublicationConfig> = {
   },
   hq: {
     name: "hq", label: "红旗", type: "magazine", defaultId: "196419",
-    seqConfig: HQ_SEQ, genSeqText: genSeqTextDefault,
-    disabledDate: (d) => {
-      const y = Math.floor(parseInt(d) / 10000);
-      return y < 1958 || y > 1976;
-    },
+    genSeqText: genSeqTextDefault, dynamicIssues: true,
   },
   rmhb: {
     name: "rmhb", label: "人民画报", type: "magazine", defaultId: "197292",
