@@ -27,8 +27,9 @@ Homepage 已启用 Astro React integration，可以直接复用 `@jojo/ui` 组�
 - `backend/src/app/main.py`：统一公网 FastAPI 入口。
 - `backend/src/app/core`：认证、配置、错误和 HTTP 中间件。
 - `backend/src/app/account`：已启用的账号 API。
-- RAG 由独立 Agent 运行层承载，不在 Python 后端维护第二套实现；浏览器统一请求
-  Reader 的 `/gateway/ask`，由同源 Cloud Function 转发到国际 Agent。
+- RAG 由独立 Agent 运行层承载，不在 Python 后端维护第二套实现；Web、Mobile 与 Desktop
+  统一请求国际 Agent 的 `/ask`（Times 为 `/ask/times`），由该入口转发到内部 `/rag`。详见
+  [Agent](#agent)。
 - Times 由 `tools/times-pipeline` 每十分钟离线采集，保存原始 HTML、渲染 DOM、抓取元数据和原始图片；
   发现直接使用出版方官方 RSS、API、sitemap 或栏目页，正文由 Chromium+BPC 原页归档和来源/通用解析器回填，
   再生成媒体 Canonical 与 Delivery Jox。Raw/Canonical 写入同一个 HF Dataset，GitHub Actions
@@ -53,8 +54,12 @@ EdgeOne 专有入口位于 `infrastructure/edgeone/functions`，只导入
 - `agent/src/applications.ts`：RAG、JOJO Times 的最小业务占位函数；功能增长后再拆分。
 - Codex Agent 使用不含中国大陆的独立 Makers 项目和域名；其他模型后续通过
   Makers Models 接入。
-- 浏览器请求 Reader 同源 `/gateway/ask`，由 Reader 流式转发到国际 Agent 的内部
-  `/rag` 入口；Mobile 直接请求国际 `/rag`。
+- 三端统一请求国际 Agent 的 `/ask`（Times 随文解释为 `/ask/times`）。这两个路径由普通
+  Edge Function 提供，自行应答浏览器 `OPTIONS` 预检后转发到内部的 `/rag`、`/times`。
+  之所以不直连：`/rag` 与 `/times` 是 Makers `agents` 路由，平台会在我们的代码之前
+  强制校验 `Makers-Conversation-Id` 并对任何非 POST 请求返回 400，浏览器预检永远无法
+  满足该规则，因此浏览器无法直连。详见
+  [`infrastructure/edgeone/AGENT_DEPLOYMENT.md`](./infrastructure/edgeone/AGENT_DEPLOYMENT.md)。
   国际项目的 Edge Middleware 在进入 Agent 前校验 Supabase Bearer Token，随后由
   Agent 再做最终用户鉴权，不再使用 Node Cloud Function 嵌套转发或 HMAC 服务签名。
 - 会话采用客户端管理的通用结构（`conversation + messages + references`）。Web 将完整历史

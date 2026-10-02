@@ -8,7 +8,7 @@ import {
 } from "./bookAgent";
 
 const AGENT_URL = process.env.EXPO_PUBLIC_AGENT_API_URL?.trim()
-  || "https://agent-global.jojokanbao.cn/rag";
+  || "https://agent-global.jojokanbao.cn/ask";
 const MAX_HISTORY_MESSAGES = 20;
 const MAX_HISTORY_CHARACTERS = 100_000;
 

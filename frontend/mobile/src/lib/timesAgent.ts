@@ -10,7 +10,7 @@ import {
 } from "./times";
 
 const TIMES_AGENT_URL = process.env.EXPO_PUBLIC_TIMES_AGENT_API_URL?.trim()
-  || "https://agent-global.jojokanbao.cn/times";
+  || "https://agent-global.jojokanbao.cn/ask/times";
 const MAX_IMAGES = 4;
 const MAX_IMAGE_BYTES = 700_000;
 const COMPLETION_MARKER = "<!-- JOJO_TIMES_COMPLETE -->";

@@ -47,12 +47,13 @@ Window Controls Overlay 把最小化、最大化和关闭按钮融入同一栏�
 Web 与桌面端通过 `@jojo/pdf-viewer/vite` 共用 PDF.js 字体、CMap 与 WASM 打包清单。
 单击托盘图标可恢复窗口。
 
-打包版从 `file://` 运行，不能使用 Web 的同源 `/api/*` 与 `/gateway/*`。桌面构建会把馆藏 AI、
-时事随文解释和注册授权请求交给 `jojo-agent://reader`；主进程只允许 `/gateway/ask`、
-`/gateway/times/explain`、`/api/v1/speech/providers`、`/api/v1/speech` 和
-`/api/v1/account/signup-authorization` 五个路径，并通过 Chromium 网络栈转发到
-`https://reader.jojokanbao.cn` Reader 网关；`JOJO_DESKTOP_READER_ORIGIN` 可在开发与灰度时改指
-`https://beta.jojokanbao.cn`（或其他受信任来源）。问答与随文解释按 SSE 响应校验，语音与
+打包版从 `file://` 运行，不能使用 Web 的同源 `/api/*`。桌面构建把馆藏 AI、时事随文解释交给
+`jojo-agent://reader`（转发到国际 Agent 统一入口 `/ask`、`/ask/times`），把语音与注册授权
+指向同协议下的 `/api/v1/*`（仍转发到 Reader）。主进程只允许 `/ask`、`/ask/times`、
+`/api/v1/speech/providers`、`/api/v1/speech` 和 `/api/v1/account/signup-authorization`
+五个路径：Agent 路由走 `https://agent-global.jojokanbao.cn`，其余走
+`https://reader.jojokanbao.cn`。`JOJO_DESKTOP_AGENT_ORIGIN` 与 `JOJO_DESKTOP_READER_ORIGIN`
+可分别在开发与灰度时改指受信任来源。问答与随文解释按 SSE 响应校验，语音与
 注册授权按 JSON 校验。其余路径、请求头和响应头不会透传，
 renderer 仍保持 sandbox、无 Node.js 与无 `ipcRenderer` 访问。
 

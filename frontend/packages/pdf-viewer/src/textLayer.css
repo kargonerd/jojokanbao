@@ -1,3 +1,15 @@
+/* pdf.js TextLayer appends a measuring canvas to document.body. Without the
+   full viewer stylesheet it would render as a 300x150 opaque black block that
+   also extends the page height, so hide it the way the official viewer does. */
+.hiddenCanvasElement {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  display: none;
+}
+
 .textLayer {
   --min-font-size: 1;
   --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));

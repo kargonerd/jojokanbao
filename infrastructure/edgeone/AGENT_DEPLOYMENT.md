@@ -1,26 +1,40 @@
 # Codex Agent deployment
 
-Codex Agent 运行时只部署在不含中国大陆的独立 EdgeOne Makers 项目。Reader 项目仅部署
-同源 `/gateway/ask` 与 `/gateway/times/explain` 流式中继，不包含 Agent 运行时或任何签名密钥；Python 业务 API
-不承载 RAG。
+Codex Agent 运行时只部署在不含中国大陆的独立 EdgeOne Makers 项目。Reader 项目不再承载任何
+Agent 中继，只提供 Web 静态文件与 Python 业务 API。
 
 ```text
 reader.jojokanbao.cn                  agent-global.jojokanbao.cn
 ┌──────────────────────┐             ┌──────────────────────────┐
 │ Web + Python API     │             │ Edge Middleware          │
-│ /gateway/* relay     │ ── SSE ───▶ │ /rag, /times Agents      │
-│ IndexedDB Web history │             │ /gateway/credentials     │
-│ JOJO/Supabase 登录   │             │ encrypted OAuth Store    │
-└──────────────────────┘             └──────────────────────────┘
+│ IndexedDB Web history │ ── SSE ───▶ │ /ask  ◀─ 三端统一入口    │
+│ JOJO/Supabase 登录   │             │  └─▶ /rag, /times Agents │
+│                      │             │ /gateway/credentials     │
+└──────────────────────┘             │ encrypted OAuth Store    │
+                                     └──────────────────────────┘
 ```
 
-- 馆藏问答请求 Reader 同源 `/gateway/ask`，Times 随文解释请求同源
-  `/gateway/times/explain`。Reader 只转发允许的请求头和请求体，并将
-  上游 `ReadableStream` 原样返回；它不读取 Token 内容，也不缓冲 SSE。
-- Mobile 直接请求国际 `/rag`，不再经过国际 `/gateway/ask`。
-- 国际项目根部 `middleware.ts` 只匹配 `/rag` 与 `/times`。它先向 Supabase Auth 校验 Bearer
-  Token，再用 `context.next()` 在项目内部进入 Makers Agent，因此没有第二次 HTTP
-  转发或 Node Cloud Function 响应缓冲。
+- Web、Mobile 与 Desktop 统一请求国际 `/ask`（Times 随文解释为 `/ask/times`）。
+- `/ask` 与 `/ask/times` 是**普通 Edge Function**，不是 Makers `agents` 路由。原因是
+  `agents` 路由由平台前置校验：它要求 `Makers-Conversation-Id`，并对任何非 POST 请求返回
+  400 `Invalid makers-conversation-id`。浏览器在带 `Authorization` 时必须先发 `OPTIONS`
+  预检，而预检只能携带 `Access-Control-Request-*` 类元信息，永远无法满足该规则，因此
+  浏览器无法直连 `/rag`。普通 Edge Function 没有这道平台门槛，可以自己应答 `OPTIONS`
+  并返回 `204`，于是三端得以共享同一个 origin 与路径。
+- `/ask` 入口只做流式透传：转发允许的请求头与请求体，把上游 `ReadableStream` 原样返回，
+  不读取 Token 内容、不缓冲 SSE。转发目标是内部的 `/rag` 与 `/times`。
+- **普通 Edge Function 里不能用 `Response.json()`**：该边缘运行时会在调用时抛错，请求以
+  HTTP 545 `Error return from script` 失败，且与状态码无关。已在 preview 上实测确认：
+  同一路由中 `Response.json()` 分支返回 545，而 `new Response(JSON.stringify(...))` 与
+  纯文本 `new Response(...)` 分支都正常返回各自状态码。因此 `/ask` 的所有 JSON 响应
+  由 `agent/src/edgeone/relay.ts` 里的 `json()` helper 手写构造。
+  `agent/tests/ask-entry.test.ts` 有一条断言防止回归。
+  注意这只适用于**边缘函数**运行时；Makers `agents` 运行时里的
+  `agent/src/edgeone/handler.ts` 沿用 `Response.json()` 是正常的。
+- 国际项目根部 `middleware.ts` 只匹配 `/rag` 与 `/times`（`/ask` 由 Edge Function 自行
+  处理预检，不进 Middleware）。它先向 Supabase Auth 校验 Bearer Token，再用
+  `context.next()` 在项目内部进入 Makers Agent，因此没有第二次 HTTP 转发或 Node Cloud
+  Function 响应缓冲。
 - `/rag` 与 `/times` 内部仍会再次校验 Supabase Token。Middleware 是低成本的前置拒绝，Agent
   鉴权才是执行模型前的最终边界。
 - `/rag/health` 与 `/times/health` 不匹配 Middleware，可用于部署健康检查；它们只报告模型配置状态，不
@@ -37,19 +51,22 @@ reader.jojokanbao.cn                  agent-global.jojokanbao.cn
   这条书籍问答链路不再依赖 ES；书籍未提供静态索引时先看目录再按章读取。
 
 `pnpm prepare:agent-deploy` 会生成 `.edgeone/agent-deploy`，其中包括根目录
-`middleware.ts`、Makers Agent、凭据管理 Cloud Function 及工作区依赖。
+`middleware.ts`、Makers Agent、统一入口 Edge Function（`edge-functions/ask`）、凭据管理
+Cloud Function 及工作区依赖。
 `.github/workflows/deploy-agent-international.yml` 使用 EdgeOne CLI `1.6.26` 部署；这是
 Makers Store 跨实例持久化所需的最低版本。Preview 只验证
 `/gateway/credentials` 路由，Production 才通过自定义域名检查 `/rag/health`。
 
 ## 项目环境变量
 
-Reader 项目只需要配置国际 Agent 地址；未配置时使用代码中的生产默认值：
+国际 Agent 项目可覆盖统一入口的转发目标；未配置时使用代码中的生产默认值：
 
 ```dotenv
-JOJO_AGENT_URL=https://agent-global.jojokanbao.cn/rag
-JOJO_TIMES_AGENT_URL=https://agent-global.jojokanbao.cn/times
+JOJO_AGENT_ASK_URL=https://agent-global.jojokanbao.cn/rag
+JOJO_AGENT_TIMES_URL=https://agent-global.jojokanbao.cn/times
 ```
+
+Reader 项目不再需要配置 Agent 地址（旧 `JOJO_AGENT_URL` / `JOJO_TIMES_AGENT_URL` 已废弃）。
 
 国际 Agent 项目配置：
 
@@ -149,7 +166,12 @@ Python API 与 Agent 使用同一个值。
 2. 验证首个 `text_delta` 能在回答结束前到达。
 3. 验证 Web 刷新后可从 IndexedDB 恢复历史，并继续携带上下文提问。
 
-当前产品尚未上线，不保留旧 `/gateway/ask` 国际入口或旧 Mobile 兼容分支。
+当前产品尚未上线，不保留旧 `/gateway/ask` Reader 中继、旧国际 `/gateway/ask` 入口或旧 Mobile
+兼容分支。`/rag` 与 `/times` 仅作为 `agents` 路由内部使用，外部客户端一律走 `/ask`。
+
+代码契约：`/rag`、`/times` 在平台层面无法阻断公网直连（`agents/` 目录即公网会话入口），
+安全边界来自 Supabase Bearer Token 校验（Middleware + Agent 双重校验），无 token 一律 401。
+外部客户端统一走 `/ask` 是代码契约约定，不是网络层隔离。
 
 ## 初始化 Codex OAuth
 
@@ -194,10 +216,10 @@ provider 的 OAuth 项，不上传 Pi 文件里的其他 Provider 凭据。
 
 ## 调用
 
-Web 调用 Reader 同源入口：
+三端统一调用国际入口：
 
 ```http
-POST /gateway/ask
+POST /ask
 Authorization: Bearer <supabase-access-token>
 Content-Type: application/json
 Makers-Conversation-Id: conv_a1b2c3d4
@@ -205,7 +227,8 @@ Makers-Conversation-Id: conv_a1b2c3d4
 {"message":"继续解释","history":[{"role":"user","content":"上一问"},{"role":"assistant","content":"上一答"}],"scope":{"datasetIds":["book-a"],"itemIds":["book-a:item-a"],"manifestObjects":["content/books/book-a/items/item-a/manifest.jox"]}}
 ```
 
-Reader 将同一请求流式转发到国际 `/rag`。Mobile 则直接使用完整 `/rag` URL。
+Times 随文解释使用同一契约，只需把路径换成 `/ask/times`。`/ask` 将请求流式转发到内部
+`/rag`（或 `/times`），三端不再有各自的转发分支。
 `Makers-Conversation-Id` 必须是客户端生成并持续复用的 6–36 位 URL-safe 会话 ID。
 SSE 的 `usage` 与 `done` 事件均包含 token 数和 Pi 提供的美元成本估算。
 `tool_end` 事件只携带精简引用位置，不把整段工具结果塞进 SSE；Web 将最终助手消息和

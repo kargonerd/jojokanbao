@@ -58,6 +58,11 @@ jobs:
       # Relevant master changes automatically publish the public Beta channel.
       # Production tags publish the stable release channel using the same interface.
       VITE_RELEASE_CHANNEL: ${{ (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'preview') || (github.event_name == 'push' && github.ref == 'refs/heads/master')) && 'beta' || 'stable' }}
+      # Keep the Beta client pointed at the Beta Agent and the stable client at
+      # the production Agent, so the two environments stay isolated. When the
+      # Beta Agent domain is unset the Beta build falls back to the Agent's own
+      # default in `src/api/agentGateway.ts`, which is production.
+      VITE_AGENT_API_BASE: ${{ (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'preview') || (github.event_name == 'push' && github.ref == 'refs/heads/master')) && vars.EDGEONE_AGENT_BETA_BASE_URL || vars.EDGEONE_AGENT_BASE_URL }}
       VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
       VITE_POSTHOG_TOKEN: ${{ vars.POSTHOG_PROJECT_TOKEN }}
       VITE_POSTHOG_HOST: ${{ vars.POSTHOG_API_HOST }}

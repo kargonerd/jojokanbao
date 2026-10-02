@@ -1,9 +1,24 @@
 name: Deploy · Agent International
 
 on:
+  # Relevant master changes automatically publish the Beta environment, mirroring
+  # the Web client. EdgeOne Makers only offers `production` and `preview`, so the
+  # Beta environment *is* the preview environment plus a stable custom domain
+  # (`vars.EDGEONE_AGENT_BETA_BASE_URL`). Until that variable is set the deploy
+  # still runs and is verified through its ephemeral preview URL.
   push:
+    branches:
+      - master
     tags:
       - "agent-v*"
+    paths:
+      - ".github/workflows/deploy-agent-international.yml"
+      - "agent/**"
+      - "infrastructure/edgeone/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "turbo.json"
   workflow_dispatch:
     inputs:
       environment:
@@ -14,20 +29,31 @@ on:
         options:
           - preview
           - production
+      verify_base_url:
+        description: Optional deployed URL to verify (for example, a Makers preview URL)
+        required: false
+        type: string
 
 permissions:
   contents: read
 
+concurrency:
+  group: deploy-agent-${{ github.event_name == 'workflow_dispatch' && inputs.environment || github.ref == 'refs/heads/master' && 'preview' || 'production' }}
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'production' }}
+    # A tag push is a production release; anything else (master push, or an
+    # explicit dispatch) targets the environment the caller asked for.
+    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || (startsWith(github.ref, 'refs/tags/') && 'production' || 'preview') }}
     env:
       EDGEONE_API_TOKEN: ${{ secrets.EDGEONE_API_TOKEN }}
       EDGEONE_PROJECT_NAME: ${{ vars.EDGEONE_AGENT_PROJECT_NAME || 'jojo-agent-global' }}
-      EDGEONE_DEPLOY_ENV: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'production' }}
+      EDGEONE_DEPLOY_ENV: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || (startsWith(github.ref, 'refs/tags/') && 'production' || 'preview') }}
       EDGEONE_UPLOAD_FROM_PATH: ./.edgeone/agent-deploy/
       EDGEONE_AGENT_BASE_URL: ${{ vars.EDGEONE_AGENT_BASE_URL || 'https://agent-global.jojokanbao.cn' }}
+      EDGEONE_AGENT_BETA_BASE_URL: ${{ vars.EDGEONE_AGENT_BETA_BASE_URL }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
@@ -88,9 +114,14 @@ jobs:
           test -n "$deploy_url" || (echo "Preview URL was not reported" >&2 && exit 1)
           base_url="${deploy_url%%\?*}"
           query="${deploy_url#*\?}"
+          # On the custom-domain path the ephemeral `?eo_token=` query is
+          # meaningless, so the check URL is built without it.
           expected_status="405"
           if [ "$EDGEONE_DEPLOY_ENV" = "production" ]; then
             check_url="${EDGEONE_AGENT_BASE_URL%/}/rag/health"
+            expected_status="200"
+          elif [ -n "$EDGEONE_AGENT_BETA_BASE_URL" ]; then
+            check_url="${EDGEONE_AGENT_BETA_BASE_URL%/}/rag/health"
             expected_status="200"
           else
             check_url="$base_url/gateway/credentials?$query"
@@ -106,7 +137,10 @@ jobs:
             [ "$status" != "000" ] && [ "$status" != "404" ] && break
             sleep 10
           done
-          if { [ "$status" = "000" ] || [ "$status" = "404" ]; } && [ "$EDGEONE_DEPLOY_ENV" = "production" ]; then
+          # A freshly attached custom domain can take a while to propagate.
+          # Falling back to the deployment URL keeps the run honest without
+          # hiding a genuinely broken route.
+          if { [ "$status" = "000" ] || [ "$status" = "404" ]; } && [ "$expected_status" = "200" ]; then
             echo "Custom domain is still propagating; verifying this deployment URL instead."
             check_url="$base_url/gateway/credentials?$query"
             expected_status="405"
@@ -117,8 +151,8 @@ jobs:
               --header 'Makers-Conversation-Id: jojo-deploy-health' \
               "$check_url")" || status="000"
           fi
-          if [ "$status" = "200" ] && [ "$EDGEONE_DEPLOY_ENV" = "production" ]; then
-            check_url="${EDGEONE_AGENT_BASE_URL%/}/times/health"
+          if [ "$status" = "200" ] && { [ "$EDGEONE_DEPLOY_ENV" = "production" ] || [ -n "$EDGEONE_AGENT_BETA_BASE_URL" ]; }; then
+            check_url="${check_url%/rag/health}/times/health"
             status=""
             for attempt in $(seq 1 6); do
               status="$(curl --silent --show-error --output "$RUNNER_TEMP/agent-health.json" \
@@ -145,3 +179,63 @@ jobs:
             echo "Agent route health check returned HTTP $status; expected $expected_status" >&2
             exit 1
           fi
+
+      - name: Verify the unified /ask entry point answers the browser preflight
+        if: steps.edgeone_deploy.outcome == 'success'
+        run: |
+          # `/ask` is the only route browsers can reach: it is a plain Edge
+          # Function, so it must answer OPTIONS itself. The platform gates
+          # `/rag` with a preflight no browser can satisfy, so a regression here
+          # would silently break every Web/Mobile/Desktop client.
+          sed -E $'s/\033\[[0-9;]*[mK]//g' "$RUNNER_TEMP/edgeone-deploy.log" > "$RUNNER_TEMP/edgeone-deploy-clean.log"
+          deploy_url="$(grep -oE 'https://[^[:space:]]+\.edgeone\.dev\?eo_token=[^[:space:]]+' "$RUNNER_TEMP/edgeone-deploy-clean.log" | tail -1)"
+          test -n "$deploy_url" || (echo "Preview URL was not reported" >&2 && exit 1)
+          base_url="${deploy_url%%\?*}"
+          query="${deploy_url#*\?}"
+          # Prefer the custom domain when one is configured for this
+          # environment: that is the origin real browsers will use, and it is
+          # the one whose CORS behaviour we care about.
+          if [ "$EDGEONE_DEPLOY_ENV" = "production" ]; then
+            check_url="${EDGEONE_AGENT_BASE_URL%/}/ask"
+          elif [ -n "$EDGEONE_AGENT_BETA_BASE_URL" ]; then
+            check_url="${EDGEONE_AGENT_BETA_BASE_URL%/}/ask"
+          else
+            check_url="$base_url/ask?$query"
+          fi
+          status=""
+          for attempt in $(seq 1 6); do
+            status="$(curl --silent --show-error --output "$RUNNER_TEMP/ask-preflight.txt" \
+              --connect-timeout 5 \
+              --max-time 10 \
+              --write-out '%{http_code}' \
+              --request OPTIONS \
+              --header 'Origin: https://reader.jojokanbao.cn' \
+              --header 'Access-Control-Request-Method: POST' \
+              --header 'Access-Control-Request-Headers: authorization,content-type,makers-conversation-id' \
+              "$check_url")" || status="000"
+            [ "$status" != "000" ] && [ "$status" != "404" ] && break
+            sleep 10
+          done
+          if [ "$status" != "204" ] && [ -n "${EDGEONE_AGENT_BETA_BASE_URL}${EDGEONE_AGENT_BASE_URL}" ] && [ "$check_url" != "$base_url/ask?$query" ]; then
+            echo "Custom domain did not answer yet; verifying this deployment URL instead."
+            check_url="$base_url/ask?$query"
+            for attempt in $(seq 1 6); do
+              status="$(curl --silent --show-error --output "$RUNNER_TEMP/ask-preflight.txt" \
+                --connect-timeout 5 \
+                --max-time 10 \
+                --write-out '%{http_code}' \
+                --request OPTIONS \
+                --header 'Origin: https://reader.jojokanbao.cn' \
+                --header 'Access-Control-Request-Method: POST' \
+                --header 'Access-Control-Request-Headers: authorization,content-type,makers-conversation-id' \
+                "$check_url")" || status="000"
+              [ "$status" != "000" ] && [ "$status" != "404" ] && break
+              sleep 10
+            done
+          fi
+          if [ "$status" != "204" ]; then
+            echo "Unified /ask entry point returned HTTP $status for OPTIONS; expected 204" >&2
+            cat "$RUNNER_TEMP/ask-preflight.txt" >&2 || true
+            exit 1
+          fi
+          echo "Unified /ask entry point answered the browser preflight with 204."

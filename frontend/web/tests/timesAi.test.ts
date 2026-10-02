@@ -81,7 +81,7 @@ describe("Times AI explanation", () => {
     await completed;
 
     const [target, init] = fetchMock.mock.calls[0]!;
-    expect(target).toBe("/gateway/times/explain");
+    expect(target).toBe("https://agent-global.jojokanbao.cn/ask/times");
     const headers = new Headers(init.headers);
     expect(headers.get("authorization")).toBe("Bearer reader-token");
     expect(headers.get("makers-conversation-id")).toMatch(/^times_[a-f0-9]{24}$/u);
