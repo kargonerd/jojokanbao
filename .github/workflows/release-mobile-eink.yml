@@ -67,7 +67,7 @@ jobs:
     name: Build signed Android APK
     needs: validate
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 150
     env:
       EXPO_PUBLIC_AGENT_API_URL: https://agent-global.jojokanbao.cn/rag
       EXPO_PUBLIC_RELEASE_CDN_BASE: ${{ vars.DOWNLOAD_CDN_BASE || 'https://blacknews.jojokanbao.cn' }}/releases
