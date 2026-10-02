@@ -140,7 +140,7 @@ a.jojo-citation:hover {
 .app-header {
   position: sticky;
   top: 0;
-  z-index: 80;
+  z-index: 100;
   display: grid;
   grid-template-columns: minmax(132px, 1fr) auto minmax(132px, 1fr);
   align-items: center;
