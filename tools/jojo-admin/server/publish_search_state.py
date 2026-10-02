@@ -17,7 +17,7 @@ from es_repair import _load_root_env
 DEFAULT_BUCKET = "jojo-search-1314955862"
 DEFAULT_REGION = "ap-beijing"
 DEFAULT_KEY = "runtime/search/search-state.json"
-DEFAULT_INDICES = ("jojo-67f10bu8",)
+DEFAULT_INDICES = ("jojo-1tk2lxru",)
 
 
 def publication_config() -> dict[str, Any]:

@@ -31,7 +31,6 @@ RUNTIME_FILES = (
     "migration_exclusions.py",
     "requirements.txt",
     "scf_bootstrap",
-    "search_overlay.py",
     "search_state.py",
 )
 DEFAULTS = {

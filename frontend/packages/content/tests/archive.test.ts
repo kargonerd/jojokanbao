@@ -8,7 +8,6 @@ import {
   isArchiveIssueId,
   isAdaptiveCalendarDateAvailable,
   issueIdToDate,
-  stripSearchHighlights,
 } from "../src/archive";
 import type { JojoAdaptiveCalendar } from "../src/types";
 
@@ -32,10 +31,9 @@ describe("archive shared domain", () => {
     expect(getLatestRmrbAvailableDate(new Date("2026-07-17T11:00:00Z"))).toBe("20260717");
   });
 
-  it("round trips local calendar dates and strips search markers", () => {
+  it("round trips local calendar dates", () => {
     const date = issueIdToDate("19660701");
     expect(dateToIssueId(date)).toBe("19660701");
-    expect(stripSearchHighlights("革命@highlight@历史@/highlight@文献")).toBe("革命历史文献");
   });
 
   it("rejects known newspaper archive gaps and invalid calendar dates", () => {

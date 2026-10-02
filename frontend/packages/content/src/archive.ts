@@ -206,7 +206,3 @@ export function isAdaptiveCalendarDateAvailable(
 export function toSearchApiDate(issueId: string): string {
   return issueId.replace(/^(\d{4})(\d{2})(\d{2})$/, "$1-$2-$3");
 }
-
-export function stripSearchHighlights(value: string): string {
-  return value.replaceAll("@highlight@", "").replaceAll("@/highlight@", "");
-}
