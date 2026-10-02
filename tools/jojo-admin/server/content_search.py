@@ -34,7 +34,7 @@ def search_content(payload: dict[str, Any], client: KibanaConsoleClient | None =
     except (TypeError, ValueError) as exc:
         raise ValueError("size 参数错误") from exc
 
-    index = os.getenv("ES_CONTENT_INDEX", "jojo-content-v1")
+    index = os.getenv("ES_CONTENT_INDEX", "jojo-1tk2lxru")
     filters: list[dict[str, Any]] = []
     dataset_ids = _strings(payload.get("datasetIds"))
     item_ids = _strings(payload.get("itemIds"))
