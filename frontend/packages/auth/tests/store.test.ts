@@ -146,7 +146,7 @@ describe("createJojoAuthStore", () => {
     expect(useAuthStore.getState()).toMatchObject({ busy: false, user: null, notice: null });
     expect(useAuthStore.getState().error).toContain("请先检查邮箱地址");
   });
-  it("allows retry after a stalled profile read, without clearing the session", async () => {
+  it("recovers a stalled profile read with one automatic retry", async () => {
     vi.useFakeTimers();
     try {
       const { client, maybeSingle, user } = createClient();
@@ -157,14 +157,34 @@ describe("createJojoAuthStore", () => {
       const firstRead = useAuthStore.getState().refreshProfile();
       expect(useAuthStore.getState().profileStatus).toBe("loading");
       await vi.advanceTimersByTimeAsync(12_000);
+      await vi.advanceTimersByTimeAsync(0);
       await firstRead;
-      expect(useAuthStore.getState()).toMatchObject({ user, profile: null, profileStatus: "error" });
-      await useAuthStore.getState().refreshProfile();
-      expect(useAuthStore.getState()).toMatchObject({ profile, profileStatus: "ready" });
+      expect(useAuthStore.getState()).toMatchObject({ user, profile, profileStatus: "ready" });
       expect(maybeSingle).toHaveBeenCalledTimes(2);
       resolveOld({ data: { ...profile, display_name: "旧代号-ABC" }, error: null });
       await vi.advanceTimersByTimeAsync(0);
       expect(useAuthStore.getState().profile).toEqual(profile);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("surfaces an error only after the automatic retry also stalls", async () => {
+    vi.useFakeTimers();
+    try {
+      const { client, maybeSingle, user } = createClient();
+      maybeSingle.mockReturnValue(new Promise(() => undefined));
+      const { useAuthStore } = createJojoAuthStore(client, { authorizeSignup: async () => "server-authorization" });
+      useAuthStore.setState({ user: user as never, initialized: true });
+      const reading = useAuthStore.getState().refreshProfile();
+      expect(useAuthStore.getState().profileStatus).toBe("loading");
+      await vi.advanceTimersByTimeAsync(12_000);
+      expect(useAuthStore.getState().profileStatus).toBe("loading");
+      expect(maybeSingle).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(12_000);
+      await reading;
+      expect(useAuthStore.getState()).toMatchObject({ user, profile: null, profileStatus: "error" });
+      expect(maybeSingle).toHaveBeenCalledTimes(2);
     } finally {
       vi.useRealTimers();
     }
