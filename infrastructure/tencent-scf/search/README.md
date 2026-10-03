@@ -4,24 +4,11 @@ This directory is the currently deployed JOJO Reader search runtime. It remains
 independent from the new FastAPI backend so moving source code does not change
 its Flask routes, CORS behavior, or Tencent SCF deployment contract.
 
-## Default Search
-
-Without overlay settings, `/search` keeps the existing single-index behavior:
-
-```powershell
-$env:ELASTICSEARCH_URL="http://your-es-host:80"
-$env:ELASTICSEARCH_USERNAME="elastic"
-$env:ELASTICSEARCH_PASSWORD="..."
-$env:ELASTICSEARCH_INDEX="jojo-67f10bu8"
-python app.py
-```
-
 ## Unified content search
 
-`POST /content/search` serves Reader and Agent queries over JOJO books,
-newspapers and magazines. It deliberately uses a separate client so the
-existing `/search` cluster and account are unaffected. Configure the new
-content cluster with:
+`POST /content/search` is the only search route. It serves Reader and Agent
+queries over JOJO books, newspapers and magazines from the unified content
+index. Configure that cluster with:
 
 ```powershell
 $env:CONTENT_ELASTICSEARCH_URL="https://your-new-content-es-endpoint"
@@ -33,7 +20,10 @@ $env:CONTENT_ELASTICSEARCH_INDEX="jojo-content-v1"
 Tencent ES Serverless is append-only. The unified synchronizer writes stable
 logical document IDs and does not use a release selector. Until all four
 `CONTENT_ELASTICSEARCH_*` values are configured, `/content/search` fails closed
-with HTTP 503 while the existing `/search` route remains available.
+with HTTP 503.
+
+The legacy `GET /search` route and its `jojo-67f10bu8` index have been retired:
+every client (Web, desktop, mobile) now calls `/content/search`.
 
 `datasetId` and `itemId` are top-level keyword fields used for exact scope
 filtering. The unified endpoint reads only the nine fields in the strict JOJO
@@ -81,7 +71,6 @@ cannot erase earlier repair state:
 ```powershell
 python tools/jojo-admin/server/publish_search_state.py `
   --index jojo-content-v1 `
-  --index jojo-67f10bu8 `
   --bucket private-bucket-1250000000 `
   --region ap-beijing
 ```
@@ -139,43 +128,3 @@ GitHub Actions uses the Tencent Cloud Python SDK with repository secrets. Local
 profile-based fallback calls the authenticated `tccli`; neither mode stores
 Tencent credentials in the repository. `UpdateFunctionCode` preserves the
 function's environment and network configuration.
-
-## Overlay Search Test
-
-Create a small base/delta test index from the local RMRB source data:
-
-```powershell
-cd infrastructure/tencent-scf/search
-$env:ELASTICSEARCH_URL="http://your-es-host:80"
-$env:ELASTICSEARCH_USERNAME="elastic"
-$env:ELASTICSEARCH_PASSWORD="..."
-python rmrb_overlay_poc.py --limit 30 --query "黄河"
-```
-
-The script creates two timestamped indices:
-
-```text
-jojo-rmrb-overlay-test-base-YYYYMMDDHHMMSS
-jojo-rmrb-overlay-test-delta-YYYYMMDDHHMMSS
-```
-
-It also writes a local patch-state file to `.runtime/patch-state-test.json`.
-
-Run the Flask service against those indices:
-
-```powershell
-$env:SEARCH_OVERLAY="true"
-$env:ELASTICSEARCH_BASE_INDEX="jojo-rmrb-overlay-test-base-YYYYMMDDHHMMSS"
-$env:ELASTICSEARCH_DELTA_INDEX="jojo-rmrb-overlay-test-delta-YYYYMMDDHHMMSS"
-$env:SEARCH_PATCH_STATE_FILE=".runtime/patch-state-test.json"
-python app.py
-```
-
-Then query:
-
-```powershell
-Invoke-RestMethod "http://127.0.0.1:9000/search?keyword=黄河&size=10"
-Invoke-RestMethod "http://127.0.0.1:9000/search?keyword=OverlayUniqueToken&size=10"
-```
-
-`OverlayUniqueToken` should only be returned from the delta index, proving that a patched document is searchable.
