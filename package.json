@@ -29,6 +29,7 @@
     "dev:times-mobile": "pnpm dev:mobile",
     "finalize:archive-pdf": "node tools/archive-pdf/finalize.mjs",
     "protect:archive-pdf": "node tools/archive-pdf/protect.mjs",
+    "backfill:archive-pdf": "node tools/archive-pdf/backfill.mjs",
     "publish:archive-pdf": "node tools/archive-pdf/publish.mjs",
     "purge:archive-pdf": "node tools/archive-pdf/purge-cache.mjs",
     "sync:rmrb": "python tools/archive-pdf/sync_rmrb.py",

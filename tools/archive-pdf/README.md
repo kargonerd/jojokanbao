@@ -13,6 +13,7 @@ pnpm publish:archive-pdf
 pnpm purge:archive-pdf
 pnpm finalize:archive-pdf
 pnpm sync:rmrb
+pnpm backfill:archive-pdf
 ```
 
 ## Files
@@ -29,6 +30,35 @@ pnpm sync:rmrb
   preserving article content, operator edits, metadata, and calendar gaps.
 - `verify_delivery.py` verifies the published manifest and Jox PDF byte ranges
   through the public CDN.
+- `backfill.mjs` stages, uploads, and verifies full-issue magazine backfills
+  for item-enumerated Jox Delivery datasets (hq/sjzs/rmhb).
+
+## Magazine backfill
+
+`backfill.mjs` is the magazine counterpart of `sync_rmrb.py`. Magazine
+Datasets enumerate every issue in the dataset index (instead of the
+newspaper `itemPath` calendar), so a backfill publishes protected PDF assets,
+item manifests, and one dataset-index revision; the reader pickers derive
+their issue lists from that index with no frontend change.
+
+```bash
+# 1. Stage locally from a <year>/<yyyymm>.pdf tree; nothing is uploaded.
+#    Already-published issues are skipped, so re-runs only add missing ones.
+pnpm backfill:archive-pdf -- stage --publication sjzs --source <local-root>
+
+# 2. Upload: immutable PDF assets first, then manifests, then the dataset
+#    index last (bumping its revision).
+pnpm backfill:archive-pdf -- upload --publication sjzs
+
+# 3. Verify every staged issue through the public CDN (magic + sha256).
+pnpm backfill:archive-pdf -- verify --publication sjzs
+```
+
+Requirements: `rclone` (remote `JOJO_DELIVERY_REMOTE`, default
+`jojo-b2-s3:jojo-newspaper`). No Node workspace dependencies — the Jox codec
+uses only `node:zlib`. The storage remote can be overridden with
+`--remote`; staging never touches HF or Elasticsearch, and magazine
+manifests carry no article text (`text: missing`).
 
 `sync_rmrb.py` requires `pip install -r tools/archive-pdf/requirements.txt`, plus
 the `qpdf`, `node`, and `rclone` executables. It reuses `RMRB_REVIEW_HF_REPO`
