@@ -20,6 +20,12 @@ VITE_SUPABASE_PUBLISHABLE_KEY=
 # Server-only access for the Python API, the Agent and the local admin
 # workbench. Equivalent to the service_role key. Never prefix it with VITE_.
 SUPABASE_SECRET_KEY=
+
+# Server-only legacy JWT secret (Dashboard → Auth → JWT Settings). When set,
+# the Python API, the Agent and the admin workbench verify access tokens
+# locally (HS256) instead of calling /auth/v1/user per request. Requires the
+# legacy JWT secret to stay enabled on the project.
+SUPABASE_JWT_SECRET=
 ```
 
 `.env.local` may override values for one machine. Both files are ignored by
