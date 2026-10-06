@@ -160,6 +160,12 @@ $encryptionBytes = [Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
 （管理 API 的 `GET /v1/projects/{ref}/api-keys?reveal=true`，`type=secret` 那一项）。
 Python API 与 Agent 使用同一个值。
 
+Agent 另可配置 `SUPABASE_JWT_SECRET`（Dashboard → Auth → JWT Settings 的 legacy
+secret）：配置后 `authorize` 本地验证 Supabase JWT（HS256，校验 iss/aud/exp），不再
+每个请求调用 `/auth/v1/user`；`isAdmin` 与可用性监控标志取自 token 签发时的
+`app_metadata` 快照，撤销最迟在下一次 token 刷新生效。未配置时保持原有的远程
+验证行为。
+
 ## 发布顺序
 
 1. 部署国际 Agent、Reader 和 Mobile。

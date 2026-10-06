@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import httpx
+import jwt
 from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
@@ -12,6 +13,37 @@ from .models import CurrentUser
 
 
 bearer = HTTPBearer(auto_error=False)
+
+JWT_LEEWAY_SECONDS = 30
+
+
+def decode_access_token(token: str, settings: Settings) -> CurrentUser:
+    """Verify a Supabase access token locally (HS256) and map claims to CurrentUser."""
+    if not settings.supabase_url or not settings.supabase_jwt_secret:
+        raise ConfigurationError()
+    try:
+        payload: dict[str, Any] = jwt.decode(
+            token,
+            settings.supabase_jwt_secret,
+            algorithms=["HS256"],
+            audience="authenticated",
+            issuer=f"{settings.supabase_url}/auth/v1",
+            leeway=JWT_LEEWAY_SECONDS,
+            options={"require": ["exp", "sub"]},
+        )
+    except jwt.InvalidTokenError as error:
+        raise AuthenticationError("Invalid or expired access token") from error
+    try:
+        return CurrentUser.model_validate({
+            "id": payload["sub"],
+            "email": payload.get("email") or "",
+            "role": payload.get("role") or "authenticated",
+            "aud": payload.get("aud") or "authenticated",
+            "app_metadata": payload.get("app_metadata") or {},
+            "user_metadata": payload.get("user_metadata") or {},
+        })
+    except (ValueError, TypeError) as error:
+        raise AuthenticationError("Invalid or expired access token") from error
 
 
 class SupabaseAuthClient:
@@ -62,4 +94,6 @@ async def get_current_user(
 ) -> CurrentUser:
     if credentials is None or credentials.scheme.lower() != "bearer" or not credentials.credentials.strip():
         raise AuthenticationError()
+    if settings.supabase_jwt_secret:
+        return decode_access_token(credentials.credentials, settings)
     return await SupabaseAuthClient(settings).get_user(credentials.credentials)

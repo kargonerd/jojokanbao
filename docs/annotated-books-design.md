@@ -20,30 +20,33 @@ Raw / Canonical / Delivery 分层。
 | 机制 | 性质 | 存储 | 分发 |
 |------|------|------|------|
 | note（注） | 编辑制作的静态文字 | Canonical | Delivery（站内阅读）+ EPUB 导出 |
-| link（链） | 资源引用（站内或外链） | Canonical | Delivery + EPUB（链接形态） |
+| link（链） | 资源引用（站内或外链），编辑部与用户均可创建 | Supabase | 仅站内（用户 link 先审后显） |
 | 讨论（UGC） | 读者生成的想法与回复 | Supabase（现有 annotations 体系） | 仅站内 |
 
 锚点四级：书级（book）、章级（chapter）、段级（paragraph）、句级（sentence）。
 
 ### 2.1 决策记录：存储分层
 
-- **关联内容（note/link）进 Canonical**：它们是书籍内容的一部分，随书版本化、
-  可修订、可离线、可随 EPUB 分发。EPUB 与 Delivery 均为 Canonical 的派生物，
-  从同一真值生成，天然一致。
+- **note 进 Canonical**：批注与注释是书籍内容的一部分，随书版本化、可离线、
+  可随 EPUB 分发。EPUB 与 Delivery 均为 Canonical 的派生物，从同一真值生成，
+  天然一致。
+- **link 存 Supabase**：link 由编辑部与用户在阅读过程中持续创建，是动态增长的
+  数据，不是随书定稿的制作产物；存 Supabase 直接复用 UGC 的建表、账号与审核
+  体系，新增或修订 link 不需要走 content-pipeline 重发书籍版本。代价：link
+  不随 EPUB 分发、不进检索索引。
 - **讨论存 Supabase**：讨论是真 UGC，复用现有 `annotations` 表与 RPC
   （划线、想法、楼中楼回复、点赞、举报均已有），零新表。
-- **不建系统账号**：关联内容以静态数据随书分发，不需要任何账号「代持」。
-  讨论挂载依赖现有的 anchor 聚合（aggregated underlines）：读者在批注句上
-  发想法，即自然聚合到该句的 thread 下，批注卡（静态渲染）与讨论（动态拉取）
-  在同一锚点汇合。
-- **官方身份是配置，不是账号**：批注者身份名单（authorId → 姓名、颜色、徽章）
-  放 PostHog Remote config。当前名单可为空；未来批注者本人若进场互动
-  （追加批注、回复、加精），将其账号 authorId 加入名单即可获得官方样式。
+- **创建与审核**：编辑部账号（如「JOJO 编辑部」）在阅读器内边看书边创建
+  link，创建后直接生效；用户提交的 link 进入待审队列，审核通过后展示
+  （先审后显）。审核工作台复用 `tools/jojo-admin` 的报刊人工审核模式。
+- **官方身份是配置，不是专属账号**：批注者与官方 link 的展示身份名单
+  （authorId → 名称、颜色、徽章）放 PostHog Remote config；账号 authorId
+  加入名单即获得官方样式。「JOJO 编辑部」即名单中的一个真实运营账号。
 
-### 2.2 数据模型（Canonical，新增）
+### 2.2 数据模型
 
-书籍对象新增两个数组，type 均为开放枚举；阅读器对未知 type 渲染通用卡片，
-保证后续新增类型不需要发版。
+Canonical 书籍对象新增一个数组，Supabase 新增一张 link 表；type 均为开放枚举，
+阅读器对未知 type 渲染通用卡片，保证后续新增类型不需要发版。
 
 ```
 notes[]: {
@@ -58,25 +61,37 @@ notes[]: {
   page?       // 原页码（对照扫描页用）
   ord
 }
-
-links[]: {
-  id
-  anchor      // 同上
-  type        // video | audio | newspaper | book-chapter | external | timeline
-  ref         // { contentId, sectionId? }（站内）或 { url }（站外）
-  title
-  ord
-}
 ```
 
 - `annotation` 类型的 note 即「批注」；其余类型为客观注释（人物、事件、版本考据等）。
+
+links 存 Supabase（新表 `book_links`）：
+
+```
+book_links: {
+  id
+  book_id
+  anchor      // { level: sentence|paragraph|chapter|book, ...定位信息 }
+  type        // video | audio | newspaper | book | book-chapter | article
+              // | person | event | concept | timeline | external ...
+  ref         // { contentId, sectionId? }（站内）或 { url }（站外）
+  title
+  created_by  // 创建账号（编辑部或用户）
+  status      // pending | approved | rejected
+  created_at
+}
+```
+
+- 编辑部账号创建的 link 入库即 `approved`，直接生效；用户提交的 link 为
+  `pending`，审核通过后才对所有人可见（先审后显），提交者本人可见自己的待审
+  link。展示时按 anchor 聚合，官方与用户 link 同一卡片体系，以来源徽章区分。
 - `newspaper` 类型的 link 指向站内报刊档案（按日期/版面定位），实现
   「正文提到某事件 → 跳转当年报纸原文」的站内闭环，是独有的差异化能力。
 - 讨论不新增任何模型：批注句的讨论 = 该句 anchor 下现有 thread 的 comments。
 
 ## 3. 制作管线
 
-输入是批注版 PDF（或自带注释的原书），输出是 Canonical 的 notes/links 源数据。
+输入是批注版 PDF（或自带注释的原书），输出是 Canonical 的 notes 源数据。
 
 1. **正文结构化**：扫描件经 MinerU vlm OCR（约 1.1 s/页）得到段落文本与行 bbox；
    原书自带注释（如毛选每页脚注）在同一遍 OCR 中提取为候选 notes。
@@ -90,6 +105,9 @@ links[]: {
    修锚点、改文字、配视频链接、定稿。编辑台同时承担发布前验收视图。
 5. **入库**：校对后的源 JSON 写入 Canonical（Hugging Face Dataset），随书籍发布
    流程生成 Delivery（jox）与 EPUB。
+
+link 不走上述管线：由编辑部账号在阅读器内选中文字直接创建，写入 `book_links`
+即生效；用户 link 同入口提交，进待审队列。
 
 ## 4. 阅读体验
 
@@ -114,6 +132,9 @@ links[]: {
 - 章首批注目录与「上一条/下一条」导览模式，配合讲解视频形成课程式阅读。
 - 讲解视频：批注卡内嵌 B 站播放器（`player.bilibili.com` iframe），支持时间戳；
   章级视频渲染为章首横幅卡。
+- link：锚点处渲染链接标记，点开为链接卡（标题、来源徽章、目标资源入口）；
+  官方 link 与用户 link 同一卡片体系，按来源徽章区分。用户 link 审核通过后
+  才对所有人可见，提交者本人可见自己的待审 link。
 
 ## 5. EPUB 导出
 
@@ -122,7 +143,7 @@ EPUB 由 Canonical 重建，批注版 EPUB 将 notes 烘为排版内容，任何
 - 句批：正文句后专属色上标 `[n]`，链接至章末批注小节；声明
   `epub:type="noteref"`，支持的阅读器（Apple Books 等）弹窗显示。
 - 段批：段后批注块；章批与题解：章首块。
-- link：烘为可点击链接（站内资源以 URL 形式）；讨论与 AI 问答不随 EPUB 分发。
+- link 存 Supabase，不随 EPUB 分发；讨论与 AI 问答同样不随 EPUB 分发。
 - 干净版与批注版作为两个 export 并存（现有 `downloadExport` 按 exportId
   选择描述符，机制不变）。
 
@@ -137,7 +158,8 @@ notes 随 Canonical 进入检索索引后，AI 回答（RAG）可引用批注与
 ## 7. 落地分期
 
 1. **MVP（阳批《经济学原理》前言 + 第一章，19 页）**：管线 1–3 步 + 只读批注渲染
-   （句批 + 讲解视频 link 两个类型），验证锚定精度与阅读体验。
+   （句批 + 讲解视频 link 两个类型），验证锚定精度与阅读体验；`book_links` 表、
+   阅读器创建入口与审核队列在本期一并落地。
 2. **二期**：讨论挂载与筛选器、批注版/干净版双 EPUB、关联内容编辑台。
 3. **三期（毛选等著作）**：人物/事件/概念注、报刊原文 link、题解、书级附录
    （术语表、年表）、导览模式、AI 引用闭环。
@@ -149,4 +171,7 @@ notes 随 Canonical 进入检索索引后，AI 回答（RAG）可引用批注与
 - **手写批注**：打字批注可程序化直解；手写批注需 OCR，准确率显著下降。
   制作规范建议批注者使用打字批注。
 - **锚点稳定性**：正文重排（content-pipeline 版本升级）可能导致历史批注锚点
-  漂移，需在编辑台提供批量校验与修复入口。
+  漂移，需在编辑台提供批量校验与修复入口；`book_links` 为动态数据，同样需要
+  批量校验覆盖。
+- **审核与质量**：用户 link 先审后显，审核积压会压制投稿意愿；外链需成文
+  内容规范（如禁止纯推广链接），审核标准与报刊人工审核对齐。

@@ -5,10 +5,13 @@ import os
 from pathlib import Path
 from urllib.parse import urlsplit
 
+import jwt
 import requests
 from dotenv import load_dotenv
 from flask import Blueprint, g, jsonify, request
 
+
+load_dotenv(Path(__file__).resolve().parents[3] / ".env")
 
 auth_blueprint = Blueprint("admin_auth", __name__)
 ACCESS_COOKIE = "jojo_admin_access"
@@ -22,6 +25,7 @@ ROLE_PERMISSIONS = {
     "librarian": {"library"},
     "moderator": {"moderation"},
 }
+JWT_LEEWAY_SECONDS = 30
 
 
 def permissions_for(user):
@@ -85,23 +89,57 @@ def require_admin_user(user):
     return user
 
 
+def _jwt_config() -> tuple[str, str] | None:
+    secret = os.getenv("SUPABASE_JWT_SECRET", "").strip()
+    base = os.getenv("VITE_SUPABASE_URL", "").strip().rstrip("/")
+    if not secret or not base:
+        return None
+    return secret, base
+
+
+def _decode_access_token(token: str, secret: str, base: str) -> dict | None:
+    """Roles travel inside the token as an issuance-time snapshot of app_metadata."""
+    try:
+        payload = jwt.decode(token, secret, algorithms=["HS256"], audience="authenticated",
+            issuer=f"{base}/auth/v1", leeway=JWT_LEEWAY_SECONDS, options={"require": ["exp", "sub"]})
+    except jwt.InvalidTokenError:
+        return None
+    metadata = payload.get("app_metadata")
+    return {
+        "id": payload.get("sub"),
+        "email": payload.get("email", ""),
+        "app_metadata": metadata if isinstance(metadata, dict) else {},
+    }
+
+
+def _resolve_user(token: str):
+    """Return the account behind the token, or None when the token is no longer valid."""
+    configured = _jwt_config()
+    if configured:
+        return _decode_access_token(token, *configured)
+    try:
+        return auth_request("GET", "user", token=token)
+    except AdminAuthError as error:
+        if error.status != 401:
+            raise
+        return None
+
+
 def validate_admin_session():
     token = request.cookies.get(ACCESS_COOKIE, "")
     refresh = request.cookies.get(REFRESH_COOKIE, "")
-    try:
-        if not token:
-            raise AdminAuthError("请先登录管理台。")
-        user = auth_request("GET", "user", token=token)
-    except AdminAuthError as error:
-        if error.status != 401 or not refresh:
-            raise
+    if not token:
+        raise AdminAuthError("请先登录管理台。")
+    user = _resolve_user(token)
+    if user is None and refresh:
         session = auth_request("POST", "token?grant_type=refresh_token", body={"refresh_token": refresh})
         token = session.get("access_token", "")
         if not token or not session.get("refresh_token"):
             raise AdminAuthError("账号服务返回了无效数据。", 503)
-        # Always verify the live role, including after a session refresh.
-        user = auth_request("GET", "user", token=token)
+        user = _resolve_user(token)
         g.admin_new_session = session
+    if user is None:
+        raise AdminAuthError("登录已失效或账号密码不正确，请重新登录。")
     g.admin_user = require_admin_user(user)
     g.admin_access_token = token
 
@@ -172,7 +210,7 @@ def login():
         token = session.get("access_token")
         if not token or not session.get("refresh_token"):
             raise AdminAuthError("账号服务返回了无效数据。", 503)
-        user = require_admin_user(auth_request("GET", "user", token=token))
+        user = require_admin_user(session.get("user"))
         g.admin_new_session = session
         return jsonify(success=True, user=public_user(user))
     except AdminAuthError as error:
