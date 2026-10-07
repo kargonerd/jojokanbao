@@ -64,6 +64,7 @@ export type { Api, AssistantMessage, Model, Models } from "@earendil-works/pi-ai
 export {
   AgentHttpError,
   authorizeSupabaseUser,
+  verifySupabaseAccessToken,
 } from "./edgeone/auth";
 export {
   createCredentialAdminHandler,

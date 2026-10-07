@@ -70,7 +70,10 @@ pnpm dev:admin
 首次部署管理台时，需要在目标 Supabase 项目中执行已评审的迁移，并按
 `infrastructure/supabase/README.md` 配置 `SUPABASE_SECRET_KEY`。审核权限由账号
 `app_metadata.jojo_roles` 中的角色决定：`admin` 可访问全部页面，`moderator` 仅审核，
-`librarian` 仅内容库。
+`librarian` 仅内容库。另可配置 `SUPABASE_JWT_SECRET`（Dashboard → Auth → JWT
+Settings 的 legacy secret）：配置后管理台本地验证会话 JWT（HS256），不再每个请求
+调用 `/auth/v1/user`；角色取自 token 签发时的快照，撤销角色最迟在下一次 token
+刷新（约 1 小时内）生效。未配置时保持原有的远程验证行为。
 
 Agent 管理页面位于 `http://127.0.0.1:4174/agent`。设置
 `JOJO_CODEX_AUTH_PATH` 或 `JOJO_AGENT_AUTH_PATH` 时，本机 Flask 只读取指定路径

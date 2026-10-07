@@ -128,3 +128,22 @@ GitHub Actions uses the Tencent Cloud Python SDK with repository secrets. Local
 profile-based fallback calls the authenticated `tccli`; neither mode stores
 Tencent credentials in the repository. `UpdateFunctionCode` preserves the
 function's environment and network configuration.
+
+## Function logging (CLS)
+
+Production (`flask_jojo_search`) ships its function logs to CLS so failed
+searches can be investigated after the fact. The topic
+`flask-jojo-search` (logset `SCF_logset_lsaUPRwQ`, ap-beijing) keeps 30 days
+of hot storage with a full-text index. The app only logs at WARN/ERROR level
+(ES timeouts, query failures, search-state unavailability); successful searches
+produce no log entries, so an empty topic is expected while the service is
+healthy. Retrieval is by time range:
+
+```bash
+tccli cls SearchLog --region ap-beijing --From <epoch-seconds> --To <epoch-seconds> \
+  --TopicId a5a9eb17-9dab-4bd0-938c-8b1f6eb89e7a --Limit 20 --output json
+```
+
+Staging (`flask_jojo_search_staging`) is not bound to CLS. The function timeout
+is 15s and memory is 128MB; an ES stall surfaces to clients as a 5xx within
+that window and lands in this topic as an error entry.

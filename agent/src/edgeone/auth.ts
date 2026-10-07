@@ -3,6 +3,10 @@ import type {
   EdgeOneAgentContext,
 } from "./types";
 
+const JWT_LEEWAY_SECONDS = 30;
+
+type AppMetadata = { account_purpose?: unknown; jojo_roles?: unknown };
+
 export class AgentHttpError extends Error {
   constructor(
     readonly status: number,
@@ -13,6 +17,67 @@ export class AgentHttpError extends Error {
     super(message);
     this.name = "AgentHttpError";
   }
+}
+
+function base64UrlBytes(segment: string): Uint8Array {
+  const normalized = segment.replace(/-/g, "+").replace(/_/g, "/");
+  const binary = atob(normalized + "=".repeat((4 - (normalized.length % 4)) % 4));
+  return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+}
+
+function asArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  return Uint8Array.from(bytes).buffer;
+}
+
+function userFromClaims(id: string, appMetadata: AppMetadata): AuthorizedAgentUser {
+  // Only administrators can set app_metadata. User-editable metadata and
+  // conversation ID prefixes must never grant access to network diagnostics.
+  return {
+    id,
+    ...(Array.isArray(appMetadata.jojo_roles) && appMetadata.jojo_roles.includes("admin")
+      ? { isAdmin: true } : {}),
+    ...(appMetadata.account_purpose === "ai_availability_monitor"
+      ? { isAvailabilityMonitor: true } : {}),
+  };
+}
+
+export async function verifySupabaseAccessToken(
+  token: string,
+  secret: string,
+  baseUrl: string,
+): Promise<AuthorizedAgentUser | null> {
+  const [head, body, signature] = token.split(".");
+  if (!head || !body || !signature) return null;
+  let header: { alg?: unknown };
+  let claims: Record<string, unknown>;
+  try {
+    header = JSON.parse(new TextDecoder().decode(base64UrlBytes(head)));
+    claims = JSON.parse(new TextDecoder().decode(base64UrlBytes(body)));
+  } catch {
+    return null;
+  }
+  if (header?.alg !== "HS256") return null;
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    asArrayBuffer(encoder.encode(secret)),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["verify"],
+  );
+  const signingInput = asArrayBuffer(encoder.encode(`${head}.${body}`));
+  const signatureValid = await crypto.subtle.verify("HMAC", key, asArrayBuffer(base64UrlBytes(signature)), signingInput);
+  if (!signatureValid) return null;
+
+  const now = Math.floor(Date.now() / 1000);
+  if (typeof claims.exp !== "number" || claims.exp + JWT_LEEWAY_SECONDS < now) return null;
+  if (typeof claims.nbf === "number" && claims.nbf - JWT_LEEWAY_SECONDS > now) return null;
+  if (claims.aud !== "authenticated" || claims.iss !== `${baseUrl}/auth/v1`) return null;
+  if (typeof claims.sub !== "string" || !claims.sub) return null;
+  const appMetadata = claims.app_metadata && typeof claims.app_metadata === "object"
+    ? claims.app_metadata as AppMetadata
+    : {};
+  return userFromClaims(claims.sub, appMetadata);
 }
 
 export function bearerToken(
@@ -52,6 +117,13 @@ export async function authorizeSupabaseUser(
   const token = bearerToken(context.request.headers);
   if (!token) throw new AgentHttpError(401, "Authentication required");
 
+  const jwtSecret = environment.SUPABASE_JWT_SECRET?.trim();
+  if (jwtSecret) {
+    const user = await verifySupabaseAccessToken(token, jwtSecret, baseUrl);
+    if (!user) throw new AgentHttpError(401, "Invalid or expired access token");
+    return user;
+  }
+
   let response: Response;
   try {
     response = await fetch(`${baseUrl}/auth/v1/user`, {
@@ -74,18 +146,10 @@ export async function authorizeSupabaseUser(
   }
   const payload = await response.json() as {
     id?: unknown;
-    app_metadata?: { account_purpose?: unknown; jojo_roles?: unknown };
+    app_metadata?: AppMetadata;
   };
   if (typeof payload.id !== "string" || !payload.id) {
     throw new AgentHttpError(503, "Authentication service returned invalid data");
   }
-  // Only administrators can set app_metadata. User-editable metadata and
-  // conversation ID prefixes must never grant access to network diagnostics.
-  return {
-    id: payload.id,
-    ...(Array.isArray(payload.app_metadata?.jojo_roles) && payload.app_metadata.jojo_roles.includes("admin")
-      ? { isAdmin: true } : {}),
-    ...(payload.app_metadata?.account_purpose === "ai_availability_monitor"
-      ? { isAvailabilityMonitor: true } : {}),
-  };
+  return userFromClaims(payload.id, payload.app_metadata ?? {});
 }
