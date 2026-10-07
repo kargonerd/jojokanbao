@@ -1,5 +1,5 @@
 import { Modal } from "@jojo/ui";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { FeedbackDialog } from "../../feedback/FeedbackDialog";
 import { useAuthStore } from "../auth";
@@ -38,6 +38,8 @@ export function AccountCenterPage({ userId, onForgotPassword }: AccountCenterPag
     changePassword,
     deleteAccount,
     clearFeedback,
+    signupInvitationRequired,
+    refreshSignupPolicy,
   } = useAuthStore();
   const [activeDialog, setActiveDialog] = useState<AccountDialog>(null);
   const [currentPassword, setCurrentPassword] = useState("");
@@ -47,6 +49,11 @@ export function AccountCenterPage({ userId, onForgotPassword }: AccountCenterPag
   const [deletePhrase, setDeletePhrase] = useState("");
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  // The personal invitation panel follows the same signup policy switch as the
+  // registration form; refresh on entry so a recent config change shows here.
+  useEffect(() => {
+    void refreshSignupPolicy();
+  }, [refreshSignupPolicy]);
   const displayName = profile?.display_name?.trim() || "代号待分配";
   const hasDisplayName = Boolean(profile?.display_name?.trim());
 
@@ -148,7 +155,7 @@ export function AccountCenterPage({ userId, onForgotPassword }: AccountCenterPag
             </div>
           </section>
 
-          <PersonalInvitationPanel userId={userId} />
+          {signupInvitationRequired && <PersonalInvitationPanel userId={userId} />}
 
           <section aria-labelledby="reader-links-title" className="grid gap-4 border-t border-rule py-6 sm:grid-cols-[11rem_minmax(0,1fr)] sm:gap-8">
             <h2 id="reader-links-title" className="m-0 font-sans text-xs font-black tracking-[0.16em] text-red">我的</h2>

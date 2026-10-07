@@ -3,6 +3,14 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { MeScreen } from "./MeScreen";
 
 const mocks = vi.hoisted(() => ({ navigate: vi.fn() }));
+const accountState = vi.hoisted(() => ({
+  initialized: true,
+  user: null as { id: string; email: string } | null,
+  busy: false,
+  signupInvitationRequired: false,
+  refreshSignupPolicy: vi.fn(() => Promise.resolve()),
+}));
+const invitationPanel = vi.hoisted(() => vi.fn((_props?: { userId?: string }) => null));
 vi.mock("react-native", () => ({
   ActivityIndicator: "progress", Pressable: "button", Text: "span", View: "div", ScrollView: "main", TextInput: "input",
   Modal: () => null, Keyboard: {}, Easing: {},
@@ -14,10 +22,10 @@ vi.mock("react-native", () => ({
 vi.mock("@expo/vector-icons/Ionicons", () => ({ default: "i" }));
 vi.mock("@react-navigation/native", () => ({ useNavigation: () => ({ navigate: mocks.navigate, goBack: vi.fn() }) }));
 vi.mock("react-native-safe-area-context", () => ({ SafeAreaView: "section" }));
-vi.mock("../account/auth", () => ({ MOBILE_ACCOUNT_CONFIGURED: false, useMobileAuthStore: () => ({ initialized: true, user: null, busy: false }) }));
+vi.mock("../account/auth", () => ({ MOBILE_ACCOUNT_CONFIGURED: false, useMobileAuthStore: () => accountState }));
 vi.mock("../components/ScreenHeader", () => ({ ScreenHeader: () => null }));
 vi.mock("../components/ReaderCodeValue", () => ({ ReaderCodeValue: () => null }));
-vi.mock("../components/PersonalInvitationPanel", () => ({ PersonalInvitationPanel: () => null }));
+vi.mock("../components/PersonalInvitationPanel", () => ({ PersonalInvitationPanel: invitationPanel }));
 vi.mock("../config/appVariant", () => ({ IS_EINK_RELEASE: false }));
 
 let view: ReactTestRenderer;
@@ -40,4 +48,15 @@ it("opens support directly from the settings row immediately above about", async
   expect(mocks.navigate).toHaveBeenCalledExactlyOnceWith("Support");
   await act(async () => about.props.onPress());
   expect(mocks.navigate).toHaveBeenLastCalledWith("Settings", { section: "about" });
+});
+
+it("renders the personal invitation panel only while signup requires invitations", async () => {
+  accountState.user = { id: "reader-1", email: "reader@example.com" };
+
+  await act(async () => { view.unmount(); view = create(<MeScreen />); });
+  expect(invitationPanel).not.toHaveBeenCalled();
+
+  accountState.signupInvitationRequired = true;
+  await act(async () => { view.unmount(); view = create(<MeScreen />); });
+  expect(invitationPanel.mock.calls.some((call) => call[0]?.userId === "reader-1")).toBe(true);
 });

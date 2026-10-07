@@ -86,6 +86,7 @@ beforeEach(() => {
   account.auth.busy = false;
   account.auth.error = null;
   account.auth.notice = null;
+  account.auth.signupInvitationRequired = true;
   account.auth.clearFeedback.mockClear();
   account.auth.signOut.mockReset().mockResolvedValue(undefined);
   account.auth.sendPasswordReset.mockReset().mockResolvedValue(undefined);
@@ -121,6 +122,21 @@ describe("account center", () => {
 
     expect(screen.getByRole("heading", { name: "邀请码" })).toBeTruthy();
     await waitFor(() => expect(account.invitation.load).toHaveBeenCalledWith("reader-1"));
+  });
+
+  it("hides the personal invitation panel while signup does not require invitations", async () => {
+    account.auth.signupInvitationRequired = false;
+
+    render(
+      <MemoryRouter>
+        <AccountCenterPage userId="reader-1" onForgotPassword={() => undefined} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByRole("heading", { name: "邀请码" })).toBeNull();
+    expect(screen.getByRole("heading", { name: "账号资料" })).toBeTruthy();
+    await waitFor(() => expect(account.auth.refreshSignupPolicy).toHaveBeenCalled());
+    expect(account.invitation.load).not.toHaveBeenCalled();
   });
 
   it("keeps an authenticated reader on /account and loads their invitation", async () => {
