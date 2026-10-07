@@ -11,7 +11,6 @@ set search_path = ''
 as $$
   select jsonb_build_object(
     'id', item.id,
-    'kind', item.kind,
     'type', item.type,
     'contentType', item.content_type,
     'contentId', item.content_id,
@@ -73,7 +72,6 @@ create or replace function public.create_anchor_item(
   p_content_title text default null,
   p_content_url text default null,
   p_level text default null,
-  p_kind text default null,
   p_type text default null,
   p_title text default null,
   p_item_id text default null,
@@ -123,9 +121,6 @@ begin
   if p_level not in ('work', 'section', 'paragraph', 'sentence') then
     raise invalid_parameter_value using message = 'Unknown anchor level';
   end if;
-  if p_kind not in ('note', 'link') then
-    raise invalid_parameter_value using message = 'Unknown anchor kind';
-  end if;
   if p_type is null or char_length(btrim(p_type)) not between 1 and 40 then
     raise invalid_parameter_value using message = 'Anchor type is invalid';
   end if;
@@ -133,7 +128,7 @@ begin
     raise invalid_parameter_value using message = 'Anchor level and section do not match';
   end if;
   perform private.validate_anchor_geometry(p_level, normalized_item_id, p_quote, p_start_offset, p_end_offset);
-  perform private.validate_anchor_payload(p_kind, p_payload);
+  perform private.validate_anchor_payload(btrim(p_type), p_payload);
 
   if p_level = 'sentence' then
     computed_anchor_key := encode(extensions.digest(
@@ -143,11 +138,11 @@ begin
   end if;
 
   insert into public.anchor_items(
-    kind, type, content_type, content_id, section_id, content_title, content_url,
+    type, content_type, content_id, section_id, content_title, content_url,
     level, item_id, quote, prefix, suffix, start_offset, end_offset, anchor_key,
     title, payload, author_key, created_by, status, reviewed_at, reviewed_by
   ) values (
-    p_kind, btrim(p_type), p_content_type, btrim(p_content_id), normalized_section,
+    btrim(p_type), p_content_type, btrim(p_content_id), normalized_section,
     left(btrim(p_content_title), 300), normalized_path,
     p_level, normalized_item_id, p_quote, normalized_prefix, normalized_suffix,
     p_start_offset, p_end_offset, computed_anchor_key,
@@ -189,7 +184,7 @@ $$;
 
 create or replace function public.admin_list_anchor_items(
   p_status text default 'pending',
-  p_kind text default null,
+  p_type text default null,
   p_limit integer default 50,
   p_offset integer default 0
 )
@@ -203,8 +198,11 @@ begin
   if p_status not in ('pending', 'approved', 'rejected', 'all') then
     raise invalid_parameter_value using message = 'Unknown anchor status';
   end if;
-  if p_kind is not null and p_kind not in ('note', 'link') then
-    raise invalid_parameter_value using message = 'Unknown anchor kind';
+  if p_type is not null and btrim(p_type) not in (
+    'annotation', 'background', 'lecture', 'concept', 'person', 'event',
+    'video', 'article', 'dictionary'
+  ) then
+    raise invalid_parameter_value using message = 'Unknown anchor type';
   end if;
   if p_limit not between 1 and 200 or p_offset < 0 then
     raise invalid_parameter_value using message = 'Anchor list paging is invalid';
@@ -214,8 +212,7 @@ begin
     from (
       select item.created_at, item.id, jsonb_build_object(
         'id', item.id,
-        'kind', item.kind,
-        'type', item.type,
+            'type', item.type,
         'contentType', item.content_type,
         'contentId', item.content_id,
         'sectionId', item.section_id,
@@ -244,7 +241,7 @@ begin
       left join public.profiles profile on profile.id = item.created_by
       left join auth.users account on account.id = item.created_by
       where (p_status = 'all' or item.status = p_status)
-        and (p_kind is null or item.kind = p_kind)
+        and (p_type is null or item.type = btrim(p_type))
       order by item.created_at, item.id
       limit p_limit offset p_offset
     ) entry
@@ -319,8 +316,7 @@ begin
     'anchor-item:' || item.id::text || ':' || p_action,
     jsonb_build_object(
       'anchorItemId', item.id,
-      'kind', item.kind,
-      'type', item.type,
+        'type', item.type,
       'contentType', item.content_type,
       'contentTitle', item.content_title,
       'sectionId', item.section_id,
@@ -391,7 +387,7 @@ begin
   merged_author_key := coalesce(nullif(btrim(p_patch ->> 'authorKey', ''), ''), item.author_key);
 
   perform private.validate_anchor_geometry(item.level, merged_item_id, merged_quote, merged_start_offset, merged_end_offset);
-  perform private.validate_anchor_payload(item.kind, merged_payload);
+  perform private.validate_anchor_payload(item.type, merged_payload);
 
   update public.anchor_items
     set type = merged_type,
@@ -447,7 +443,7 @@ as $$
       ) order by item.section_id nulls first, item.created_at, item.id)
       from public.anchor_items item
       where item.content_id = p_content_id
-        and item.kind = 'note'
+        and item.type = 'annotation'
         and item.status = 'approved'
     ), '[]'::jsonb)
   )
@@ -494,9 +490,6 @@ begin
     if source ->> 'level' not in ('work', 'section', 'paragraph', 'sentence') then
       raise invalid_parameter_value using message = 'Unknown anchor level';
     end if;
-    if source ->> 'kind' not in ('note', 'link') then
-      raise invalid_parameter_value using message = 'Unknown anchor kind';
-    end if;
     perform private.validate_anchor_geometry(
       source ->> 'level',
       nullif(btrim(coalesce(source ->> 'itemId', '')), ''),
@@ -504,7 +497,7 @@ begin
       (source ->> 'startOffset')::integer,
       (source ->> 'endOffset')::integer
     );
-    perform private.validate_anchor_payload(source ->> 'kind', coalesce(source -> 'payload', '{}'::jsonb));
+    perform private.validate_anchor_payload(source ->> 'type', coalesce(source -> 'payload', '{}'::jsonb));
 
     computed_anchor_key := case when source ->> 'level' = 'sentence' then
       encode(extensions.digest(
@@ -524,11 +517,10 @@ begin
     ) into seed;
 
     insert into public.anchor_items as existing(
-      kind, type, content_type, content_id, section_id, content_title, content_url,
+      type, content_type, content_id, section_id, content_title, content_url,
       level, item_id, quote, prefix, suffix, start_offset, end_offset, anchor_key,
       title, payload, author_key, seed_key, created_by, status, reviewed_at, reviewed_by
     ) values (
-      source ->> 'kind',
       btrim(source ->> 'type'),
       source ->> 'contentType',
       btrim(source ->> 'contentId'),
@@ -553,7 +545,6 @@ begin
       p_actor_id
     )
     on conflict (seed_key) where seed_key is not null do update set
-      kind = excluded.kind,
       type = excluded.type,
       content_type = excluded.content_type,
       content_id = excluded.content_id,
@@ -597,7 +588,7 @@ revoke all on function private.validate_anchor_geometry(text, text, text, intege
 revoke all on function private.validate_anchor_payload(text, jsonb) from public, anon, authenticated;
 revoke all on function private.anchor_item_snapshot(uuid) from public, anon, authenticated;
 revoke all on function public.get_anchor_items(text, text, text) from public, anon;
-revoke all on function public.create_anchor_item(text, text, text, text, text, text, text, text, text, text, text, text, text, integer, integer, jsonb, text) from public, anon;
+revoke all on function public.create_anchor_item(text, text, text, text, text, text, text, text, text, text, text, text, integer, integer, jsonb, text) from public, anon;
 revoke all on function public.delete_my_anchor_item(uuid) from public, anon;
 revoke all on function public.admin_list_anchor_items(text, text, integer, integer) from public, anon, authenticated;
 revoke all on function public.admin_review_anchor_item(uuid, uuid, text, text) from public, anon, authenticated;
@@ -606,7 +597,7 @@ revoke all on function public.admin_export_anchor_snapshot(text) from public, an
 revoke all on function public.admin_upsert_seed_anchor_items(uuid, jsonb) from public, anon, authenticated;
 
 grant execute on function public.get_anchor_items(text, text, text) to authenticated;
-grant execute on function public.create_anchor_item(text, text, text, text, text, text, text, text, text, text, text, text, text, integer, integer, jsonb, text) to authenticated;
+grant execute on function public.create_anchor_item(text, text, text, text, text, text, text, text, text, text, text, text, integer, integer, jsonb, text) to authenticated;
 grant execute on function public.delete_my_anchor_item(uuid) to authenticated;
 grant execute on function public.admin_list_anchor_items(text, text, integer, integer) to service_role;
 grant execute on function public.admin_review_anchor_item(uuid, uuid, text, text) to service_role;
@@ -616,7 +607,7 @@ grant execute on function public.admin_upsert_seed_anchor_items(uuid, jsonb) to 
 
 comment on table public.anchor_items is 'Anchored notes and links attached to delivered content; editorial accounts publish directly, user submissions await review.';
 comment on function public.get_anchor_items(text, text, text) is 'Approved anchored content for one subject plus the caller''s own pending and rejected items.';
-comment on function public.create_anchor_item(text, text, text, text, text, text, text, text, text, text, text, text, text, integer, integer, jsonb, text) is 'Create an anchored note or link; editorial accounts publish immediately, users submit for review.';
+comment on function public.create_anchor_item(text, text, text, text, text, text, text, text, text, text, text, text, integer, integer, jsonb, text) is 'Create an anchored note or link; editorial accounts publish immediately, users submit for review.';
 comment on function public.delete_my_anchor_item(uuid) is 'Delete the caller''s own pending anchored content.';
 comment on function public.admin_list_anchor_items(text, text, integer, integer) is 'Server-only anchored content list for the moderation queue.';
 comment on function public.admin_review_anchor_item(uuid, uuid, text, text) is 'Server-only approve or reject with audit and creator notification.';

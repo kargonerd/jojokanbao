@@ -5,8 +5,11 @@
 
 create table if not exists public.anchor_items (
   id uuid primary key default extensions.gen_random_uuid(),
-  kind text not null check (kind in ('note', 'link')),
-  type text not null check (char_length(btrim(type)) between 1 and 40),
+  -- The type alone decides everything: label, payload rules, reader grouping.
+  type text not null check (type in (
+    'annotation', 'background', 'lecture', 'concept', 'person', 'event',
+    'video', 'article', 'dictionary'
+  )),
   content_type text not null check (content_type in ('book', 'newspaper', 'magazine', 'article')),
   content_id text not null check (char_length(content_id) between 1 and 512),
   section_id text check (section_id is null or char_length(section_id) between 1 and 512),
@@ -135,7 +138,7 @@ end;
 $$;
 
 create or replace function private.validate_anchor_payload(
-  p_kind text,
+  p_type text,
   p_payload jsonb
 )
 returns void
@@ -145,66 +148,84 @@ security definer
 set search_path = ''
 as $$
 declare
-  allowed_keys text[];
   video jsonb;
   ref jsonb;
   url text;
+  has_body boolean;
+  has_target boolean;
 begin
   if p_payload is null or jsonb_typeof(p_payload) <> 'object' then
     raise invalid_parameter_value using message = 'Anchor payload must be an object';
   end if;
 
-  if p_kind = 'note' then
-    allowed_keys := array['body', 'video', 'page'];
+  has_body := char_length(btrim(coalesce(p_payload ->> 'body', ''))) between 1 and 8000;
+  url := nullif(btrim(coalesce(p_payload ->> 'url', '')), '');
+  has_target := url is not null or p_payload ? 'ref' or p_payload ? 'video';
+
+  if p_payload ? 'body' and not has_body then
+    raise invalid_parameter_value using message = 'Anchor body must be 1-8000 characters';
+  end if;
+
+  video := p_payload -> 'video';
+  if video is not null then
+    if jsonb_typeof(video) <> 'object'
+      or char_length(btrim(coalesce(video ->> 'bvid', ''))) not between 1 and 64
+      or exists (
+        select 1 from jsonb_object_keys(video) as key(value)
+          where key.value not in ('bvid', 't')
+      )
+      or (video ? 't' and (jsonb_typeof(video -> 't') <> 'number' or (video ->> 't')::numeric < 0))
+    then
+      raise invalid_parameter_value using message = 'Anchor video payload is invalid';
+    end if;
+  end if;
+
+  if p_payload ? 'page' and (
+    jsonb_typeof(p_payload -> 'page') <> 'number'
+    or (p_payload ->> 'page')::numeric <> floor((p_payload ->> 'page')::numeric)
+    or (p_payload ->> 'page')::numeric < 1
+    or (p_payload ->> 'page')::numeric > 100000
+  ) then
+    raise invalid_parameter_value using message = 'Anchor page must be an integer between 1 and 100000';
+  end if;
+
+  -- Per-type payload rules: the type alone decides what an entry carries.
+  if p_type in ('annotation', 'concept', 'person', 'event', 'background') then
+    -- Text entries: prose is the payload; a lecture video or page may ride along.
+    if not has_body then
+      raise invalid_parameter_value using message = 'This anchor type requires body text';
+    end if;
     if exists (
       select 1 from jsonb_object_keys(p_payload) as key(value)
-        where not (key.value = any(allowed_keys))
+        where key.value not in ('body', 'video', 'page')
     ) then
-      raise invalid_parameter_value using message = 'Note payload has unknown fields';
+      raise invalid_parameter_value using message = 'Unknown fields for this anchor type';
     end if;
-    if char_length(btrim(coalesce(p_payload ->> 'body', ''))) not between 1 and 8000 then
-      raise invalid_parameter_value using message = 'Note body is required (1-8000 characters)';
+  elsif p_type = 'lecture' then
+    -- A lecture may be prose, a recorded video, or both.
+    if not (has_body or video is not null) then
+      raise invalid_parameter_value using message = 'A lecture requires body text or a video';
     end if;
-    video := p_payload -> 'video';
-    if video is not null then
-      if jsonb_typeof(video) <> 'object'
-        or char_length(btrim(coalesce(video ->> 'bvid', ''))) not between 1 and 64
-        or exists (
-          select 1 from jsonb_object_keys(video) as key(value)
-            where key.value not in ('bvid', 't')
-        )
-        or (video ? 't' and (jsonb_typeof(video -> 't') <> 'number' or (video ->> 't')::numeric < 0))
-      then
-        raise invalid_parameter_value using message = 'Note video payload is invalid';
-      end if;
-    end if;
-    if p_payload ? 'page' and (
-      jsonb_typeof(p_payload -> 'page') <> 'number'
-      or (p_payload ->> 'page')::numeric <> floor((p_payload ->> 'page')::numeric)
-      or (p_payload ->> 'page')::numeric < 1
-      or (p_payload ->> 'page')::numeric > 100000
-    ) then
-      raise invalid_parameter_value using message = 'Note page must be an integer between 1 and 100000';
-    end if;
-  elsif p_kind = 'link' then
-    allowed_keys := array['ref', 'url'];
     if exists (
       select 1 from jsonb_object_keys(p_payload) as key(value)
-        where not (key.value = any(allowed_keys))
+        where key.value not in ('body', 'video', 'page')
     ) then
-      raise invalid_parameter_value using message = 'Link payload has unknown fields';
+      raise invalid_parameter_value using message = 'Unknown fields for this anchor type';
     end if;
-    ref := p_payload -> 'ref';
-    url := nullif(btrim(coalesce(p_payload ->> 'url', '')), '');
-    if (ref is null) = (url is null) then
-      raise invalid_parameter_value using message = 'Link payload requires exactly one of ref or url';
+  elsif p_type in ('video', 'article', 'dictionary') then
+    -- Target entries point somewhere: an external url or an in-site reference.
+    if url is not null and ref is not null then
+      raise invalid_parameter_value using message = 'Target anchors accept either url or ref, not both';
+    end if;
+    if not (url is not null or p_payload ? 'ref') then
+      raise invalid_parameter_value using message = 'This anchor type requires a url or ref';
     end if;
     if url is not null and (
       char_length(url) > 1024
       or left(url, 8) <> 'https://'
         and left(url, 7) <> 'http://'
     ) then
-      raise invalid_parameter_value using message = 'Link url must be an http(s) address';
+      raise invalid_parameter_value using message = 'Anchor url must be an http(s) address';
     end if;
     if ref is not null then
       if jsonb_typeof(ref) <> 'object'
@@ -215,11 +236,17 @@ begin
         )
         or (ref ? 'sectionId' and char_length(btrim(coalesce(ref ->> 'sectionId', ''))) not between 1 and 512)
       then
-        raise invalid_parameter_value using message = 'Link ref payload is invalid';
+        raise invalid_parameter_value using message = 'Anchor ref payload is invalid';
       end if;
     end if;
+    if exists (
+      select 1 from jsonb_object_keys(p_payload) as key(value)
+        where key.value not in ('url', 'ref')
+    ) then
+      raise invalid_parameter_value using message = 'Unknown fields for this anchor type';
+    end if;
   else
-    raise invalid_parameter_value using message = 'Unknown anchor kind';
+    raise invalid_parameter_value using message = 'Unknown anchor type';
   end if;
 end;
 $$;
