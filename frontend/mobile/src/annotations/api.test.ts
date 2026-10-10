@@ -1,7 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AnnotationSubject, AnnotationThread, TextAnchor } from "@jojo/content/annotations";
 
-const { rpc, getSession, authLoaded, setHeader, abortSignal } = vi.hoisted(() => ({ rpc: vi.fn(), getSession: vi.fn(), authLoaded: vi.fn(), setHeader: vi.fn(), abortSignal: vi.fn() }));
+const { rpc, getSession, setSession, authLoaded, setHeader, abortSignal, authStoreState } = vi.hoisted(() => ({
+  rpc: vi.fn(),
+  getSession: vi.fn(),
+  setSession: vi.fn(),
+  authLoaded: vi.fn(),
+  setHeader: vi.fn(),
+  abortSignal: vi.fn(),
+  authStoreState: { session: null as { user?: { id: string }; access_token?: string; refresh_token?: string } | null },
+}));
 vi.mock("../account/auth", () => {
   authLoaded();
   return { mobileAuthClient: {
@@ -13,8 +21,8 @@ vi.mock("../account/auth", () => {
       };
       return request;
     },
-    auth: { getSession },
-  } };
+    auth: { getSession, setSession },
+  }, useMobileAuthStore: { getState: () => ({ session: authStoreState.session }) } };
 });
 
 const subject: AnnotationSubject = {
@@ -33,6 +41,8 @@ describe("native annotation RPC binding", () => {
     vi.resetModules();
     rpc.mockReset().mockResolvedValue({ data: savedThread, error: null });
     getSession.mockReset().mockResolvedValue({ data: { session: { user: { id: "reader:a" }, access_token: "token-a" } }, error: null });
+    setSession.mockReset().mockResolvedValue({ data: { session: null }, error: null });
+    authStoreState.session = null;
     setHeader.mockReset();
     abortSignal.mockReset();
     // Native reader annotations go straight to Supabase; any fetch here is a regression.
@@ -131,6 +141,34 @@ describe("native annotation RPC binding", () => {
     await expect(api.loadMyBookAnnotations(subject.contentId, "reader:a"))
       .rejects.toThrow("登录状态已变化");
     expect(rpc).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-seeds the SDK session from the persisted snapshot when startup refresh dropped it", async () => {
+    rpc.mockResolvedValue({ data: [savedThread], error: null });
+    // Identity lookup finds no SDK session; the rpc credential capture must
+    // then see the re-seeded session, as the real client would after setSession.
+    getSession.mockResolvedValueOnce({ data: { session: null }, error: null })
+      .mockResolvedValue({ data: { session: { user: { id: "reader:a" }, access_token: "token-a" } }, error: null });
+    setSession.mockResolvedValue({ data: { session: { user: { id: "reader:a" }, access_token: "token-a" } }, error: null });
+    authStoreState.session = { user: { id: "reader:a" }, access_token: "stale-a", refresh_token: "refresh-a" };
+    expect(await api.loadAnnotationThreads(subject)).toEqual([savedThread]);
+    expect(setSession).toHaveBeenCalledExactlyOnceWith({ access_token: "stale-a", refresh_token: "refresh-a" });
+    expect(setHeader).toHaveBeenCalledExactlyOnceWith("Authorization", "Bearer token-a");
+  });
+
+  it("never borrows a persisted snapshot belonging to another reader", async () => {
+    getSession.mockResolvedValue({ data: { session: null }, error: null });
+    setSession.mockResolvedValue({ data: { session: { user: { id: "reader:b" }, access_token: "token-b" } }, error: null });
+    authStoreState.session = { user: { id: "reader:b" }, access_token: "stale-b", refresh_token: "refresh-b" };
+    await expect(api.loadMyBookAnnotations(subject.contentId, "reader:a"))
+      .rejects.toThrow("登录状态已变化");
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it("stays signed out when the SDK session is gone and no persisted snapshot exists", async () => {
+    getSession.mockResolvedValue({ data: { session: null }, error: null });
+    await expect(api.loadAnnotationThreads(subject)).rejects.toThrow("请先登录后使用阅读笔记");
+    expect(setSession).not.toHaveBeenCalled();
   });
 
   it("does not submit a draft after auth changed before the initial session capture", async () => {

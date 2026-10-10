@@ -756,7 +756,9 @@ export function SearchPage({
                       <div className="flex gap-1.5 py-2">
                         <Tag>{resultSourceLabel(r)}</Tag>
                         {r.type === "book" && r.source && r.source !== resultSourceLabel(r) && <Tag>{r.source}</Tag>}
-                        {r.date && <Tag>{r.date}</Tag>}
+                        {/* Book documents carry an index placeholder date, not a
+                            meaningful publication date, so only periodicals show one. */}
+                        {r.type !== "book" && r.date && <Tag>{r.date}</Tag>}
                         {r.type !== "book" && r.page > 0 && <Tag>第{r.page}版</Tag>}
                       </div>
                       <div className={`text-sm leading-7 text-ink/80 ${r.ellipsis ? "line-clamp-3" : ""}`}>

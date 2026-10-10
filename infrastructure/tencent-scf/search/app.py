@@ -95,6 +95,95 @@ def _valid_date_range(start_date, end_date):
   return start <= end
 
 
+# Readers can wrap a phrase in quotes for exact ordered matching and combine
+# clauses with AND / OR / NOT (case-insensitive, standalone words). This
+# mirrors the retired /search endpoint's query_string behaviour; without it a
+# quoted query would be scattered into single-character term matches.
+_QUOTE_CHARS = '"“”‘’「」『』'
+_BOOLEAN_OPERATORS = {'AND', 'OR', 'NOT'}
+
+
+def _tokenize_query(query_text):
+  normalized = query_text
+  for char in _QUOTE_CHARS:
+    normalized = normalized.replace(char, '"')
+  tokens = []
+  word = []
+  index, length = 0, len(normalized)
+  while index < length:
+    char = normalized[index]
+    if char == '"':
+      if word:
+        tokens.append(('term', ''.join(word)))
+        word = []
+      closing = normalized.find('"', index + 1)
+      end = closing if closing != -1 else length
+      phrase = normalized[index + 1:end].strip()
+      if phrase:
+        tokens.append(('phrase', phrase))
+      if closing == -1:
+        break
+      index = closing + 1
+    elif char.isspace():
+      if word:
+        tokens.append(('term', ''.join(word)))
+        word = []
+      index += 1
+    else:
+      word.append(char)
+      index += 1
+  if word:
+    tokens.append(('term', ''.join(word)))
+  return tokens
+
+
+def _parse_query_clauses(query_text):
+  """Return OR-separated groups of (negated, kind, text) clauses.
+
+  Clauses inside one group are implicit ANDs; NOT negates the clause that
+  follows it. A query made only of operators (or of empty quotes) degrades
+  to a single term clause over the raw text instead of erroring.
+  """
+  groups = [[]]
+  pending_not = False
+  for kind, value in _tokenize_query(query_text):
+    if kind == 'term' and value.upper() in _BOOLEAN_OPERATORS:
+      if value.upper() == 'OR':
+        groups.append([])
+      elif value.upper() == 'NOT':
+        pending_not = True
+      continue
+    groups[-1].append((pending_not, kind, value))
+    pending_not = False
+  groups = [group for group in groups if group]
+  if not groups:
+    return [[(False, 'term', query_text.strip())]]
+  return groups
+
+
+def _clause_query(kind, text):
+  leaf = {'query': text, 'fields': ['title^4', 'content']}
+  if kind == 'phrase':
+    leaf['type'] = 'phrase'
+  else:
+    leaf['type'] = 'best_fields'
+    leaf['operator'] = 'and'
+  return {'multi_match': leaf}
+
+
+def _group_query(clauses):
+  must = [_clause_query(kind, text) for negated, kind, text in clauses if not negated]
+  must_not = [_clause_query(kind, text) for negated, kind, text in clauses if negated]
+  if not must:
+    return {'bool': {'must_not': must_not}}
+  if not must_not and len(must) == 1:
+    return must[0]
+  clauses_body = {'must': must}
+  if must_not:
+    clauses_body['must_not'] = must_not
+  return {'bool': clauses_body}
+
+
 @app.route("/content/search", methods=["POST"])
 def content_search():
   """Search the unified JOJO content index for both readers and Agent tools."""
@@ -136,20 +225,27 @@ def content_search():
     filters.append({'terms': {'source': sources}})
   if start_date and end_date:
     filters.append({'range': {'date': {'gte': start_date, 'lte': end_date}}})
+  groups = _parse_query_clauses(query_text)
+  if len(groups) == 1:
+    structure = _group_query(groups[0])
+  else:
+    structure = {
+      'bool': {
+        'should': [_group_query(group) for group in groups],
+        'minimum_should_match': 1,
+      }
+    }
+  boosts = []
+  for group in groups:
+    for negated, kind, text in group:
+      if negated:
+        continue
+      boosts.append({'match_phrase': {'title': {'query': text, 'boost': 16}}})
+      boosts.append({'match_phrase': {'content': {'query': text, 'boost': 8}}})
   query = {
     'bool': {
-      'must': [{
-        'multi_match': {
-          'query': query_text,
-          'fields': ['title^4', 'content'],
-          'type': 'best_fields',
-          'operator': 'and',
-        }
-      }],
-      'should': [
-        {'match_phrase': {'title': {'query': query_text, 'boost': 16}}},
-        {'match_phrase': {'content': {'query': query_text, 'boost': 8}}},
-      ],
+      'must': [structure],
+      'should': boosts,
       'filter': filters,
     }
   }

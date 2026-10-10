@@ -1,6 +1,7 @@
 import {
   ARCHIVE_PUBLICATION_BY_ID,
   ARCHIVE_PUBLICATION_NAMES,
+  isLibrarySourceEnabled,
   searchResultTitle,
   type ArchivePublicationName,
 } from "@jojo/content";
@@ -21,12 +22,25 @@ import { ScreenHeader } from "../components/ScreenHeader";
 import { IS_EINK_RELEASE } from "../config/appVariant";
 import { impactHaptic } from "../lib/haptics";
 import { REMOVE_CLIPPED_SUBVIEWS } from "../lib/nativePerformance";
-import { searchArchive, type ArchiveSearchResult } from "../lib/search";
+import { loadMobileBooks, type MobileBook } from "../lib/books";
+import { searchArchive, searchBooks, type ArchiveSearchResult, type BookSearchResult } from "../lib/search";
 import type { RootStackParamList } from "../navigation/types";
 import { useMobileStore } from "../store/mobileStore";
 import { mobileTheme, type MobileTheme } from "../theme/tokens";
 
 const PAGE_SIZE = 10;
+
+type SearchScope = "periodical" | "book";
+type SearchListItem = ArchiveSearchResult | BookSearchResult;
+
+const SEARCH_SCOPES: readonly { value: SearchScope; label: string }[] = [
+  { value: "periodical", label: "报刊" },
+  { value: "book", label: "书籍" },
+];
+
+function isBookResult(item: SearchListItem): item is BookSearchResult {
+  return (item as BookSearchResult).itemId !== undefined;
+}
 
 // Results carry their own dataset id, so a periodical added to the content
 // index renders under its real name without another client change.
@@ -85,22 +99,134 @@ const SearchResultRow = memo(function SearchResultRow({
   );
 });
 
+const BookResultRow = memo(function BookResultRow({
+  item,
+  index,
+  theme,
+  onPress,
+}: {
+  item: BookSearchResult;
+  index: number;
+  theme: MobileTheme;
+  onPress: () => void;
+}) {
+  return (
+    <View style={[styles.result, { borderBottomColor: theme.rule }]}>
+      <Text style={[styles.resultIndex, { color: theme.red, borderBottomColor: theme.red, fontFamily: theme.sans }]}>
+        {String(index + 1).padStart(2, "0")}
+      </Text>
+      <View style={styles.resultCopy}>
+        <Pressable accessibilityRole="button" accessibilityLabel={`阅读书籍章节：${item.title || "未命名章节"}`} onPress={onPress}>
+          <Text style={[styles.resultTitle, { color: theme.ink, fontFamily: theme.serif }]}>{item.title || "未命名章节"}</Text>
+        </Pressable>
+        <View style={styles.tags}>
+          <Text style={[styles.tag, { color: theme.red, borderColor: theme.rule, fontFamily: theme.sans }]}>{item.source || "书籍"}</Text>
+          {item.itemTitle && item.itemTitle !== item.title ? (
+            <Text style={[styles.tag, { color: theme.muted, borderColor: theme.rule, fontFamily: theme.sans }]}>{item.itemTitle}</Text>
+          ) : null}
+        </View>
+        <Text
+          style={[styles.resultText, { color: theme.muted, fontFamily: theme.serif }]}
+          numberOfLines={3}
+        >{item.snippet.trim() ? item.snippet : "暂无文字摘录，可打开本章阅读。"}</Text>
+        <View style={styles.resultActions}>
+          <Pressable accessibilityRole="button" onPress={onPress} style={styles.resultAction}>
+            <Text style={[styles.resultActionText, { color: theme.red, fontFamily: theme.sans }]}>阅读本章</Text>
+          </Pressable>
+        </View>
+      </View>
+    </View>
+  );
+});
+
 export function SearchScreen() {
   const navigation = useNavigation<NavigationProp<RootStackParamList>>();
   const hapticsEnabled = useMobileStore((state) => state.hapticsEnabled);
+  const librarySources = useMobileStore((state) => state.librarySources);
   const theme = mobileTheme;
+  const [scope, setScope] = useState<SearchScope>("periodical");
   const [query, setQuery] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState("");
   const [results, setResults] = useState<ArchiveSearchResult[]>([]);
+  const [bookResults, setBookResults] = useState<BookSearchResult[]>([]);
+  const [visibleBooks, setVisibleBooks] = useState<MobileBook[]>([]);
+  const [booksReady, setBooksReady] = useState(false);
   const [expandedResults, setExpandedResults] = useState<Set<number>>(() => new Set());
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const controllerRef = useRef<AbortController | null>(null);
-  const listRef = useRef<FlatList<ArchiveSearchResult>>(null);
+  const listRef = useRef<FlatList<SearchListItem>>(null);
+  const scopeRef = useRef(scope);
+  scopeRef.current = scope;
+  const booksRef = useRef(visibleBooks);
+  booksRef.current = visibleBooks;
+
+  // Book search needs the delivery catalog for its source filter and for
+  // resolving each result's canonical dataset; it stays lazy until needed.
+  useEffect(() => {
+    if (scope !== "book" || booksReady) return;
+    let active = true;
+    loadMobileBooks()
+      .then((books) => {
+        if (!active) return;
+        setVisibleBooks(books.filter((book) => isLibrarySourceEnabled(book.librarySource, librarySources)));
+      })
+      .catch(() => { if (active) setVisibleBooks([]); })
+      .finally(() => { if (active) setBooksReady(true); });
+    return () => { active = false; };
+  }, [scope, booksReady, librarySources]);
 
   useEffect(() => () => controllerRef.current?.abort(), []);
+
+  async function submitPeriodical(keyword: string, nextPage: number, signal: AbortSignal): Promise<number> {
+    const response = await searchArchive({ keyword, page: nextPage, size: PAGE_SIZE, signal });
+    if (signal.aborted) return 0;
+    setResults(response.results);
+    setTotal(response.total);
+    return response.total;
+  }
+
+  async function submitBooks(keyword: string, nextPage: number, signal: AbortSignal): Promise<number> {
+    const books = booksRef.current;
+    if (books.length === 0) {
+      setBookResults([]);
+      setTotal(0);
+      return 0;
+    }
+    const response = await searchBooks({
+      keyword, page: nextPage, size: PAGE_SIZE, sources: books.map((book) => book.title), signal,
+    });
+    if (signal.aborted) return 0;
+    // A result without a resolvable catalog book is one the reader cannot open.
+    const openable = response.results.filter((item) => resolveBookDataset(item) !== undefined);
+    setBookResults(openable);
+    setTotal(Math.max(response.total, openable.length));
+    return response.total;
+  }
+
+  function resolveBookDataset(item: BookSearchResult): MobileBook | undefined {
+    const books = booksRef.current;
+    // The search index may still use legacy book-* IDs while delivery uses slugs.
+    return books.find((book) => book.datasetId === item.datasetId)
+      ?? books.find((book) => book.title === item.source);
+  }
+
+  function openBookResult(item: BookSearchResult) {
+    const book = resolveBookDataset(item);
+    if (!book) return;
+    const prefix = `${item.datasetId}:`;
+    const itemKey = item.itemId.startsWith(prefix) ? item.itemId.slice(prefix.length) : item.itemId;
+    navigation.navigate("BookReader", {
+      datasetId: book.datasetId,
+      itemKey,
+      title: item.itemTitle || item.title || book.title,
+      bookTitle: book.title,
+      initialChapterId: item.chapterId || undefined,
+      initialText: submittedQuery || undefined,
+    });
+  }
 
   async function submit(nextPage = 1, keywordOverride?: string) {
     const keyword = (keywordOverride ?? (nextPage === 1 ? query : submittedQuery)).trim();
@@ -108,20 +234,21 @@ export function SearchScreen() {
     controllerRef.current?.abort();
     const controller = new AbortController();
     controllerRef.current = controller;
+    const activeScope = scopeRef.current;
     const searchStarted = Date.now();
-    const searchProperties = { content_type: "periodical", page: nextPage };
+    const searchProperties = { content_type: activeScope, page: nextPage };
     analytics.track("search_started", searchProperties);
     setLoading(true);
     setError("");
     void impactHaptic(hapticsEnabled);
     try {
-      const response = await searchArchive({ keyword, page: nextPage, size: PAGE_SIZE, signal: controller.signal });
+      const resultCount = activeScope === "book"
+        ? await submitBooks(keyword, nextPage, controller.signal)
+        : await submitPeriodical(keyword, nextPage, controller.signal);
       if (controller.signal.aborted) return;
-      analytics.track("search_completed", { ...searchProperties, result_count: response.total, duration_ms: Date.now() - searchStarted });
+      analytics.track("search_completed", { ...searchProperties, result_count: resultCount, duration_ms: Date.now() - searchStarted });
       setSubmittedQuery(keyword);
-      setResults(response.results);
       setExpandedResults(new Set());
-      setTotal(response.total);
       setPage(nextPage);
       requestAnimationFrame(() => {
         listRef.current?.scrollToOffset({ offset: 0, animated: !IS_EINK_RELEASE });
@@ -136,25 +263,57 @@ export function SearchScreen() {
     }
   }
 
+  function switchScope(nextScope: SearchScope) {
+    if (nextScope === scope) return;
+    controllerRef.current?.abort();
+    setScope(nextScope);
+    setResults([]);
+    setBookResults([]);
+    setTotal(0);
+    setSubmittedQuery("");
+    setPage(1);
+    setError("");
+    // A failed or empty catalog load must not permanently disable book search.
+    if (nextScope === "book" && visibleBooks.length === 0) setBooksReady(false);
+  }
+
+  const items: SearchListItem[] = scope === "book" ? bookResults : results;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const beforeSearch = !submittedQuery && !loading && !error;
+  const searchPlaceholder = scope === "book" ? "检索书籍正文" : "在JOJO看报上搜索";
 
   return (
     <SafeAreaView edges={["top"]} style={[styles.safe, { backgroundColor: theme.canvas }]}>
       <ScreenHeader title="搜索" showAccount />
       <View style={[styles.searchArea, beforeSearch ? styles.searchAreaIdle : styles.searchAreaResults]}>
+        <View style={styles.scopeTabs}>
+          {SEARCH_SCOPES.map((option) => {
+            const selected = option.value === scope;
+            return (
+              <Pressable
+                key={option.value}
+                accessibilityRole="tab"
+                accessibilityState={{ selected }}
+                onPress={() => switchScope(option.value)}
+                style={[styles.scopeTab, selected && { borderBottomColor: theme.red }]}
+              >
+                <Text style={[styles.scopeTabText, { color: selected ? theme.red : theme.muted, fontFamily: theme.sans }]}>{option.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
         <View style={[styles.searchBox, { borderColor: theme.ruleDark, backgroundColor: theme.paper }]}>
           <TextInput
             value={query}
             onChangeText={setQuery}
             onSubmitEditing={() => void submit(1)}
-            placeholder="在JOJO看报上搜索"
+            placeholder={searchPlaceholder}
             placeholderTextColor={theme.muted}
             returnKeyType="search"
             clearButtonMode="while-editing"
             autoCorrect={false}
             style={[styles.input, { color: theme.ink, fontFamily: theme.sans }]}
-            accessibilityLabel="在JOJO看报上搜索"
+            accessibilityLabel={searchPlaceholder}
           />
           <Pressable
             accessibilityRole="button"
@@ -186,10 +345,19 @@ export function SearchScreen() {
       ) : submittedQuery ? (
         <FlatList
           ref={listRef}
-          data={results}
+          data={items}
           extraData={expandedResults}
-          keyExtractor={(item, index) => `${item.datasetId}:${item.date}:${item.page}:${index}`}
-          renderItem={({ item, index }) => (
+          keyExtractor={(item, index) => isBookResult(item)
+            ? `${item.datasetId}:${item.itemId}:${item.chapterId}:${index}`
+            : `${item.datasetId}:${item.date}:${item.page}:${index}`}
+          renderItem={({ item, index }) => isBookResult(item) ? (
+            <BookResultRow
+              item={item}
+              index={(page - 1) * PAGE_SIZE + index}
+              theme={theme}
+              onPress={() => openBookResult(item)}
+            />
+          ) : (
             <SearchResultRow
               item={item}
               index={(page - 1) * PAGE_SIZE + index}
@@ -211,7 +379,7 @@ export function SearchScreen() {
             />
           )}
           contentContainerStyle={[
-            results.length ? styles.results : styles.emptyResults,
+            items.length ? styles.results : styles.emptyResults,
             { paddingBottom: 24 },
           ]}
           ListHeaderComponent={(
@@ -220,7 +388,7 @@ export function SearchScreen() {
           ListEmptyComponent={(
             <Text style={[styles.emptyText, { color: theme.muted, fontFamily: theme.serif }]}>没有找到相关结果</Text>
           )}
-          ListFooterComponent={results.length ? (
+          ListFooterComponent={items.length ? (
             <View style={{ paddingBottom: 24 }}>
               <View style={styles.pagination}>
                 <Pressable disabled={page <= 1} onPress={() => void submit(page - 1)} style={[styles.pageButton, { borderColor: theme.ruleDark, opacity: page <= 1 ? 0.35 : 1 }]}>
@@ -251,6 +419,9 @@ const styles = StyleSheet.create({
   searchArea: { width: "100%", maxWidth: 680, alignSelf: "center", paddingHorizontal: 20 },
   searchAreaIdle: { flex: 1, justifyContent: "center", paddingBottom: 58 },
   searchAreaResults: { paddingTop: 20, paddingBottom: 20 },
+  scopeTabs: { flexDirection: "row", gap: 4, marginBottom: 10 },
+  scopeTab: { paddingHorizontal: 14, paddingVertical: 9, borderBottomWidth: 2, borderBottomColor: "transparent" },
+  scopeTabText: { fontSize: 12, fontWeight: "800" },
   searchBox: { minHeight: 59, borderWidth: 2, paddingLeft: 12, paddingRight: 8, flexDirection: "row", alignItems: "center", gap: 8 },
   input: { height: 54, flex: 1, minWidth: 0, paddingVertical: 0, fontSize: 15 },
   searchButton: { width: 70, height: 40, alignItems: "center", justifyContent: "center" },

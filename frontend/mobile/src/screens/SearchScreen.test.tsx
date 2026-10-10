@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ArchiveSearchResult } from "../lib/search";
 import { SearchScreen } from "./SearchScreen";
 
-const mocks = vi.hoisted(() => ({ search: vi.fn(), navigate: vi.fn(), eInk: false }));
+const mocks = vi.hoisted(() => ({ search: vi.fn(), searchBooks: vi.fn(), loadBooks: vi.fn(), navigate: vi.fn(), eInk: false }));
 vi.mock("react-native", () => ({
   ActivityIndicator: "progress", Pressable: "button", Text: "span", TextInput: "input", View: "div",
   FlatList: ({ data, renderItem, ListHeaderComponent, ListFooterComponent, ListEmptyComponent }: {
@@ -20,8 +20,9 @@ vi.mock("react-native-safe-area-context", () => ({ SafeAreaView: "main" }));
 vi.mock("../components/ScreenHeader", () => ({ ScreenHeader: () => null }));
 vi.mock("../config/appVariant", () => ({ get IS_EINK_RELEASE() { return mocks.eInk; } }));
 vi.mock("../lib/haptics", () => ({ impactHaptic: vi.fn() }));
-vi.mock("../lib/search", () => ({ searchArchive: mocks.search }));
-vi.mock("../store/mobileStore", () => ({ useMobileStore: (select: (state: { hapticsEnabled: boolean }) => unknown) => select({ hapticsEnabled: false }) }));
+vi.mock("../lib/search", () => ({ searchArchive: mocks.search, searchBooks: mocks.searchBooks }));
+vi.mock("../lib/books", () => ({ loadMobileBooks: mocks.loadBooks }));
+vi.mock("../store/mobileStore", () => ({ useMobileStore: (select: (state: { hapticsEnabled: boolean; librarySources: string[] }) => unknown) => select({ hapticsEnabled: false, librarySources: [] }) }));
 
 const article = { title: "测试文章", content: "第一段正文。\n第二段正文。\n第三段正文。\n完整文章的结尾。", date: "1965-01-01", page: 2, datasetId: "rmrb" };
 let view: ReactTestRenderer;
@@ -40,6 +41,8 @@ beforeEach(async () => {
   vi.stubGlobal("requestAnimationFrame", vi.fn());
   vi.clearAllMocks();
   mocks.search.mockResolvedValue({ results: [article, { ...article, title: "另一篇文章", content: "另一篇的正文" }], total: 20 });
+  mocks.searchBooks.mockResolvedValue({ results: [], total: 0 });
+  mocks.loadBooks.mockResolvedValue([]);
   await act(async () => { view = create(<SearchScreen />); });
 });
 afterEach(async () => { await act(async () => view.unmount()); vi.unstubAllGlobals(); });
@@ -87,5 +90,66 @@ describe.each([false, true])("search article reading (eInk=%s)", (eInk) => {
     expect(button("显示全文")).toBeUndefined();
     await act(async () => button("查看原版 PDF").props.onPress());
     expect(mocks.navigate).toHaveBeenCalledWith("Reader", expect.objectContaining({ page: undefined }));
+  });
+});
+
+describe("book search", () => {
+  const bookResult = {
+    title: "第三章 失踪的船员",
+    snippet: "船上有三名<mark>失踪</mark>的船员。".replaceAll("<mark>", "").replaceAll("</mark>", ""),
+    datasetId: "book-a",
+    itemId: "book-a:volume-1",
+    source: "测试书库",
+    itemTitle: "第一卷",
+    chapterId: "chapter:3",
+  };
+
+  it("searches the delivery-visible books and opens the matching chapter in the reader", async () => {
+    mocks.loadBooks.mockResolvedValue([
+      { datasetId: "book-a", title: "测试书库", indexObject: "idx.jox", type: "book" },
+      { datasetId: "book-b", title: "别的书", indexObject: "idx2.jox", type: "book" },
+    ]);
+    mocks.searchBooks.mockResolvedValue({ results: [bookResult], total: 1 });
+    await act(async () => button("书籍").props.onPress());
+    await search("失踪");
+    expect(mocks.searchBooks).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      keyword: "失踪", page: 1,
+      sources: ["测试书库", "别的书"],
+    }));
+    expect(content("船上有三名失踪的船员。")).toBeDefined();
+    expect(mocks.navigate).not.toHaveBeenCalled();
+    await act(async () => button("阅读本章").props.onPress());
+    expect(mocks.navigate).toHaveBeenCalledExactlyOnceWith("BookReader", {
+      datasetId: "book-a",
+      itemKey: "volume-1",
+      title: "第一卷",
+      bookTitle: "测试书库",
+      initialChapterId: "chapter:3",
+      initialText: "失踪",
+    });
+  });
+
+  it("falls back to the source label when the index still uses legacy dataset ids", async () => {
+    mocks.loadBooks.mockResolvedValue([
+      { datasetId: "ce-shi-shu-ku", title: "测试书库", indexObject: "idx.jox", type: "book" },
+    ]);
+    mocks.searchBooks.mockResolvedValue({
+      results: [{ ...bookResult, datasetId: "book-ce-shi-shu-ku", itemId: "book-ce-shi-shu-ku:volume-1" }],
+      total: 1,
+    });
+    await act(async () => button("书籍").props.onPress());
+    await search("失踪");
+    await act(async () => button("阅读本章").props.onPress());
+    expect(mocks.navigate).toHaveBeenCalledExactlyOnceWith("BookReader", expect.objectContaining({
+      datasetId: "ce-shi-shu-ku",
+      itemKey: "volume-1",
+    }));
+  });
+
+  it("reports an empty catalog without calling the search endpoint", async () => {
+    await act(async () => button("书籍").props.onPress());
+    await search("失踪");
+    expect(mocks.searchBooks).not.toHaveBeenCalled();
+    expect(content("没有找到相关结果")).toBeDefined();
   });
 });
