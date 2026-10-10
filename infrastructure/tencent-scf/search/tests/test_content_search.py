@@ -144,16 +144,57 @@ class ContentSearchTests(unittest.TestCase):
         self.assertEqual(must['query'], '失踪')
         self.assertEqual(must['type'], 'phrase')
 
-    def test_mismatched_or_inner_quotes_keep_term_matching(self):
+    def test_quotes_inside_a_larger_query_become_phrase_clauses(self):
+        # Quotes are normalised before tokenising, so even a mismatched pair
+        # (or brackets mid-word) splits into term + phrase clauses, matching
+        # the retired /search endpoint's query_string behaviour.
         self.client.post('/content/search', json={'query': '“失踪"', 'size': 5})
         must = self.fake_es.body['query']['bool']['must'][0]['multi_match']
-        self.assertEqual(must['query'], '“失踪"')
-        self.assertEqual(must['type'], 'best_fields')
-        self.assertEqual(must['operator'], 'and')
+        self.assertEqual(must['query'], '失踪')
+        self.assertEqual(must['type'], 'phrase')
         self.client.post('/content/search', json={'query': '前“失踪”后', 'size': 5})
-        must = self.fake_es.body['query']['bool']['must'][0]['multi_match']
-        self.assertEqual(must['query'], '前“失踪”后')
-        self.assertEqual(must['type'], 'best_fields')
+        structure = self.fake_es.body['query']['bool']['must'][0]['bool']
+        self.assertEqual(structure['must'][0]['multi_match']['query'], '前')
+        self.assertEqual(structure['must'][1]['multi_match']['type'], 'phrase')
+        self.assertEqual(structure['must'][1]['multi_match']['query'], '失踪')
+        self.assertEqual(structure['must'][2]['multi_match']['query'], '后')
+
+    def test_boolean_operators_build_bool_clauses(self):
+        self.client.post('/content/search', json={'query': '失踪 AND NOT 案件', 'size': 5})
+        structure = self.fake_es.body['query']['bool']['must'][0]['bool']
+        self.assertEqual(structure['must'][0]['multi_match']['query'], '失踪')
+        self.assertEqual(structure['must'][0]['multi_match']['operator'], 'and')
+        self.assertEqual(structure['must_not'][0]['multi_match']['query'], '案件')
+        self.assertEqual(self.fake_es.body['query']['bool']['should'][0], {
+            'match_phrase': {'title': {'query': '失踪', 'boost': 16}},
+        })
+
+    def test_lowercase_and_or_not_are_normalised_like_the_old_endpoint(self):
+        self.client.post('/content/search', json={'query': '失踪 and not 案件', 'size': 5})
+        structure = self.fake_es.body['query']['bool']['must'][0]['bool']
+        self.assertEqual(len(structure['must']), 1)
+        self.assertEqual(len(structure['must_not']), 1)
+
+    def test_or_splits_into_should_groups_with_minimum_should_match(self):
+        self.client.post('/content/search', json={'query': '苹果 OR 梨', 'size': 5})
+        structure = self.fake_es.body['query']['bool']['must'][0]['bool']
+        self.assertEqual(structure['minimum_should_match'], 1)
+        self.assertEqual(structure['should'][0]['multi_match']['query'], '苹果')
+        self.assertEqual(structure['should'][1]['multi_match']['query'], '梨')
+
+    def test_quoted_phrase_combines_with_boolean_operators(self):
+        self.client.post('/content/search', json={'query': '"失踪人口" AND 案件', 'size': 5})
+        structure = self.fake_es.body['query']['bool']['must'][0]['bool']
+        self.assertEqual(structure['must'][0]['multi_match']['type'], 'phrase')
+        self.assertEqual(structure['must'][0]['multi_match']['query'], '失踪人口')
+        self.assertEqual(structure['must'][1]['multi_match']['query'], '案件')
+
+    def test_operator_only_query_degrades_to_a_term_search(self):
+        for raw in ('AND', 'NOT', '""'):
+            self.client.post('/content/search', json={'query': raw, 'size': 5})
+            must = self.fake_es.body['query']['bool']['must'][0]['multi_match']
+            self.assertEqual(must['type'], 'best_fields')
+            self.assertEqual(must['query'], raw)
 
     def test_rejects_invalid_dates_and_pages_beyond_the_result_window(self):
         incomplete = self.client.post('/content/search', json={
