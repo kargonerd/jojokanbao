@@ -95,6 +95,21 @@ def _valid_date_range(start_date, end_date):
   return start <= end
 
 
+# A reader wrapping the whole query in quotes asks for the exact phrase instead
+# of the default term-wise AND matching, which scatters highlighted single
+# characters across unrelated words.
+_QUOTE_PAIRS = (('"', '"'), ('“', '”'), ('‘', '’'), ('「', '」'), ('『', '』'))
+
+
+def _extract_quoted_phrase(query_text):
+  stripped = query_text.strip()
+  for opening, closing in _QUOTE_PAIRS:
+    if len(stripped) >= 2 and stripped.startswith(opening) and stripped.endswith(closing):
+      inner = stripped[1:-1].strip()
+      return inner or None
+  return None
+
+
 @app.route("/content/search", methods=["POST"])
 def content_search():
   """Search the unified JOJO content index for both readers and Agent tools."""
@@ -136,19 +151,23 @@ def content_search():
     filters.append({'terms': {'source': sources}})
   if start_date and end_date:
     filters.append({'range': {'date': {'gte': start_date, 'lte': end_date}}})
+  quoted_phrase = _extract_quoted_phrase(query_text)
+  match_text = quoted_phrase or query_text
   query = {
     'bool': {
       'must': [{
         'multi_match': {
-          'query': query_text,
+          'query': match_text,
           'fields': ['title^4', 'content'],
-          'type': 'best_fields',
-          'operator': 'and',
+          # A quoted query keeps its exact word order; an unquoted query keeps
+          # requiring every term while still ranking the best field.
+          'type': 'phrase' if quoted_phrase else 'best_fields',
+          **({} if quoted_phrase else {'operator': 'and'}),
         }
       }],
       'should': [
-        {'match_phrase': {'title': {'query': query_text, 'boost': 16}}},
-        {'match_phrase': {'content': {'query': query_text, 'boost': 8}}},
+        {'match_phrase': {'title': {'query': match_text, 'boost': 16}}},
+        {'match_phrase': {'content': {'query': match_text, 'boost': 8}}},
       ],
       'filter': filters,
     }

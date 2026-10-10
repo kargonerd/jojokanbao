@@ -124,6 +124,37 @@ class ContentSearchTests(unittest.TestCase):
             {'_score': {'order': 'desc'}},
         ])
 
+    def test_quoted_query_degrades_to_an_exact_ordered_phrase(self):
+        self.client.post('/content/search', json={'query': '“失踪”', 'size': 5})
+        must = self.fake_es.body['query']['bool']['must'][0]['multi_match']
+        self.assertEqual(must['query'], '失踪')
+        self.assertEqual(must['type'], 'phrase')
+        self.assertNotIn('operator', must)
+        self.assertEqual(self.fake_es.body['query']['bool']['should'][0], {
+            'match_phrase': {'title': {'query': '失踪', 'boost': 16}},
+        })
+
+    def test_quoted_ascii_and_corner_brackets_also_become_phrases(self):
+        self.client.post('/content/search', json={'query': '"失踪人口"', 'size': 5})
+        must = self.fake_es.body['query']['bool']['must'][0]['multi_match']
+        self.assertEqual(must['query'], '失踪人口')
+        self.assertEqual(must['type'], 'phrase')
+        self.client.post('/content/search', json={'query': '「失踪」', 'size': 5})
+        must = self.fake_es.body['query']['bool']['must'][0]['multi_match']
+        self.assertEqual(must['query'], '失踪')
+        self.assertEqual(must['type'], 'phrase')
+
+    def test_mismatched_or_inner_quotes_keep_term_matching(self):
+        self.client.post('/content/search', json={'query': '“失踪"', 'size': 5})
+        must = self.fake_es.body['query']['bool']['must'][0]['multi_match']
+        self.assertEqual(must['query'], '“失踪"')
+        self.assertEqual(must['type'], 'best_fields')
+        self.assertEqual(must['operator'], 'and')
+        self.client.post('/content/search', json={'query': '前“失踪”后', 'size': 5})
+        must = self.fake_es.body['query']['bool']['must'][0]['multi_match']
+        self.assertEqual(must['query'], '前“失踪”后')
+        self.assertEqual(must['type'], 'best_fields')
+
     def test_rejects_invalid_dates_and_pages_beyond_the_result_window(self):
         incomplete = self.client.post('/content/search', json={
             'query': '教育', 'startDate': '1988-06-01',

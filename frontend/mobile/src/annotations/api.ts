@@ -30,9 +30,27 @@ const api = createAnnotationApi({
     return signal ? request.abortSignal(signal) : request;
   },
   getCurrentUserId: async () => {
-    const { mobileAuthClient } = await loadAuth();
+    const { mobileAuthClient, useMobileAuthStore } = await loadAuth();
     const { data, error } = await mobileAuthClient.auth.getSession();
-    return error ? null : data.session?.user.id ?? null;
+    const sessionUserId = error ? null : data.session?.user.id ?? null;
+    if (sessionUserId) return sessionUserId;
+    // The SDK silently drops its stored session when the startup token refresh
+    // fails transiently, while the app still shows the reader signed in from
+    // the persisted snapshot. Re-seed the SDK from that snapshot instead of
+    // reporting a signed-in reader as logged out; setSession refreshes an
+    // expired access token itself.
+    const persisted = useMobileAuthStore.getState().session;
+    if (!error && persisted?.access_token && persisted.refresh_token && persisted.user?.id) {
+      try {
+        const { data: seeded, error: seedError } = await mobileAuthClient.auth.setSession({
+          access_token: persisted.access_token,
+          refresh_token: persisted.refresh_token,
+        });
+        const seededUserId = seedError ? null : seeded.session?.user.id ?? null;
+        if (seededUserId === persisted.user.id) return seededUserId;
+      } catch { /* fall through to the signed-out answer */ }
+    }
+    return sessionUserId;
   },
   currentPath: () => "/library",
 });
