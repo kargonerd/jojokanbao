@@ -2,6 +2,7 @@ fastapi==0.116.1
 httpx==0.28.1
 posthog[async]==7.53.0
 pydantic==2.11.7
+PyJWT==2.10.1
 edge-tts==7.2.8
 boto3==1.43.89
 lameenc==1.8.4

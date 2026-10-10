@@ -622,10 +622,12 @@ export function MeScreen() {
               </View>
             </View>
 
-            <View style={styles.sectionGap}>
-              <SectionTitle title="邀请码" />
-              <PersonalInvitationPanel userId={user.id} />
-            </View>
+            {signupInvitationRequired ? (
+              <View style={styles.sectionGap}>
+                <SectionTitle title="邀请码" />
+                <PersonalInvitationPanel userId={user.id} />
+              </View>
+            ) : null}
           </>
         ) : null}
 

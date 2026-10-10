@@ -20,6 +20,12 @@ VITE_SUPABASE_PUBLISHABLE_KEY=
 # Server-only access for the Python API, the Agent and the local admin
 # workbench. Equivalent to the service_role key. Never prefix it with VITE_.
 SUPABASE_SECRET_KEY=
+
+# Server-only legacy JWT secret (Dashboard → Auth → JWT Settings). When set,
+# the Python API, the Agent and the admin workbench verify access tokens
+# locally (HS256) instead of calling /auth/v1/user per request. Requires the
+# legacy JWT secret to stay enabled on the project.
+SUPABASE_JWT_SECRET=
 ```
 
 `.env.local` may override values for one machine. Both files are ignored by
@@ -62,7 +68,9 @@ Check pending migrations and coordinate API/client releases with the
 
 Edit `auth_signup_config.invitationRequired` in PostHog Remote config. Web/Desktop,
 Mobile and the Python API each read that same global configuration with their SDK.
-The UI refreshes when registration opens or fails; the API independently issues a
+The registration UI refreshes when it opens or fails, the account center
+invitation panel refreshes on entry and stays hidden unless invitations are
+required; the API independently issues a
 120-second authorization bound to the email, invitation code and policy decision.
 The Supabase hook and trigger verify its signature. The trigger atomically redeems
 an invitation when required and removes the transient signup metadata.
@@ -138,7 +146,7 @@ PostHog payload 只存可公开的运行参数。数据库原子操作接受受�
 
 | PostHog Remote config | 字段 | 示例值与范围 |
 | --- | --- | --- |
-| `auth_signup_config` | `invitationRequired` | 布尔值；客户端无缓存时先显示邀请码 |
+| `auth_signup_config` | `invitationRequired` | 布尔值；客户端无有效配置时按免邀请码渲染 |
 | `ai_usage_limits_config` | `requestsPerMinute` | 示例 3；整数 1–60 |
 | `ai_usage_limits_config` | `requestsPerDay` | 示例 100；整数 1–10,000 |
 | `ai_usage_limits_config` | `maxRunSeconds` | 示例 300 秒；整数 30–600 |

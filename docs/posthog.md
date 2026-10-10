@@ -141,7 +141,7 @@ PostHog Remote config 是参数编辑与回滚入口，配置文档保持全局�
 
 | Remote config | 字段 | 使用方 |
 | --- | --- | --- |
-| [`auth_signup_config`](https://us.posthog.com/project/604535/feature_flags/881155) | `invitationRequired` | 注册界面与 Auth 校验 |
+| [`auth_signup_config`](https://us.posthog.com/project/604535/feature_flags/881155) | `invitationRequired` | 注册界面、账号中心邀请码面板与 Auth 校验 |
 | [`ai_usage_limits_config`](https://us.posthog.com/project/604535/feature_flags/881154) | `requestsPerMinute`、`requestsPerDay`、`maxRunSeconds` | AI 请求准入 |
 | [`ops_email_quota_config`](https://us.posthog.com/project/604535/feature_flags/881156) | `warningPercent`、`criticalPercent`、`usageSource`、`dailyLimit`、`monthlyLimit` | 邮件额度检查 |
 | [`support_config`](https://us.posthog.com/project/604535/feature_flags/881158) | `qqGroup` | Web/Desktop 支持页、Mobile 设置页 |
@@ -151,8 +151,9 @@ PostHog Remote config 是参数编辑与回滚入口，配置文档保持全局�
 例如允许无邀请码注册时，将 `auth_signup_config` 的 payload 改为 `{"invitationRequired":false}`。
 参数范围见 [运行配置复用](../infrastructure/supabase/README.md#runtime-configuration-reuse)。
 
-Web/Desktop 和 Mobile 的注册界面直接订阅 `auth_signup_config`，按项目持久保存已验证值。
-没有已验证值时先按免邀请码渲染，SDK 返回有效配置后更新；注册页打开和提交失败时会刷新。
+Web/Desktop 和 Mobile 的注册界面与账号中心邀请码面板直接订阅 `auth_signup_config`，
+按项目持久保存已验证值。没有已验证值时先按免邀请码渲染，SDK 返回有效配置后更新；
+注册页打开和提交失败时会刷新，账号中心打开时也会刷新。
 后台每 5 分钟刷新，恢复前台的刷新间隔至少 30 秒；无效或失败的响应保留最后有效值。
 
 Python API 和 Agent 用官方 SDK 读取配置，在进程内保存已验证快照。已有快照的请求立即使用缓存，
