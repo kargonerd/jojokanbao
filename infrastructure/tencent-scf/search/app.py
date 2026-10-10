@@ -178,7 +178,10 @@ def _group_query(clauses):
     return {'bool': {'must_not': must_not}}
   if not must_not and len(must) == 1:
     return must[0]
-  return {'bool': {'must': must, 'must_not': must_not}}
+  clauses_body = {'must': must}
+  if must_not:
+    clauses_body['must_not'] = must_not
+  return {'bool': clauses_body}
 
 
 @app.route("/content/search", methods=["POST"])
