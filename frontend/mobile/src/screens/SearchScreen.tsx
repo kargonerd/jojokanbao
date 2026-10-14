@@ -42,6 +42,32 @@ function isBookResult(item: SearchListItem): item is BookSearchResult {
   return (item as BookSearchResult).itemId !== undefined;
 }
 
+function isPeriodicalResult(item: SearchListItem): item is ArchiveSearchResult {
+  return !isBookResult(item);
+}
+
+// Load-more appends pages while the index keeps changing, so hits that shift
+// across page boundaries must not show up twice.
+function periodicalKey(item: ArchiveSearchResult) {
+  return item.documentId || `${item.datasetId}:${item.date}:${item.page}:${item.title}`;
+}
+
+function bookKey(item: BookSearchResult) {
+  return `${item.datasetId}:${item.itemId}:${item.chapterId}`;
+}
+
+function appendPage<T>(previous: T[], batch: T[], key: (item: T) => string): T[] {
+  if (batch.length === 0) return previous;
+  const seen = new Set(previous.map(key));
+  return [...previous, ...batch.filter((item) => !seen.has(key(item)))];
+}
+
+interface PageBatch {
+  batch: SearchListItem[];
+  total: number;
+  reachedEnd: boolean;
+}
+
 // Results carry their own dataset id, so a periodical added to the content
 // index renders under its real name without another client change.
 function publicationOf(datasetId: string) {
@@ -154,6 +180,9 @@ export function SearchScreen() {
   const [expandedResults, setExpandedResults] = useState<Set<number>>(() => new Set());
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
+  const [reachedEnd, setReachedEnd] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const controllerRef = useRef<AbortController | null>(null);
@@ -180,30 +209,25 @@ export function SearchScreen() {
 
   useEffect(() => () => controllerRef.current?.abort(), []);
 
-  async function submitPeriodical(keyword: string, nextPage: number, signal: AbortSignal): Promise<number> {
+  async function fetchPeriodicalPage(keyword: string, nextPage: number, signal: AbortSignal): Promise<PageBatch> {
     const response = await searchArchive({ keyword, page: nextPage, size: PAGE_SIZE, signal });
-    if (signal.aborted) return 0;
-    setResults(response.results);
-    setTotal(response.total);
-    return response.total;
+    return { batch: response.results, total: response.total, reachedEnd: response.results.length < PAGE_SIZE };
   }
 
-  async function submitBooks(keyword: string, nextPage: number, signal: AbortSignal): Promise<number> {
+  async function fetchBookPage(keyword: string, nextPage: number, signal: AbortSignal): Promise<PageBatch> {
     const books = booksRef.current;
-    if (books.length === 0) {
-      setBookResults([]);
-      setTotal(0);
-      return 0;
-    }
+    if (books.length === 0) return { batch: [], total: 0, reachedEnd: true };
     const response = await searchBooks({
       keyword, page: nextPage, size: PAGE_SIZE, sources: books.map((book) => book.title), signal,
     });
-    if (signal.aborted) return 0;
     // A result without a resolvable catalog book is one the reader cannot open.
     const openable = response.results.filter((item) => resolveBookDataset(item) !== undefined);
-    setBookResults(openable);
-    setTotal(Math.max(response.total, openable.length));
-    return response.total;
+    return {
+      batch: openable,
+      total: Math.max(response.total, openable.length),
+      // End-of-list follows the raw server page, not the openable subset.
+      reachedEnd: response.results.length < PAGE_SIZE,
+    };
   }
 
   function resolveBookDataset(item: BookSearchResult): MobileBook | undefined {
@@ -235,32 +259,58 @@ export function SearchScreen() {
     const controller = new AbortController();
     controllerRef.current = controller;
     const activeScope = scopeRef.current;
+    // Pages beyond the first extend the current result list instead of
+    // replacing it, so readers reach later results by simply scrolling.
+    const appending = nextPage > 1 && submittedQuery === keyword;
     const searchStarted = Date.now();
     const searchProperties = { content_type: activeScope, page: nextPage };
     analytics.track("search_started", searchProperties);
-    setLoading(true);
-    setError("");
+    if (appending) {
+      setLoadingMore(true);
+      setLoadMoreError(false);
+    } else {
+      setLoading(true);
+      setError("");
+    }
     void impactHaptic(hapticsEnabled);
     try {
-      const resultCount = activeScope === "book"
-        ? await submitBooks(keyword, nextPage, controller.signal)
-        : await submitPeriodical(keyword, nextPage, controller.signal);
+      const response = activeScope === "book"
+        ? await fetchBookPage(keyword, nextPage, controller.signal)
+        : await fetchPeriodicalPage(keyword, nextPage, controller.signal);
       if (controller.signal.aborted) return;
-      analytics.track("search_completed", { ...searchProperties, result_count: resultCount, duration_ms: Date.now() - searchStarted });
+      if (appending) {
+        if (activeScope === "book") setBookResults((previous) => appendPage(previous, response.batch.filter(isBookResult), bookKey));
+        else setResults((previous) => appendPage(previous, response.batch.filter(isPeriodicalResult), periodicalKey));
+      } else {
+        if (activeScope === "book") setBookResults(response.batch.filter(isBookResult));
+        else setResults(response.batch.filter(isPeriodicalResult));
+        setExpandedResults(new Set());
+        requestAnimationFrame(() => {
+          listRef.current?.scrollToOffset({ offset: 0, animated: !IS_EINK_RELEASE });
+        });
+      }
+      analytics.track("search_completed", { ...searchProperties, result_count: response.total, duration_ms: Date.now() - searchStarted });
       setSubmittedQuery(keyword);
-      setExpandedResults(new Set());
+      setTotal(response.total);
+      setReachedEnd(response.reachedEnd);
       setPage(nextPage);
-      requestAnimationFrame(() => {
-        listRef.current?.scrollToOffset({ offset: 0, animated: !IS_EINK_RELEASE });
-      });
     } catch {
       if (!controller.signal.aborted) {
         analytics.track("search_failed", { ...searchProperties, duration_ms: Date.now() - searchStarted });
-        setError("搜索失败，请检查网络后重试。");
+        if (appending) setLoadMoreError(true);
+        else setError("搜索失败，请检查网络后重试。");
       }
     } finally {
-      if (!controller.signal.aborted) setLoading(false);
+      if (!controller.signal.aborted) {
+        setLoading(false);
+        setLoadingMore(false);
+      }
     }
+  }
+
+  function loadMore() {
+    if (loading || loadingMore || loadMoreError || reachedEnd) return;
+    void submit(page + 1);
   }
 
   function switchScope(nextScope: SearchScope) {
@@ -272,13 +322,14 @@ export function SearchScreen() {
     setTotal(0);
     setSubmittedQuery("");
     setPage(1);
+    setReachedEnd(false);
+    setLoadMoreError(false);
     setError("");
     // A failed or empty catalog load must not permanently disable book search.
     if (nextScope === "book" && visibleBooks.length === 0) setBooksReady(false);
   }
 
   const items: SearchListItem[] = scope === "book" ? bookResults : results;
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const beforeSearch = !submittedQuery && !loading && !error;
   const searchPlaceholder = scope === "book" ? "检索书籍正文" : "在JOJO看报上搜索";
 
@@ -338,7 +389,7 @@ export function SearchScreen() {
       ) : error ? (
         <View style={[styles.message, { borderColor: theme.red }]}>
           <Text style={[styles.messageText, { color: theme.muted, fontFamily: theme.sans }]}>{error}</Text>
-          <Pressable onPress={() => void submit(page, submittedQuery || query)} style={[styles.retry, { borderColor: theme.red }]}>
+          <Pressable onPress={() => void submit(1, submittedQuery || query)} style={[styles.retry, { borderColor: theme.red }]}>
             <Text style={[styles.retryText, { color: theme.red, fontFamily: theme.sans }]}>重试</Text>
           </Pressable>
         </View>
@@ -389,18 +440,26 @@ export function SearchScreen() {
             <Text style={[styles.emptyText, { color: theme.muted, fontFamily: theme.serif }]}>没有找到相关结果</Text>
           )}
           ListFooterComponent={items.length ? (
-            <View style={{ paddingBottom: 24 }}>
-              <View style={styles.pagination}>
-                <Pressable disabled={page <= 1} onPress={() => void submit(page - 1)} style={[styles.pageButton, { borderColor: theme.ruleDark, opacity: page <= 1 ? 0.35 : 1 }]}>
-                  <Text style={[styles.pageText, { color: theme.ink, fontFamily: theme.sans }]}>← 上一页</Text>
-                </Pressable>
-                <Text style={[styles.pageStatus, { color: theme.muted, fontFamily: theme.sans }]}>{page} / {totalPages}</Text>
-                <Pressable disabled={page >= totalPages} onPress={() => void submit(page + 1)} style={[styles.pageButton, { borderColor: theme.ruleDark, opacity: page >= totalPages ? 0.35 : 1 }]}>
-                  <Text style={[styles.pageText, { color: theme.ink, fontFamily: theme.sans }]}>下一页 →</Text>
-                </Pressable>
-              </View>
+            <View style={styles.footerState}>
+              {loadMoreError ? (
+                <>
+                  <Text style={[styles.footerText, { color: theme.muted, fontFamily: theme.sans }]}>更多结果加载失败</Text>
+                  <Pressable accessibilityRole="button" onPress={() => void submit(page + 1)} style={[styles.pageButton, { borderColor: theme.ruleDark }]}>
+                    <Text style={[styles.pageText, { color: theme.ink, fontFamily: theme.sans }]}>重新加载</Text>
+                  </Pressable>
+                </>
+              ) : loadingMore ? (
+                <>
+                  {!IS_EINK_RELEASE ? <ActivityIndicator size="small" color={theme.red} /> : null}
+                  <Text style={[styles.footerText, { color: theme.muted, fontFamily: theme.sans }]}>正在加载更多</Text>
+                </>
+              ) : reachedEnd ? (
+                <Text style={[styles.footerText, { color: theme.muted, fontFamily: theme.sans }]}>{`已显示全部 ${total} 条结果`}</Text>
+              ) : null}
             </View>
           ) : null}
+          onEndReached={!loading && !loadingMore && !loadMoreError && !reachedEnd ? loadMore : undefined}
+          onEndReachedThreshold={0.7}
           initialNumToRender={8}
           maxToRenderPerBatch={6}
           windowSize={7}
@@ -445,9 +504,9 @@ const styles = StyleSheet.create({
   resultActions: { flexDirection: "row", flexWrap: "wrap", columnGap: 24 },
   resultAction: { minHeight: 44, justifyContent: "center" },
   resultActionText: { fontSize: 12, fontWeight: "800" },
-  pagination: { paddingTop: 22, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  footerState: { paddingTop: 18, paddingBottom: 24, alignItems: "center", gap: 10 },
+  footerText: { fontSize: 11, fontWeight: "700" },
   pageButton: { minWidth: 92, height: 40, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   pageText: { fontSize: 11, fontWeight: "800" },
-  pageStatus: { fontSize: 10, fontWeight: "700" },
   emptyText: { marginTop: 60, textAlign: "center", fontSize: 14, lineHeight: 23 },
 });

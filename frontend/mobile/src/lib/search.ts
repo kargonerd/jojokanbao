@@ -6,6 +6,7 @@ export interface ArchiveSearchResult {
   date: string;
   page: number;
   datasetId: string;
+  documentId: string;
 }
 
 export interface ArchiveSearchResponse {
@@ -64,6 +65,9 @@ export async function searchArchive({
         date: String(result.date ?? ""),
         page: readPage(result.metadata),
         datasetId: String(result.datasetId ?? "rmrb"),
+        // Stable ES document id so load-more pages can dedupe hits that shift
+        // between requests while the index keeps updating.
+        documentId: String(result.documentId ?? ""),
       };
     }),
     total: Math.max(0, Number(payload.data.total)),

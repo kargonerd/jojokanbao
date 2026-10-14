@@ -7,11 +7,12 @@ import { SearchScreen } from "./SearchScreen";
 const mocks = vi.hoisted(() => ({ search: vi.fn(), searchBooks: vi.fn(), loadBooks: vi.fn(), navigate: vi.fn(), eInk: false }));
 vi.mock("react-native", () => ({
   ActivityIndicator: "progress", Pressable: "button", Text: "span", TextInput: "input", View: "div",
-  FlatList: ({ data, renderItem, ListHeaderComponent, ListFooterComponent, ListEmptyComponent }: {
+  FlatList: ({ data, renderItem, ListHeaderComponent, ListFooterComponent, ListEmptyComponent, onEndReached }: {
     data: ArchiveSearchResult[];
     renderItem: (value: { item: ArchiveSearchResult; index: number }) => ReactNode;
     ListHeaderComponent: ReactNode; ListFooterComponent: ReactNode; ListEmptyComponent: ReactNode;
-  }) => <section>{ListHeaderComponent}{data.length ? data.map((item, index) => <article key={index}>{renderItem({ item, index })}</article>) : ListEmptyComponent}{ListFooterComponent}</section>,
+    onEndReached?: () => void;
+  }) => <section>{ListHeaderComponent}{data.length ? data.map((item, index) => <article key={index}>{renderItem({ item, index })}</article>) : ListEmptyComponent}{onEndReached ? <button onClick={onEndReached}><span>加载更多</span></button> : null}{ListFooterComponent}</section>,
   StyleSheet: { create: (styles: unknown) => styles, hairlineWidth: 1 },
   Platform: { OS: "android", select: (values: { android: string }) => values.android },
 }));
@@ -24,7 +25,12 @@ vi.mock("../lib/search", () => ({ searchArchive: mocks.search, searchBooks: mock
 vi.mock("../lib/books", () => ({ loadMobileBooks: mocks.loadBooks }));
 vi.mock("../store/mobileStore", () => ({ useMobileStore: (select: (state: { hapticsEnabled: boolean; librarySources: string[] }) => unknown) => select({ hapticsEnabled: false, librarySources: [] }) }));
 
-const article = { title: "测试文章", content: "第一段正文。\n第二段正文。\n第三段正文。\n完整文章的结尾。", date: "1965-01-01", page: 2, datasetId: "rmrb" };
+const article = { title: "测试文章", content: "第一段正文。\n第二段正文。\n第三段正文。\n完整文章的结尾。", date: "1965-01-01", page: 2, datasetId: "rmrb", documentId: "doc-1" };
+// Each fill page carries distinct document ids so load-more dedupe keeps them.
+function fillerPage(prefix: string) {
+  return Array.from({ length: 10 }, (_, index) => ({ ...article, title: `填充文章 ${prefix}${index + 1}`, documentId: `${prefix}-${index + 1}` }));
+}
+const firstPage = () => [article, { ...article, title: "另一篇文章", content: "另一篇的正文", documentId: "doc-2" }, ...fillerPage("a").slice(0, 8)];
 let view: ReactTestRenderer;
 function button(label: string, index = 0) {
   return view.root.findAllByType("button").filter((node) => node.findAllByType("span").some((child) => child.props.children === label))[index]!;
@@ -40,7 +46,7 @@ beforeEach(async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   vi.stubGlobal("requestAnimationFrame", vi.fn());
   vi.clearAllMocks();
-  mocks.search.mockResolvedValue({ results: [article, { ...article, title: "另一篇文章", content: "另一篇的正文" }], total: 20 });
+  mocks.search.mockResolvedValue({ results: firstPage(), total: 20 });
   mocks.searchBooks.mockResolvedValue({ results: [], total: 0 });
   mocks.loadBooks.mockResolvedValue([]);
   await act(async () => { view = create(<SearchScreen />); });
@@ -71,16 +77,48 @@ describe.each([false, true])("search article reading (eInk=%s)", (eInk) => {
     });
   });
 
-  it("resets expanded articles on pagination and a new search", async () => {
+  it("appends later pages on scroll and resets on a new search", async () => {
+    mocks.search.mockResolvedValueOnce({ results: firstPage(), total: 20 });
+    mocks.search.mockResolvedValueOnce({ results: fillerPage("b"), total: 20 });
     await search();
+    expect(view.root.findAllByType("article").length).toBe(10);
     await act(async () => button("显示全文").props.onPress());
-    await act(async () => button("下一页 →").props.onPress());
+    expect(content().props.numberOfLines).toBeUndefined();
+    await act(async () => button("加载更多").props.onClick());
     expect(mocks.search).toHaveBeenLastCalledWith(expect.objectContaining({ keyword: "测试", page: 2 }));
-    expect(content().props.numberOfLines).toBe(3);
+    expect(view.root.findAllByType("article").length).toBe(20);
+    // Appending keeps the already-expanded article open.
+    expect(content().props.numberOfLines).toBeUndefined();
     await act(async () => button("显示全文").props.onPress());
     await search("新关键词");
+    expect(view.root.findAllByType("article").length).toBe(10);
     expect(content().props.numberOfLines).toBe(3);
     expect(mocks.search).toHaveBeenLastCalledWith(expect.objectContaining({ keyword: "新关键词", page: 1 }));
+  });
+
+  it("reports the end of the result list once every page is loaded", async () => {
+    mocks.search.mockResolvedValueOnce({ results: fillerPage("a"), total: 11 });
+    mocks.search.mockResolvedValueOnce({ results: [{ ...article, documentId: "doc-9" }], total: 11 });
+    await search();
+    expect(content("已显示全部 11 条结果")).toBeUndefined();
+    await act(async () => button("加载更多").props.onClick());
+    expect(mocks.search).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2 }));
+    expect(content("已显示全部 11 条结果")).toBeDefined();
+    expect(button("加载更多")).toBeUndefined();
+  });
+
+  it("offers a footer retry when loading more results fails", async () => {
+    mocks.search.mockResolvedValueOnce({ results: fillerPage("a"), total: 20 });
+    mocks.search.mockRejectedValueOnce(new Error("network down"));
+    await search();
+    await act(async () => button("加载更多").props.onClick());
+    expect(content("更多结果加载失败")).toBeDefined();
+    expect(view.root.findAllByType("article").length).toBe(10);
+    mocks.search.mockResolvedValueOnce({ results: [{ ...article, documentId: "doc-9" }], total: 11 });
+    await act(async () => button("重新加载").props.onPress());
+    expect(mocks.search).toHaveBeenLastCalledWith(expect.objectContaining({ keyword: "测试", page: 2 }));
+    expect(view.root.findAllByType("article").length).toBe(11);
+    expect(content("已显示全部 11 条结果")).toBeDefined();
   });
 
   it("offers the PDF when article text is unavailable", async () => {
