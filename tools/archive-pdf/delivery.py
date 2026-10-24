@@ -21,6 +21,7 @@ from jojo_format import _adaptive_calendar, _available_dates, _decode_jox, _writ
 
 DATASET = "newspapers/rmrb/dataset.json"
 INDEX = "content/newspapers/rmrb/index.jox"
+CANONICAL_REPO = "luoxiaozhuang/jojokanbao-dataset"
 MUTABLE_CACHE = "public, max-age=0, must-revalidate"
 IMMUTABLE_CACHE = "public, max-age=31536000, immutable"
 
@@ -66,7 +67,7 @@ def replace_issue_pdf(assets: list[dict], replacement: dict) -> list[dict]:
 class HuggingFace:
     def __init__(self, repo: str | None = None):
         from huggingface_hub import HfApi
-        self.repo = repo or os.getenv("RMRB_REVIEW_HF_REPO") or os.getenv("HF_DATASET_REPO") or "luoxiaozhuang/jojokanbao-dataset"
+        self.repo = repo or CANONICAL_REPO
         self.api = HfApi(token=os.getenv("HF_TOKEN") or None)
         self.revision = self.api.repo_info(self.repo, repo_type="dataset", expand=["sha"], timeout=30).sha
 
