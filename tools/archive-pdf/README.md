@@ -61,8 +61,8 @@ uses only `node:zlib`. The storage remote can be overridden with
 manifests carry no article text (`text: missing`).
 
 `sync_rmrb.py` requires `pip install -r tools/archive-pdf/requirements.txt`, plus
-the `qpdf`, `node`, and `rclone` executables. It reuses `RMRB_REVIEW_HF_REPO`
-(then `HF_DATASET_REPO`, default `luoxiaozhuang/marxism-dataset`), `HF_TOKEN`
+the `qpdf`, `node`, and `rclone` executables. It publishes to the Canonical
+dataset `luoxiaozhuang/jojokanbao-dataset` (`HF_TOKEN`
 or the HF CLI login, and `JOJO_DELIVERY_REMOTE` (then `B2_REMOTE:B2_BUCKET`).
 
 ## Archive Delivery cutover
