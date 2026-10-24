@@ -89,8 +89,8 @@ Hugging Face and B2 in one operation; local decision logs are not uploaded.
 Accepted rows enter a local pending-publication journal. Each successful target
 is cleared independently, and a row leaves the pending count only after both HF
 Canonical and B2 Delivery have succeeded.
-Hugging Face uses `RMRB_REVIEW_HF_REPO` (then
-`HF_DATASET_REPO`) and the CLI token or `HF_TOKEN`; B2 uses
+Hugging Face publishes to the single pinned Canonical repo
+`luoxiaozhuang/jojokanbao-dataset` using the CLI token or `HF_TOKEN`; B2 uses
 `RMRB_REVIEW_B2_REMOTE` (then `JOJO_DELIVERY_REMOTE`) through rclone.
 Hugging Face publication patches only affected Canonical Items, annual article
 shards, the missing-row index, and availability metadata in one commit. B2 publication writes new

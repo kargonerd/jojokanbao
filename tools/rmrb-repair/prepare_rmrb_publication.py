@@ -493,7 +493,7 @@ def build_day(
     page_article_order: Counter[int] = Counter()
     pdf_source = issue_pdf_path(pdf_root, day, pdf_1998_2012_root, pdf_2014_2026_root)
     pdf_url = (
-        "https://huggingface.co/datasets/luoxiaozhuang/marxism-dataset/resolve/main/"
+        "https://huggingface.co/datasets/luoxiaozhuang/jojokanbao-dataset/resolve/main/"
         f"newspapers/rmrb/assets/pdfs/{day[:4]}/{day[5:7]}/{day}.pdf"
         if pdf_source.is_file() else None
     )

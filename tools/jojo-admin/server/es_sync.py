@@ -31,7 +31,7 @@ from typing import Any, Callable, Iterable, Iterator, Sequence
 from es_repair import BOOK_POLICY_METADATA_FIELDS, KibanaConsoleClient, _load_root_env, repair_config
 
 
-DEFAULT_HF_REPO = "luoxiaozhuang/marxism-dataset"
+DEFAULT_HF_REPO = "luoxiaozhuang/jojokanbao-dataset"
 DOCUMENT_TYPES = ("book", "newspaper", "news")
 BUSINESS_FIELDS = (
     "type", "datasetId", "itemId", "title", "content", "date", "source", "metadata",
