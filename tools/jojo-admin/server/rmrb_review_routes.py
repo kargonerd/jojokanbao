@@ -36,6 +36,9 @@ from rmrb_review_source import remove_from_review_cache, review_source_manager
 
 rmrb_review_blueprint = Blueprint("rmrb_review", __name__)
 
+# The single HF Canonical dataset repo; do not make this configurable.
+HF_CANONICAL_REPO = "luoxiaozhuang/jojokanbao-dataset"
+
 WORKSPACE_ROOT = Path(__file__).resolve().parents[3]
 REVIEW_ROOT = Path(
     os.environ.get(
@@ -160,11 +163,7 @@ def _huggingface_token() -> str:
 
 
 def _huggingface_repo() -> str:
-    return (
-        os.environ.get("RMRB_REVIEW_HF_REPO", "").strip()
-        or os.environ.get("HF_DATASET_REPO", "").strip()
-        or "luoxiaozhuang/marxism-dataset"
-    )
+    return HF_CANONICAL_REPO
 
 
 def _b2_remote() -> str:
