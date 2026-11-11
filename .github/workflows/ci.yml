@@ -304,6 +304,14 @@ jobs:
       # A stale Chrome vendor index must not block Firefox/WebKit installation.
       - name: Remove unused Chrome apt source
         run: sudo rm -f /etc/apt/sources.list.d/google-chrome.list /etc/apt/sources.list.d/google-chrome.sources
+      # The runner's Azure mirror can be unreachable while GitHub-hosted
+      # infrastructure is otherwise healthy; fall back to the public archive.
+      - name: Use reachable Ubuntu mirror
+        run: |
+          for file in /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
+            [ -f "$file" ] || continue
+            sudo sed -i -e 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' -e 's|https://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' "$file"
+          done
       - run: pnpm --filter @jojo/web exec playwright install --with-deps ${{ matrix.browser }}
       - run: pnpm --filter @jojo/web exec playwright test --browser=${{ matrix.browser }} --workers=1
 
