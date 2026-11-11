@@ -73,7 +73,7 @@ function agentHistory(messages: RagMessage[]): Array<Pick<RagMessage, "role" | "
   let remainingCharacters = MAX_HISTORY_CHARACTERS;
   const newestFirst: Array<Pick<RagMessage, "role" | "content">> = [];
   for (const message of messages.slice(-MAX_HISTORY_MESSAGES).reverse()) {
-    const content = message.content.replace(/\[cite:[A-Za-z0-9_-]+\]/g, "").trim();
+    const content = message.content.replace(/\[cite:\s*[A-Za-z0-9_-]+\s*\]/g, "").trim();
     if (!content) continue;
     const messageLimit = message.role === "user"
       ? MAX_USER_HISTORY_CHARACTERS
@@ -145,7 +145,7 @@ export function askStream(params: { contentType?: "all" | "book" | "periodical";
   const finish = (candidates?: RagReference[]) => {
     if (settled) return;
     settled = true;
-    const citationIds = [...answer.matchAll(/\[cite:([A-Za-z0-9_-]+)\]/g)]
+    const citationIds = [...answer.matchAll(/\[cite:\s*([A-Za-z0-9_-]+)\s*\]/g)]
       .map((match) => match[1])
       .filter((citationId): citationId is string => Boolean(citationId));
     if (!citationIds.length) {

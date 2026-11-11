@@ -15,7 +15,7 @@ export function formatChatMarkdown(text: string, references: RagReference[] = []
   const byCitationId = new Map(citations.flatMap(({ number, reference }) => (
     reference.citationId ? [[reference.citationId, number] as const] : []
   )));
-  const normalized = text.replace(/\[cite:([A-Za-z0-9_-]+)\]/g, (_marker, citationId: string) => {
+  const normalized = text.replace(/\[cite:\s*([A-Za-z0-9_-]+)\s*\]/g, (_marker, citationId: string) => {
     const number = byCitationId.get(citationId);
     return number ? `[${number}]` : "";
   });
@@ -35,4 +35,15 @@ export function formatChatMarkdown(text: string, references: RagReference[] = []
   return DOMPurify.sanitize(html, {
     ADD_ATTR: ["data-citation", "target", "rel", "aria-label"],
   });
+}
+
+export function formatChatPlainText(text: string, references: RagReference[] = []): string {
+  const html = formatChatMarkdown(text, references)
+    .replace(/<\/(?:p|div|li|blockquote|pre|h[1-6]|tr)>/gi, "$&\n");
+  const body = new DOMParser().parseFromString(html, "text/html").body;
+  return (body.textContent || "")
+    .replace(/\u00a0/g, " ")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }

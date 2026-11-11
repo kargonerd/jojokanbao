@@ -36,6 +36,19 @@ describe("RAG markdown rendering", () => {
     expect(html).not.toContain("cite:Jabc");
   });
 
+  it("accepts whitespace inside evidence tokens", () => {
+    const html = formatChatMarkdown("这句话有原文依据。[cite: Jabc]", [{
+      citationId: "Jabc",
+      datasetId: "mao",
+      itemId: "volume-1",
+      targetId: "chapter:15",
+      title: "第15章 长征",
+    }]);
+
+    expect(html).toContain('data-citation="1"');
+    expect(html).not.toContain("cite:");
+  });
+
   it("links newspaper citations to the archive date, page and article title", () => {
     const html = formatChatMarkdown("报道关注黄河。[cite:Jpaper]", [{
       citationId: "Jpaper", type: "newspaper", datasetId: "rmrb", itemId: "rmrb:1999-06-25",

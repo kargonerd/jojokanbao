@@ -96,7 +96,7 @@ export function askMobileBookAgent(
         message: request.question,
         history: (request.history ?? []).slice(-20).map((message) => ({
           role: message.role,
-          content: message.content.replace(/\[cite:[A-Za-z0-9_-]+\]/g, ""),
+          content: message.content.replace(/\[cite:\s*[A-Za-z0-9_-]+\s*\]/g, ""),
         })),
         scope: {
           librarySources: useMobileStore.getState().librarySources,

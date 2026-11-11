@@ -93,7 +93,7 @@ export function boundedMobileAgentHistory(
   let remainingCharacters = MAX_HISTORY_CHARACTERS;
   const newestFirst: Array<Pick<MobileBookAgentMessage, "role" | "content">> = [];
   for (const message of messages.slice(-MAX_HISTORY_MESSAGES).reverse()) {
-    const content = message.content.replace(/\[cite:[A-Za-z0-9_-]+\]/g, "").trim();
+    const content = message.content.replace(/\[cite:\s*[A-Za-z0-9_-]+\s*\]/g, "").trim();
     if (!content) continue;
     const messageLimit = message.role === "user" ? 10_000 : 20_000;
     const bounded = content.slice(0, Math.min(messageLimit, remainingCharacters));
@@ -121,7 +121,7 @@ export function askMobileLibraryAgent(
     if (settled) return;
     settled = true;
     const allReferences = [...references.values()];
-    const citationIds = [...answer.matchAll(/\[cite:([A-Za-z0-9_-]+)\]/g)]
+    const citationIds = [...answer.matchAll(/\[cite:\s*([A-Za-z0-9_-]+)\s*\]/g)]
       .map((match) => match[1])
       .filter((value): value is string => Boolean(value));
     if (!citationIds.length) {
