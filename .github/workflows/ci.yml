@@ -284,7 +284,8 @@ jobs:
     # Catch browser-specific regressions before merge, not only on master.
     if: needs.changes.outputs.web_e2e == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # Browser dependency installation can be slow on constrained runners.
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
