@@ -19,10 +19,8 @@ import type { ReaderSelectionRect } from "@jojo/ui/reader-selection";
 import { AnnotationDiscussionPanel } from "../../annotations/AnnotationDiscussionPanel";
 import { AnnotationMarkPopover } from "../../annotations/AnnotationMarkPopover";
 import {
-  clearReaderExplanationMarks,
   clearTextAnchorMarks,
   renderAnnotationMarks,
-  renderReaderExplanationMarks,
   textAnchorFromRange,
   textAnchorOverlapsText,
 } from "../../annotations/domAnchors";
@@ -45,11 +43,9 @@ import type { AnnotationThread } from "../../annotations/types";
 import "./BookReader.css";
 import {
   bookshelfContains,
-  popularExplanations,
   reusableExplanation,
   saveExplanation,
   setBookshelf,
-  type ReusableExplanation,
 } from "../readerData";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -233,7 +229,6 @@ export function BookReader({
   const [onBookshelf, setOnBookshelf] = useState(false);
   const [bookshelfBusy, setBookshelfBusy] = useState(false);
   const [readerNotice, setReaderNotice] = useState("");
-  const [popular, setPopular] = useState<ReusableExplanation[]>([]);
   const [expandedImage, setExpandedImage] = useState<ExpandedImage>();
   const [readingProgress, setReadingProgress] = useState(0);
   const [bookNotes, setBookNotes] = useState<AnnotationThread[]>([]);
@@ -510,18 +505,6 @@ export function BookReader({
   }, [mode, chapterKey]);
 
   useEffect(() => {
-    if (!agentAccess) {
-      setPopular([]);
-      return;
-    }
-    let cancelled = false;
-    popularExplanations(datasetId, itemId, activeChapterId)
-      .then((value) => { if (!cancelled) setPopular(value); })
-      .catch(() => { if (!cancelled) setPopular([]); });
-    return () => { cancelled = true; };
-  }, [activeChapterId, agentAccess, datasetId, itemId]);
-
-  useEffect(() => {
     setOnBookshelf(false);
     if (!currentUserId) {
       return;
@@ -549,39 +532,6 @@ export function BookReader({
       }
     });
   }, [annotations.threads, annotationChapterId, contentLoading, chapterRoot, pageMetrics.step, positionRevision]);
-
-  useEffect(() => {
-    const root = chapterRoot();
-    if (!root || contentLoading) return;
-    renderReaderExplanationMarks(root, popular.map((explanation) => ({
-      quote: explanation.quote,
-      prefix: explanation.prefix ?? "",
-      suffix: explanation.suffix ?? "",
-      startOffset: null,
-      endOffset: null,
-      count: explanation.count,
-    })), (anchor) => {
-      const explanation = popular.find((candidate) => (
-        candidate.quote === anchor.quote
-        && (candidate.prefix ?? "") === anchor.prefix
-        && (candidate.suffix ?? "") === anchor.suffix
-      ));
-      if (!explanation) return;
-      setAiExplanationQuote(explanation.quote);
-      setAiQuestion(undefined);
-      setAiInitialAnswer(explanation.answer);
-      setAiInitialReferences(explanation.references);
-      setAiFocus({
-        chapterId: activeChapterId,
-        ...(activeChapterTitle ? { chapterTitle: activeChapterTitle } : {}),
-        quote: explanation.quote,
-        ...(explanation.prefix ? { prefix: explanation.prefix } : {}),
-        ...(explanation.suffix ? { suffix: explanation.suffix } : {}),
-      });
-      openPanel("ai");
-    });
-    return () => clearReaderExplanationMarks(root);
-  }, [activeChapterId, activeChapterTitle, contentLoading, chapterRoot, pageMetrics.step, popular, positionRevision]);
 
   useLayoutEffect(() => {
     if (mode !== "paged" || contentLoading) return;
