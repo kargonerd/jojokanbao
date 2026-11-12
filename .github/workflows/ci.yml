@@ -284,8 +284,12 @@ jobs:
     # Catch browser-specific regressions before merge, not only on master.
     if: needs.changes.outputs.web_e2e == 'true'
     runs-on: ubuntu-latest
-    # Browser dependency installation can be slow on constrained runners.
-    timeout-minutes: 25
+    # The Playwright image already contains the browsers and their system
+    # libraries, so this job does not depend on the runner's apt mirror.
+    timeout-minutes: 15
+    container:
+      image: mcr.microsoft.com/playwright:v1.60.0-noble
+      options: --user 1001
     strategy:
       fail-fast: false
       matrix:
@@ -301,19 +305,6 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
-      # Playwright supplies these browsers; their libraries come from Ubuntu.
-      # A stale Chrome vendor index must not block Firefox/WebKit installation.
-      - name: Remove unused Chrome apt source
-        run: sudo rm -f /etc/apt/sources.list.d/google-chrome.list /etc/apt/sources.list.d/google-chrome.sources
-      # The runner's Azure mirror can be unreachable while GitHub-hosted
-      # infrastructure is otherwise healthy; fall back to the public archive.
-      - name: Use reachable Ubuntu mirror
-        run: |
-          for file in /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
-            [ -f "$file" ] || continue
-            sudo sed -i -e 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' -e 's|https://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' "$file"
-          done
-      - run: pnpm --filter @jojo/web exec playwright install --with-deps ${{ matrix.browser }}
       - run: pnpm --filter @jojo/web exec playwright test --browser=${{ matrix.browser }} --workers=1
 
   homepage-external:
