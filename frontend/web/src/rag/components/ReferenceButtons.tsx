@@ -53,7 +53,7 @@ export function answerCitations(
   const cited: AnswerCitation[] = [];
   const seen = new Set<string>();
   let containsCitationTokens = false;
-  for (const match of content.matchAll(/\[cite:([A-Za-z0-9_-]+)\]/g)) {
+  for (const match of content.matchAll(/\[cite:\s*([A-Za-z0-9_-]+)\s*\]/g)) {
     containsCitationTokens = true;
     const citationId = match[1];
     if (!citationId) continue;
