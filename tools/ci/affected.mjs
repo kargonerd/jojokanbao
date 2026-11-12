@@ -15,7 +15,7 @@ const patterns = {
   homepage_external: /^(content\/blog\/|\.github\/workflows\/deploy-homepage\.yml$)/,
   mobile_ios: /^(frontend\/mobile\/|frontend\/packages\/(auth|content|ui)\/|frontend\/tooling\/tsconfig\/|frontend\/patches\/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$|\.github\/workflows\/(ci|release-mobile-ios)\.yml$)/,
   cloud_api: /^(backend\/|tools\/times-pipeline\/|infrastructure\/edgeone\/|\.github\/workflows\/(ci|deploy-web|maintenance-times[^/]*)\.yml$)/,
-  database: /^(infrastructure\/supabase\/|\.github\/workflows\/ci\.yml$)/,
+  database: /^infrastructure\/supabase\//,
   search_scf: /^(infrastructure\/tencent-scf\/search\/|\.github\/workflows\/(ci|release-search)\.yml$)/,
   times_pipeline: /^(tools\/(times-pipeline|ci|monitoring)\/|frontend\/packages\/content\/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|\.github\/workflows\/(ci|maintenance-times[^/]*|maintenance-sync-rmrb)\.yml$)/,
 };
