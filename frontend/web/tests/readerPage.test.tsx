@@ -321,6 +321,19 @@ describe("ReaderPage document states", () => {
     expect(latestViewerProps().initialPage).toBe(1);
   });
 
+  it("reopens the saved page when the link has no hash", () => {
+    useRecentReadingStore.setState({ items: [{
+      id: "periodical:rmrb:19761009", kind: "periodical", publicationId: "rmrb",
+      title: "人民日报", subtitle: "1976 年 10 月 9 日 · 第 4 页",
+      href: "/archive/rmrb/19761009#page-4", progress: 0, updatedAt: 1, totalPages: 6,
+    }] });
+    renderReader("/rmrb/19761009");
+    expect(latestViewerProps().initialPage).toBe(4);
+    expect(useRecentReadingStore.getState().items[0]).toMatchObject({
+      href: "/archive/rmrb/19761009#page-4",
+    });
+  });
+
   it("remembers the last newspaper page without treating an issue as completable", () => {
     renderReader("/rmrb/19761009#page-4");
 

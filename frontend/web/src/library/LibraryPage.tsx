@@ -10,10 +10,9 @@ import { loadBookshelf, setBookshelf, type BookshelfEntry } from "../rag/readerD
 import { readerReturnState, safeReaderReturnPath, withReaderReturnTo } from "../rag/readerNavigation";
 import type { RagNotebook, RagSource } from "../rag/types";
 import { BookCover } from "./BookCover";
-import { bookCoverTone, issueLabel } from "./bookCatalog";
+import { bookCoverTone } from "./bookCatalog";
 import { fuzzyBookTitleScore } from "./bookSearch";
 import type { PeriodicalEntry } from "./catalog";
-import { useRecentReadingStore } from "./recentReadingStore";
 
 type LibraryType = "all" | "periodical" | "book";
 
@@ -59,7 +58,6 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
   const [sourceError, setSourceError] = useState("");
   const [catalogRequest, setCatalogRequest] = useState(0);
   const [sourceRequest, setSourceRequest] = useState(0);
-  const remember = useRecentReadingStore((state) => state.remember);
   const accountInitialized = useAccountSessionStore((state) => state.initialized);
   const userId = useAccountSessionStore((state) => state.userId);
   const signedIn = Boolean(userId);
@@ -138,17 +136,6 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
         if (publishedSources.length === 1) {
           const source = publishedSources[0]!;
           const itemKey = source.itemKey || source.id;
-          const title = source.title || source.name || "未命名书籍";
-          remember({
-            id: `book:${datasetId}:${itemKey}`,
-            kind: "book",
-            datasetId,
-            itemKey,
-            title,
-            subtitle: books.find((book) => book.id === datasetId)?.title || "书籍",
-            href: `/book/${encodeURIComponent(datasetId)}/${encodeURIComponent(itemKey)}`,
-            progress: 0,
-          });
           navigate(withReaderReturnTo(
             `/book/${encodeURIComponent(datasetId)}/${encodeURIComponent(itemKey)}`,
             returnToBeforeCollection,
@@ -162,7 +149,7 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
         if (active) setSourceLoading(false);
       });
     return () => { active = false; };
-  }, [accountInitialized, datasetId, loading, navigate, remember, returnToBeforeCollection, selectedBook, selectedBookVisible, sourceRequest, bookVisible]);
+  }, [accountInitialized, datasetId, loading, navigate, returnToBeforeCollection, selectedBook, selectedBookVisible, sourceRequest, bookVisible]);
 
   function selectType(nextType: LibraryType) {
     setSearchParams(nextType === "all" ? {} : { type: nextType });
@@ -175,27 +162,6 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
 
   function issuePath(entry: PeriodicalEntry): string {
     return `/archive/${entry.id}/${entry.defaultIssueId}`;
-  }
-
-  function rememberPeriodical(entry: PeriodicalEntry) {
-    const href = issuePath(entry);
-    const id = href.split("/").at(-1) || entry.defaultIssueId;
-    remember({ id: `periodical:${entry.id}`, kind: "periodical", publicationId: entry.id, title: entry.title, subtitle: issueLabel(id), href, progress: 0 });
-  }
-
-  function rememberBook(source: RagSource) {
-    if (!datasetId) return;
-    const itemKey = source.itemKey || source.id;
-    remember({
-      id: `book:${datasetId}:${itemKey}`,
-      kind: "book",
-      datasetId,
-      itemKey,
-      title: source.title || source.name || selectedBook?.title || "未命名书籍",
-      subtitle: selectedBook?.title || "书籍",
-      href: `/book/${encodeURIComponent(datasetId)}/${encodeURIComponent(itemKey)}`,
-      progress: 0,
-    });
   }
 
   function requireShelfAccess(): boolean {
@@ -339,7 +305,7 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
         {!datasetId && (
           <div className="cover-grid">
             {showPeriodicals && visiblePeriodicals.map((entry) => (
-              <Link key={entry.id} className="cover-card" to={issuePath(entry)} onClick={() => rememberPeriodical(entry)}>
+              <Link key={entry.id} className="cover-card" to={issuePath(entry)}>
                 <PaperCover entry={entry} /><strong>{entry.title}</strong><small>{entry.kind} · {entry.years}</small>
               </Link>
             ))}
@@ -392,7 +358,6 @@ export function LibraryPage({ periodicals = [] }: { periodicals?: readonly Perio
                     className="cover-card"
                     to={`/book/${encodeURIComponent(datasetId)}/${encodeURIComponent(itemKey)}`}
                     state={readerReturnState(`${location.pathname}${location.search}`)}
-                    onClick={() => rememberBook(source)}
                   >
                     <BookCover title={title} tone={bookCoverTone(`${datasetId}:${source.id}`)} datasetId={datasetId} itemKey={itemKey} />
                     <strong>{title}</strong><small>打开阅读</small>

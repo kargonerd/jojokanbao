@@ -606,18 +606,15 @@ describe("app library", () => {
     expect(document.activeElement).not.toBe(input);
   });
 
-  it("records a periodical when it is opened from the library", async () => {
+  it("opens a periodical without fabricating a reading record first", async () => {
     renderAt("/library?type=periodical");
     const paper = await screen.findByRole("link", { name: /人民日报/ });
     fireEvent.click(paper);
 
     await waitFor(() => expect(window.location.pathname).toBe("/archive/rmrb/19760910"));
-    expect(useRecentReadingStore.getState().items[0]).toMatchObject({
-      id: "periodical:rmrb",
-      publicationId: "rmrb",
-      title: "人民日报",
-      href: "/archive/rmrb/19760910",
-    });
+    // The archive reader records actual reading; opening the cover alone must not
+    // overwrite the synced page with page 1.
+    expect(useRecentReadingStore.getState().items).toHaveLength(0);
   });
 
   it("uses the saved publication artwork in recent reading", async () => {
