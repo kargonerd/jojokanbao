@@ -30,6 +30,7 @@ import { BookReader } from "../components/BookReader";
 import { useAccountSessionStore } from "../../account/session";
 import { browserOfflineBookIdentity } from "../../offline/identity";
 import { useOfflineBooksStore } from "../../offline/books";
+import { recentBookResume, useRecentReadingStore } from "../../library/recentReadingStore";
 
 export function flattenToc(nodes: JojoTocNode[] = [], depth = 0, inheritedTargetId?: string): Array<JojoTocNode & { depth: number }> {
   return nodes.flatMap((node) => {
@@ -315,6 +316,8 @@ export function ReaderPage() {
   useEffect(() => {
     if (!datasetId || !itemKey) return;
     let active = true;
+    // A plain open of an already-read book resumes where the reader left off.
+    const savedResume = recentBookResume(useRecentReadingStore.getState().items, datasetId, itemKey);
     setReadingStateKey(readingKey);
     setLoaded(undefined); setFragment(undefined); setChapterContent(undefined);
     setLoading(true); setError("");
@@ -331,7 +334,8 @@ export function ReaderPage() {
       setFocusText(normalizedQuote
         ? { text: normalizedQuote.slice(0, 80), token: Date.now() }
         : undefined);
-      setActiveChapter(requested?.id || value.manifest.content.chapters?.[0]?.id || "");
+      const resumed = savedResume && value.manifest.content.chapters?.find((chapter) => chapter.id === savedResume.chapterId);
+      setActiveChapter(requested?.id || resumed?.id || value.manifest.content.chapters?.[0]?.id || "");
     }).catch((reason: Error) => { if (active) setError(reason.message); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [readingKey, bookLoadKey, datasetId, itemKey, requestedAnnotation, requestedChapter, requestedQuote]);
@@ -430,6 +434,9 @@ export function ReaderPage() {
     return <main className="flex min-h-screen items-center justify-center bg-paper px-6 text-center"><div className="max-w-md border-l-2 border-red pl-6 text-left"><p className="m-0 text-xs tracking-[.18em] text-red">登录后阅读</p><h1 className="my-4 text-2xl">{loaded.manifest.title}</h1><p className="text-sm leading-7 text-muted">这本书需要登录后阅读。登录后会回到这里。</p><Link className="text-sm font-bold text-red no-underline" to={`/account?returnTo=${encodeURIComponent(returnTo)}`}>登录 / 注册 →</Link></div></main>;
   }
   const chapters = loaded.manifest.content.chapters ?? [];
+  const savedResume = recentBookResume(useRecentReadingStore.getState().items, datasetId ?? "", itemKey ?? "");
+  const resumePosition = savedResume && chapters.some((chapter) => chapter.id === savedResume.chapterId)
+    ? savedResume : undefined;
   const activeChapterIndex = Math.max(0, chapters.findIndex((chapter) => chapter.id === activeChapter));
   const representedChapters = new Set(toc.map((item) => item.targetId));
   const tocItems = [...toc, ...chapters.filter((chapter) => !representedChapters.has(chapter.id))
@@ -438,6 +445,7 @@ export function ReaderPage() {
     /^第[〇零一二两三四五六七八九十百\d]+章(?:[：:]|$)/.test(item.title.trim())
   )).length || undefined;
   return <BookReader
+    key={`${loaded.manifest.datasetId}:${loaded.item.itemKey}`}
     bookTitle={loaded.manifest.title}
     datasetId={loaded.manifest.datasetId}
     itemId={loaded.manifest.itemId}
@@ -451,6 +459,7 @@ export function ReaderPage() {
     chapterKey={fragment?.fragmentId ?? activeChapter}
     focusAnchorId={focusAnchorId || undefined}
     focusText={focusText}
+    resumePosition={resumePosition}
     contentLoading={!fragment}
     error={error}
     backHref={readerReturnTo}

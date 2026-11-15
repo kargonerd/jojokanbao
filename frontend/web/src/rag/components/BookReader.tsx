@@ -99,6 +99,8 @@ export interface BookReaderProps {
   chapterKey: string;
   focusAnchorId?: string;
   focusText?: { text: string; token: number };
+  /** Synced chapter position used when the URL does not request one. */
+  resumePosition?: { chapterId: string; position: number };
   contentLoading?: boolean;
   error?: string;
   backHref: string;
@@ -179,6 +181,7 @@ export function BookReader({
   chapterKey,
   focusAnchorId,
   focusText,
+  resumePosition,
   contentLoading: chapterLoading = false,
   error,
   backHref,
@@ -259,9 +262,15 @@ export function BookReader({
   const suppressSwipeClickRef = useRef(false);
   const resumePositionRef = useRef((() => {
     const query = new URLSearchParams(location.search);
-    const position = Number(query.get("position"));
-    return query.has("position") && query.get("chapter") && Number.isFinite(position)
-      ? { chapterId: query.get("chapter"), progress: Math.max(0, Math.min(1, position)) } : null;
+    const requestedChapter = query.get("chapter");
+    if (requestedChapter) {
+      const position = Number(query.get("position"));
+      return query.has("position") && Number.isFinite(position)
+        ? { chapterId: requestedChapter, progress: Math.max(0, Math.min(1, position)) } : null;
+    }
+    return resumePosition
+      ? { chapterId: resumePosition.chapterId, progress: Math.max(0, Math.min(1, resumePosition.position)) }
+      : null;
   })());
   const jumpTimerRef = useRef<number | undefined>(undefined);
   const dismissedFocusRef = useRef<string | undefined>(undefined);

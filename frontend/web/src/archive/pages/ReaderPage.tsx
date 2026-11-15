@@ -6,7 +6,7 @@ import { formatArchiveIssueLabel, isAdaptiveCalendarDateAvailable } from "@jojo/
 import { EmptyState, DatePicker, Toolbar, YearPicker } from "@jojo/ui";
 import { PUBLICATIONS, type PublicationName } from "../publications";
 import { archiveIssuePath } from "../../routes";
-import { useRecentReadingStore } from "../../library/recentReadingStore";
+import { recentIssuePage, useRecentReadingStore } from "../../library/recentReadingStore";
 import { ReadingLoadingState } from "../../reading/ReadingLoadingState";
 import { useArchivePdf } from "../useArchivePdf";
 import { useArchiveIssueOptions } from "../useArchiveIssueOptions";
@@ -252,6 +252,12 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   const date = type === "magazine" ? routeId.slice(0, 4) : routeId;
   const seq = type === "magazine" ? Number(routeId.slice(4, 6)) || 1 : 1;
 
+  // Reopening an issue without a page hash continues where the reader stopped.
+  const savedIssuePage = useMemo(
+    () => recentIssuePage(useRecentReadingStore.getState().items, name, routeId),
+    [name, routeId],
+  );
+
   // ─── State ───
   const [resolutionRate, setResolutionRate] = useState(3);
   const [zoomEnabled, setZoomEnabled] = useState(false);
@@ -263,7 +269,7 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
   const [renderedInitialPageKey, setRenderedInitialPageKey] = useState("");
   const [seqDropdownOpen, setSeqDropdownOpen] = useState(false);
   const [jumpToPageNum, setJumpToPageNum] = useState(1);
-  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPage, setCurrentPage] = useState(() => Math.max(1, savedIssuePage ?? 1));
   const [showBackTop, setShowBackTop] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
@@ -378,7 +384,11 @@ export function ReaderPage({ type, name }: ReaderPageProps) {
     () => (typeof window !== "undefined" ? getHashPageNum() : 0),
     [getHashPageNum, routeId, routeLocation.key],
   );
-  const hashInitialPage = hashPage >= 1 && (numPages === 0 || hashPage <= numPages) ? hashPage : 1;
+  // An explicit hash always wins; the saved page only fills a link without one.
+  const hashInitialPage = hashPage >= 1
+    ? (numPages === 0 || hashPage <= numPages ? hashPage : 1)
+    : savedIssuePage && savedIssuePage >= 1 && (numPages === 0 || savedIssuePage <= numPages)
+      ? savedIssuePage : 1;
   const searchPage = Number.isSafeInteger(requestedSearchPage) && requestedSearchPage > 0
     && (numPages === 0 || requestedSearchPage <= numPages) ? requestedSearchPage : hashInitialPage;
   const initialPage = searchActive ? searchPage : hashInitialPage;
