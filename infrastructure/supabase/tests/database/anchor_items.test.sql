@@ -4,7 +4,7 @@ select extensions.plan(34);
 
 select extensions.has_table('public', 'anchor_items', 'anchored notes and links share one table');
 select extensions.has_function('public', 'create_anchor_item',
-  array['text', 'text', 'text', 'text', 'text', 'text', 'text', 'text', 'text', 'text', 'text', 'text', 'text', 'integer', 'integer', 'jsonb', 'text'],
+  array['text', 'text', 'text', 'text', 'text', 'text', 'text', 'text', 'text', 'text', 'text', 'text', 'integer', 'integer', 'jsonb', 'text'],
   'anchored content is created through one RPC');
 
 select extensions.ok(has_function_privilege('authenticated', 'public.get_anchor_items(text,text,text)', 'execute'), 'authenticated readers may load anchored content');
@@ -54,7 +54,7 @@ select set_config('request.jwt.claims',
 select extensions.is(
   (select public.create_anchor_item(
     'book', 'anchor-book', 'chapter-1', '测试书 · 第一章', '/book/anchor-book?chapter=chapter-1',
-    'sentence', 'note', 'annotation', null, null,
+    'sentence', 'annotation', null, null,
     '被批注的原文', '', '', 0, 5,
     jsonb_build_object('body', '这一句是全书的核心论点。'), null
   )->>'status'),
@@ -86,7 +86,7 @@ select set_config('request.jwt.claims',
 select extensions.is(
   (select public.create_anchor_item(
     'book', 'anchor-book', 'chapter-1', '测试书 · 第一章', '/book/anchor-book?chapter=chapter-1',
-    'sentence', 'note', 'annotation', null, null,
+    'sentence', 'annotation', null, null,
     '被批注的原文', '', '', 0, 5,
     jsonb_build_object('body', '阳老师的批注。'), 'yang-review'
   )->>'status'),
@@ -100,7 +100,7 @@ select set_config('request.jwt.claims',
 select extensions.ok(
   (select public.create_anchor_item(
     'book', 'anchor-book', 'chapter-1', '测试书 · 第一章', '/book/anchor-book?chapter=chapter-1',
-    'sentence', 'note', 'annotation', null, null,
+    'sentence', 'annotation', null, null,
     '读者仿冒官方', '', '', 10, 16,
     jsonb_build_object('body', '伪装官方批注。'), 'yang-review'
   ) ->> 'authorKey') is null,
@@ -122,37 +122,37 @@ select set_config('request.jwt.claims',
 
 select extensions.throws_ok(
   $$select public.create_anchor_item('book', 'anchor-book', 'chapter-1', '测试书', null,
-    'sentence', 'note', 'annotation', null, null, '原文', '', '', 0, 5,
+    'sentence', 'annotation', null, null, '原文', '', '', 0, 5,
     jsonb_build_object('body', ''), null)$$,
-  '22023', 'Note body is required (1-8000 characters)', 'note payloads require a body'
+  '22023', 'Anchor body must be 1-8000 characters', 'note payloads require a body'
 );
 select extensions.throws_ok(
   $$select public.create_anchor_item('book', 'anchor-book', 'chapter-1', '测试书', null,
-    'sentence', 'link', 'external', null, null, '原文', '', '', 0, 5,
+    'sentence', 'dictionary', null, null, '原文', '', '', 0, 5,
     jsonb_build_object('ref', jsonb_build_object('contentId', 'books:other'), 'url', 'https://example.invalid'), null)$$,
-  '22023', 'Link payload requires exactly one of ref or url', 'link payloads take exactly one target'
+  '22023', 'Target anchors accept either url or ref, not both', 'link payloads take exactly one target'
 );
 select extensions.throws_ok(
   $$select public.create_anchor_item('book', 'anchor-book', 'chapter-1', '测试书', null,
-    'sentence', 'note', 'annotation', null, null, '原文', '', '', null, null,
+    'sentence', 'annotation', null, null, '原文', '', '', null, null,
     jsonb_build_object('body', '缺偏移。'), null)$$,
   '22023', 'Sentence anchors require valid offsets', 'sentence anchors require offsets'
 );
 select extensions.throws_ok(
   $$select public.create_anchor_item('book', 'anchor-book', 'chapter-1', '测试书', null,
-    'work', 'note', 'preface', null, null, null, '', '', null, null,
+    'work', 'preface', null, null, null, '', '', null, null,
     jsonb_build_object('body', '作品级不能带节。'), null)$$,
   '22023', 'Anchor level and section do not match', 'work-level anchors must not carry a section'
 );
 select extensions.throws_ok(
   $$select public.create_anchor_item('book', 'anchor-book', null, '测试书', null,
-    'appendix', 'note', 'preface', null, null, null, '', '', null, null,
+    'appendix', 'preface', null, null, null, '', '', null, null,
     jsonb_build_object('body', '未知层级。'), null)$$,
   '22023', 'Unknown anchor level', 'anchor levels are a closed set'
 );
 select extensions.throws_ok(
   $$select public.create_anchor_item('book', 'anchor-book', 'chapter-1', '测试书', null,
-    'paragraph', 'note', 'gloss', null, null, null, '', '', null, null,
+    'paragraph', 'annotation', null, null, null, '', '', null, null,
     jsonb_build_object('body', '段批缺块 id。'), null)$$,
   '22023', 'Paragraph anchors require a block id', 'paragraph anchors require a block id'
 );
@@ -161,7 +161,7 @@ select extensions.throws_ok(
 update anchor_test_state
   set pending_item_id = (select (public.create_anchor_item(
     'book', 'anchor-book', 'chapter-1', '测试书 · 第一章', '/book/anchor-book?chapter=chapter-1',
-    'sentence', 'link', 'external', '一部在线词典', null,
+    'sentence', 'dictionary', '一部在线词典', null,
     '被链接的原文', '', '', 20, 26,
     jsonb_build_object('url', 'https://dictionary.example.invalid/term'), null
   ) ->> 'id')::uuid);
@@ -192,7 +192,7 @@ select extensions.ok(
 update anchor_test_state
   set pending_item_id = (select (public.create_anchor_item(
     'book', 'anchor-book', 'chapter-1', '测试书 · 第一章', '/book/anchor-book?chapter=chapter-1',
-    'sentence', 'link', 'external', '推广链接', null,
+    'sentence', 'article', '推广链接', null,
     '被链接的原文', '', '', 30, 34,
     jsonb_build_object('url', 'https://promo.example.invalid'), null
   ) ->> 'id')::uuid);
@@ -218,7 +218,7 @@ select extensions.ok(
 update anchor_test_state
   set pending_item_id = (select (public.create_anchor_item(
     'book', 'anchor-book', 'chapter-1', '测试书 · 第一章', '/book/anchor-book?chapter=chapter-1',
-    'section', 'note', 'gloss', '章级注', null,
+    'section', 'background', '章级注', null,
     null, '', '', null, null,
     jsonb_build_object('body', '本章的背景说明。'), null
   ) ->> 'id')::uuid);
@@ -267,7 +267,7 @@ select extensions.is(
       'contentType', 'book', 'contentId', 'anchor-book',
       'sectionId', 'chapter-1', 'contentTitle', '测试书 · 第一章',
       'contentUrl', '/book/anchor-book?chapter=chapter-1',
-      'level', 'paragraph', 'kind', 'note', 'type', 'gloss',
+      'level', 'paragraph', 'type', 'annotation',
       'itemId', 'jojo-search-block:chapter-1:3',
       'payload', jsonb_build_object('body', '灌库的段批。'),
       'createdBy', (select editor_id::text from anchor_test_state)
@@ -283,7 +283,7 @@ select extensions.is(
       'contentType', 'book', 'contentId', 'anchor-book',
       'sectionId', 'chapter-1', 'contentTitle', '测试书 · 第一章',
       'contentUrl', '/book/anchor-book?chapter=chapter-1',
-      'level', 'paragraph', 'kind', 'note', 'type', 'gloss',
+      'level', 'paragraph', 'type', 'annotation',
       'itemId', 'jojo-search-block:chapter-1:3',
       'payload', jsonb_build_object('body', '灌库的段批（修订）。'),
       'createdBy', (select editor_id::text from anchor_test_state)
