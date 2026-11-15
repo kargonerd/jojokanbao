@@ -143,7 +143,9 @@ jobs:
     name: e2e
     needs: changes
     if: needs.changes.outputs.web_e2e == 'true'
-    runs-on: ubuntu-latest
+    # Playwright 1.60 ships no Chromium build for ubuntu 26.04, which is what
+    # ubuntu-latest resolves to now; keep this pinned until Playwright is upgraded.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -163,7 +165,8 @@ jobs:
     name: Desktop renderer tests
     needs: changes
     if: needs.changes.outputs.desktop_e2e == 'true'
-    runs-on: ubuntu-latest
+    # See web-e2e: Playwright 1.60 does not support ubuntu 26.04.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -452,7 +455,8 @@ jobs:
     name: Reader Search SCF tests
     needs: changes
     if: needs.changes.outputs.search_scf == 'true'
-    runs-on: ubuntu-latest
+    # setup-python has no 3.9 build for ubuntu 26.04 (ubuntu-latest).
+    runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
