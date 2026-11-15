@@ -49,7 +49,8 @@ jobs:
   deploy-staging:
     name: Deploy staging
     needs: verify-release
-    runs-on: ubuntu-latest
+    # setup-python has no 3.9 build for ubuntu 26.04 (ubuntu-latest).
+    runs-on: ubuntu-22.04
     environment: search-staging
     timeout-minutes: 15
     env:
@@ -88,7 +89,8 @@ jobs:
   deploy-production:
     name: Deploy production
     needs: deploy-staging
-    runs-on: ubuntu-latest
+    # setup-python has no 3.9 build for ubuntu 26.04 (ubuntu-latest).
+    runs-on: ubuntu-22.04
     environment: search-production
     timeout-minutes: 15
     env:

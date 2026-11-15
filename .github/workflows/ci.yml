@@ -455,7 +455,8 @@ jobs:
     name: Reader Search SCF tests
     needs: changes
     if: needs.changes.outputs.search_scf == 'true'
-    runs-on: ubuntu-latest
+    # setup-python has no 3.9 build for ubuntu 26.04 (ubuntu-latest).
+    runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
