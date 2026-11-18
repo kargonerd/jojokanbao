@@ -32,6 +32,8 @@ pnpm backfill:archive-pdf
   through the public CDN.
 - `backfill.mjs` stages, uploads, and verifies full-issue magazine backfills
   for item-enumerated Jox Delivery datasets (hq/sjzs/rmhb).
+- `canonicalize_magazines.py` rebuilds missing Hugging Face Canonical items and
+  PDFs from already-published Jox Delivery assets.
 
 ## Magazine backfill
 
@@ -59,6 +61,26 @@ Requirements: `rclone` (remote `JOJO_DELIVERY_REMOTE`, default
 uses only `node:zlib`. The storage remote can be overridden with
 `--remote`; staging never touches HF or Elasticsearch, and magazine
 manifests carry no article text (`text: missing`).
+
+## Magazine Canonical backfill
+
+`backfill.mjs` writes Delivery only, so a magazine issue can be readable while
+its Canonical item is missing from `luoxiaozhuang/jojokanbao-dataset`.
+`canonicalize_magazines.py` fills that gap by decoding the immutable Delivery
+PDF asset and rebuilding the Canonical item, PDF asset, dataset entry, and
+yearly viewer shard. Jox is a reversible mask, so the recovered PDF is
+byte-identical to the published original.
+
+Requirements: `rclone`, `HF_TOKEN` (or the HF CLI login), and
+`huggingface_hub` in the Python running the script.
+
+```bash
+# 1. Download missing Delivery assets and write Canonical files under tmp/.
+python tools/archive-pdf/canonicalize_magazines.py prepare --publication hq
+
+# 2. Commit one year per batch, then dataset.json last; resumable.
+python tools/archive-pdf/canonicalize_magazines.py upload --publication hq
+```
 
 `sync_rmrb.py` requires `pip install -r tools/archive-pdf/requirements.txt`, plus
 the `qpdf`, `node`, and `rclone` executables. It publishes to the Canonical

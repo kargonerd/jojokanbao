@@ -196,6 +196,9 @@ async function stage() {
   }
 
   index.items.sort((a, b) => (a.itemKey < b.itemKey ? -1 : a.itemKey > b.itemKey ? 1 : 0));
+  // A late-inserted issue lands mid-list, so renumber after sorting to keep
+  // order contiguous and monotonic with itemKey.
+  index.items.forEach((item, position) => { item.order = position + 1; });
   index.revision += 1;
   const indexDir = join(stageDir, pub.dataset);
   await mkdir(indexDir, { recursive: true });
