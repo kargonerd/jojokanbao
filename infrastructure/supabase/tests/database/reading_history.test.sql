@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(11);
+select extensions.plan(13);
 set local session_replication_role = replica;
 insert into auth.users(id, email) values
  ('00000000-0000-4000-9000-000000008001', 'history-a@example.invalid'),
@@ -22,6 +22,18 @@ select extensions.is(jsonb_array_length(public.sync_reading_history('00000000-00
 select extensions.is(jsonb_array_length(public.sync_reading_history('00000000-0000-4000-9000-000000008001', '[]', 40)->'records'), 0, 'clear removes the account history');
 select extensions.is(jsonb_array_length(public.sync_reading_history('00000000-0000-4000-9000-000000008001',
  '[{"kind":"book","datasetId":"d","itemKey":"i","title":"书","subtitle":"章","progress":10,"updatedAt":30}]')->'records'), 0, 'clear tombstone prevents stale device resurrection');
+select extensions.ok(
+  (public.sync_reading_history('00000000-0000-4000-9000-000000008001',
+   '[{"kind":"book","datasetId":"d","itemKey":"future","title":"书","subtitle":"章","progress":30,"updatedAt":8640000000000000}]')
+   #>> '{records,0,updatedAt}')::numeric
+    between floor(extract(epoch from clock_timestamp()) * 1000) - 60000
+        and floor(extract(epoch from clock_timestamp()) * 1000),
+  'a future device clock is clamped instead of rejecting the batch');
+select extensions.ok(
+  (public.sync_reading_history('00000000-0000-4000-9000-000000008001', '[]', 8640000000000000)->>'clearedAt')::numeric
+    between floor(extract(epoch from clock_timestamp()) * 1000) - 60000
+        and floor(extract(epoch from clock_timestamp()) * 1000),
+  'a future clear time is clamped to server time');
 select extensions.throws_ok($$select public.sync_reading_history('00000000-0000-4000-9000-000000008001', '[{"kind":"book"}]')$$,
  '22023', 'Invalid reading record', 'malformed records are rejected');
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-9000-000000008002', true);

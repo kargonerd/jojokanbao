@@ -50,7 +50,9 @@ concurrency:
 
 jobs:
   capture:
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest moved to 26.04 and Playwright 1.60 ships no
+    # Chromium build for it, so every capture run died at browser install.
+    runs-on: ubuntu-24.04
     environment: maintenance
     timeout-minutes: 35
     env:

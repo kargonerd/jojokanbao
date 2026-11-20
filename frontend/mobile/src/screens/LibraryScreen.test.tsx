@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   setShelf: vi.fn(async () => undefined),
   volumes: vi.fn(async () => [{ itemId: "test:full", itemKey: "full", title: "测试书", order: 0, manifestObject: "test.jox" }]),
   openTarget: vi.fn(),
+  recentIssues: [] as Array<{ publication: string; issueId: string; currentPage: number }>,
 }));
 
 vi.mock("react-native", async () => {
@@ -60,7 +61,7 @@ vi.mock("../lib/books", async () => ({
 }));
 vi.mock("../lib/haptics", () => ({ impactHaptic: vi.fn() }));
 vi.mock("../store/mobileStore", () => ({
-  useMobileStore: (select: (state: { hapticsEnabled: boolean; recentBooks: unknown[] }) => unknown) => select({ hapticsEnabled: false, recentBooks: [] }),
+  useMobileStore: (select: (state: { hapticsEnabled: boolean; recentBooks: unknown[]; recentIssues: unknown[] }) => unknown) => select({ hapticsEnabled: false, recentBooks: [], recentIssues: mocks.recentIssues }),
 }));
 
 let view: ReactTestRenderer | undefined;
@@ -100,7 +101,7 @@ afterEach(async () => {
 });
 
 describe.each([false, true])("library direct periodical entry (eInk=%s)", (eInk) => {
-  beforeEach(() => { mocks.eInk = eInk; });
+  beforeEach(() => { mocks.eInk = eInk; mocks.recentIssues.length = 0; });
 
   it("opens newspapers and magazines directly without a date action or modal", async () => {
     await act(async () => { view = create(<LibraryScreen />); });
@@ -118,6 +119,19 @@ describe.each([false, true])("library direct periodical entry (eInk=%s)", (eInk)
     expect(mocks.navigate).toHaveBeenCalledTimes(ARCHIVE_PUBLICATIONS.length);
     expect(view!.root.findAllByType("dialog")).toHaveLength(0);
     expect(view!.root.findAllByType("time")).toHaveLength(0);
+  });
+
+  it("reopens a periodical at the last page read from the library", async () => {
+    const publication = ARCHIVE_PUBLICATIONS.find((item) => item.id === "ckxx")!;
+    mocks.recentIssues.push({ publication: "ckxx", issueId: publication.defaultIssueId, currentPage: 4 });
+    await act(async () => { view = create(<LibraryScreen />); });
+    const card = view!.root.findAllByType("article").find((item) => item.props.publication.id === "ckxx")!;
+    await act(async () => card.props.onOpen());
+    expect(mocks.navigate).toHaveBeenLastCalledWith("Reader", {
+      publication: "ckxx",
+      issueId: publication.defaultIssueId,
+      page: 4,
+    });
   });
 
   it("still opens a newspaper when the book catalog fails to load", async () => {

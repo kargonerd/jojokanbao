@@ -78,7 +78,7 @@ export function answerSourceReferences(
   answer: string,
   references: AgentSourceReference[],
 ): AgentSourceReference[] {
-  const citationIds = [...answer.matchAll(/\[cite:([A-Za-z0-9_-]+)\]/g)]
+  const citationIds = [...answer.matchAll(/\[cite:\s*([A-Za-z0-9_-]+)\s*\]/g)]
     .map((match) => match[1])
     .filter((citationId): citationId is string => Boolean(citationId));
   if (!citationIds.length) return references;

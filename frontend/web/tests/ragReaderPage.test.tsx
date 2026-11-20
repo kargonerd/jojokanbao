@@ -6,9 +6,11 @@ import type { JojoFragment } from "@jojo/content";
 import type { LoadedItem } from "../src/rag/content";
 import { ReaderPage } from "../src/rag/pages/ReaderPage";
 import { useAccountSessionStore } from "../src/account/session";
+import { useRecentReadingStore } from "../src/library/recentReadingStore";
 
 interface ReaderProps {
   activeChapterId: string;
+  resumePosition?: { chapterId: string; position: number };
   contentLoading: boolean;
   error: string;
   children: ReactNode;
@@ -78,8 +80,9 @@ function fragment(chapterId: string): JojoFragment {
 }
 
 function currentReader() { return mocks.readerProps.at(-1)!; }
-function renderReader(chapter = "one", strict = false) {
-  const reader = <MemoryRouter initialEntries={[`/book/example/book?chapter=${chapter}`]}>
+function renderReader(chapter: string | null = "one", strict = false) {
+  const url = `/book/example/book${chapter ? `?chapter=${chapter}` : ""}`;
+  const reader = <MemoryRouter initialEntries={[url]}>
     <Routes><Route path="/book/:notebookId/:sourceId" element={<ReaderPage />} /></Routes>
   </MemoryRouter>;
   return render(strict ? <StrictMode>{reader}</StrictMode> : reader);
@@ -92,6 +95,7 @@ beforeEach(() => {
   mocks.loadAssetUrl.mockReset().mockImplementation(async (_loaded: LoadedItem, assetId: string) => `blob:${assetId}`);
   mocks.prefetchBookChapters.mockReset().mockResolvedValue(undefined);
   useAccountSessionStore.setState({ initialized: true, userId: "reader-1", displayName: "读者" });
+  useRecentReadingStore.setState({ items: [] });
   Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: vi.fn() });
 });
 
@@ -113,6 +117,30 @@ describe("book ReaderPage chapter sessions", () => {
     expect(URL.revokeObjectURL).not.toHaveBeenCalled();
     view.unmount();
     expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:two-image");
+  });
+
+  it("resumes the last chapter when the link has no chapter parameter", async () => {
+    useRecentReadingStore.setState({ items: [{
+      id: "book:example:book", kind: "book", datasetId: "example", itemKey: "book",
+      title: "示例书", subtitle: "第二章", href: "/book/example/book?chapter=two&position=0.4",
+      progress: 40, updatedAt: 100, chapterProgress: 0.4,
+    }] });
+    renderReader(null);
+    await screen.findByRole("heading", { name: "第二章" });
+    expect(currentReader().activeChapterId).toBe("two");
+    expect(currentReader().resumePosition).toEqual({ chapterId: "two", position: 0.4 });
+  });
+
+  it("keeps an explicit chapter link ahead of the saved position", async () => {
+    useRecentReadingStore.setState({ items: [{
+      id: "book:example:book", kind: "book", datasetId: "example", itemKey: "book",
+      title: "示例书", subtitle: "第二章", href: "/book/example/book?chapter=two&position=0.4",
+      progress: 40, updatedAt: 100, chapterProgress: 0.4,
+    }] });
+    renderReader("three");
+    await screen.findByRole("heading", { name: "第三章" });
+    expect(currentReader().activeChapterId).toBe("three");
+    expect(currentReader().resumePosition).toEqual({ chapterId: "two", position: 0.4 });
   });
 
   it("retains stable neighboring content and shared assets while synchronizing the visible chapter", async () => {

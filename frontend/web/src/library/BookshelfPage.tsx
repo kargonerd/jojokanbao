@@ -141,7 +141,7 @@ export function BookshelfPage() {
             return (
               <article key={key} className="bookshelf-card">
                 <Link
-                  to={`/book/${encodeURIComponent(item.datasetId)}/${encodeURIComponent(item.itemId)}`}
+                  to={recent?.href ?? `/book/${encodeURIComponent(item.datasetId)}/${encodeURIComponent(item.itemId)}`}
                   state={readerReturnState(`${location.pathname}${location.search}`)}
                 >
                   <BookCover

@@ -33,7 +33,7 @@ const periodicalItems = JOJO_AI_PERIODICAL_IDS.map((datasetId) => ({
 
 function readableAiText(value: string): string {
   return value
-    .replace(/\[cite:[A-Za-z0-9_-]+\]/g, "")
+    .replace(/\[cite:\s*[A-Za-z0-9_-]+\s*\]/g, "")
     .replace(/^#{1,6}\s+/gm, "")
     .replace(/\*\*([^*]+)\*\*/g, "$1")
     .replace(/__([^_]+)__/g, "$1")

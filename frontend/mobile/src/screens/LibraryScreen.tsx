@@ -47,6 +47,7 @@ export function LibraryScreen() {
   const { openBook: navigateToBook, openingBook } = useOpenBook();
   const { width: viewportWidth } = useWindowDimensions();
   const hapticsEnabled = useMobileStore((state) => state.hapticsEnabled);
+  const recentIssues = useMobileStore((state) => state.recentIssues);
   const theme = mobileTheme;
   const [type, setType] = useState<LibraryType>("all");
   const [query, setQuery] = useState("");
@@ -96,7 +97,14 @@ export function LibraryScreen() {
 
   function openPeriodical(publication: ArchivePublicationSummary, issueId: string) {
     void impactHaptic(hapticsEnabled);
-    navigation.navigate("Reader", { publication: publication.id, issueId });
+    const savedPage = recentIssues.find((issue) => (
+      issue.publication === publication.id && issue.issueId === issueId
+    ))?.currentPage;
+    navigation.navigate("Reader", {
+      publication: publication.id,
+      issueId,
+      ...(savedPage && savedPage > 1 ? { page: savedPage } : {}),
+    });
   }
 
   function openBook(book: MobileBook) {
