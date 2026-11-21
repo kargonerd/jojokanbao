@@ -7,11 +7,13 @@ import {
 import { startSignupPolicy } from "./signupPolicy";
 import { readerApiUrl } from "../api/agentGateway";
 
-// Mainland mobile carriers reset TLS to *.supabase.co, so deployments that
-// opt in send account traffic through the reader origin instead. Unset keeps
-// the direct connection, which is what every existing build does.
-const supabaseUrl = import.meta.env.VITE_SUPABASE_PROXY_URL?.trim()
-  || import.meta.env.VITE_SUPABASE_URL;
+// Mainland mobile carriers reset TLS to *.supabase.co, so a deployment that
+// opts in sends account traffic to its own origin instead. A path rather than
+// an absolute URL keeps one build valid on both beta and production.
+const proxyPath = import.meta.env.VITE_SUPABASE_PROXY_PATH?.trim();
+const supabaseUrl = proxyPath
+  ? new URL(proxyPath, window.location.origin).toString()
+  : import.meta.env.VITE_SUPABASE_URL;
 
 export const authClient = createJojoAuthClient({
   supabaseUrl,

@@ -22,9 +22,10 @@
 
 ## 读者代理（可选）
 
-`VITE_SUPABASE_PROXY_URL` 未设置时，Web 客户端照旧直连项目域名。设置后（例如
-`https://reader.jojokanbao.cn/api/supabase`），认证与数据请求改走同源代理，
-由上海云函数代为访问项目，用于中国移动等会重置 `*.supabase.co` TLS 的线路。
+`VITE_SUPABASE_PROXY_PATH` 未设置时，Web 客户端照旧直连项目域名。设置为
+`/api/supabase` 后，认证与数据请求改走同源代理，由上海云函数代为访问项目，
+用于中国移动等会重置 `*.supabase.co` TLS 的线路。用路径而不是绝对域名，是为了
+让同一份构建在 beta 与生产都指向各自的源。
 
 代理按路径分流：
 
