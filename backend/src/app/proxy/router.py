@@ -54,15 +54,13 @@ _UPSTREAM_ONLY_RESPONSE = frozenset({
 
 
 def client_ip(request: Request) -> str | None:
-    """Return the address EdgeOne saw, ignoring client-supplied values.
+    """Return the address EdgeOne stamped, or None when it is unusable.
 
-    `EO-Connecting-IP` is stamped at the edge. `X-Forwarded-For` is only a
-    fallback because EdgeOne appends to whatever the client sent, so its last
-    entry is the closest trustworthy hop.
+    Only the edge header is trusted. `X-Forwarded-For` keeps whatever the
+    caller sent, so reading it would let a reader choose their own bucket.
+    None is safe: the request then counts against the function's address.
     """
     candidate = request.headers.get("eo-connecting-ip")
-    if candidate is None:
-        candidate = (request.headers.get("x-forwarded-for") or "").rsplit(",", 1)[-1]
     try:
         return str(ipaddress.ip_address((candidate or "").strip()))
     except ValueError:

@@ -104,11 +104,12 @@ def test_edge_address_wins_over_a_forwarded_chain() -> None:
     assert proxy.client_ip(request) == "198.51.100.7"
 
 
-def test_forwarded_chain_falls_back_to_its_last_hop() -> None:
+def test_forwarded_chain_is_never_trusted() -> None:
     request = httpx.Request("GET", "https://reader.jojokanbao.cn/supabase/auth/v1/user")
     request.headers["x-forwarded-for"] = "1.1.1.1, 198.51.100.7"
 
-    assert proxy.client_ip(request) == "198.51.100.7"
+    # A caller controls this header; only the edge may name the bucket.
+    assert proxy.client_ip(request) is None
 
 
 def test_upstream_cors_and_cookies_stay_upstream(monkeypatch) -> None:
