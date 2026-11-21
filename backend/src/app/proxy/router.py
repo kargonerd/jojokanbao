@@ -27,6 +27,9 @@ logger = logging.getLogger("jojo.platform_api.proxy")
 router = APIRouter(tags=["proxy"])
 
 AUTH_PREFIX = "auth/v1/"
+# GoTrue's admin namespace is the only part of Auth that acts with service
+# rights. Re-signing it would let any reader create or delete accounts.
+AUTH_ADMIN_PREFIX = "auth/v1/admin"
 METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]
 UPSTREAM_TIMEOUT = httpx.Timeout(20.0, connect=5.0)
 
@@ -96,6 +99,8 @@ async def proxy_supabase(
     settings: Settings = Depends(get_settings),
 ) -> Response:
     is_auth = path.startswith(AUTH_PREFIX)
+    if path.startswith(AUTH_ADMIN_PREFIX):
+        return _error(403, "该操作不可通过读者代理执行。")
     if not settings.supabase_url or (is_auth and not settings.supabase_secret_key):
         return _error(503, "账号服务尚未配置，请稍后重试。")
     try:

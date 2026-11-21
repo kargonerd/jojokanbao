@@ -134,6 +134,18 @@ def test_upstream_cors_and_cookies_stay_upstream(monkeypatch) -> None:
     assert "set-cookie" not in response.headers
 
 
+@pytest.mark.parametrize("path", ["auth/v1/admin/users", "auth/v1/admin/generate_link"])
+def test_admin_namespace_never_reaches_the_project(monkeypatch, path: str) -> None:
+    seen = capture(monkeypatch)
+
+    response = client().post(f"/supabase/{path}")
+
+    # The proxy holds a service key; exposing GoTrue's admin namespace would
+    # let any reader create or delete accounts through it.
+    assert response.status_code == 403
+    assert seen == {}
+
+
 def test_auth_proxy_without_a_secret_is_unavailable(monkeypatch) -> None:
     seen = capture(monkeypatch)
 
