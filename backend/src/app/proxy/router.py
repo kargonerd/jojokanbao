@@ -111,6 +111,19 @@ async def probe_upstream404(settings: Settings = Depends(get_settings)) -> Respo
     return Response(status_code=404, content=b"not found")
 
 
+@router.get("/supabase/__probe/echo404", include_in_schema=False)
+async def probe_echo404(settings: Settings = Depends(get_settings)) -> Response:
+    upstream = await _send(
+        "GET", f"{settings.supabase_url}/auth/v1/nope",
+        headers={"apikey": settings.supabase_secret_key or ""}, content=None, params=[],
+    )
+    return Response(
+        content=upstream.content,
+        status_code=upstream.status_code,
+        headers=browser_headers(upstream.headers),
+    )
+
+
 @router.api_route("/supabase/{path:path}", methods=METHODS, include_in_schema=False)
 async def proxy_supabase(
     path: str,
