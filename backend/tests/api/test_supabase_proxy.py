@@ -141,8 +141,10 @@ def test_admin_namespace_never_reaches_the_project(monkeypatch, path: str) -> No
     response = client().post(f"/supabase/{path}")
 
     # The proxy holds a service key; exposing GoTrue's admin namespace would
-    # let any reader create or delete accounts through it.
-    assert response.status_code == 403
+    # let any reader create or delete accounts through it. The reply is a plain
+    # 404 so the route stays indistinguishable from a missing one.
+    assert response.status_code == 404
+    assert "代理" not in response.json()["msg"]
     assert seen == {}
 
 
