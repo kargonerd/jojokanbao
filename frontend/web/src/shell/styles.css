@@ -511,8 +511,11 @@ a.jojo-citation:hover {
 }
 
 .recent-cover {
+  position: relative;
   display: flex;
-  min-height: 82px;
+  overflow: hidden;
+  aspect-ratio: 3 / 4;
+  min-height: 0;
   flex-direction: column;
   padding: 8px;
   font-family: var(--font-serif);
@@ -528,10 +531,11 @@ a.jojo-citation:hover {
 
 .recent-cover-image img,
 .recent-cover.has-image img {
+  position: absolute;
+  inset: 0;
   display: block;
   width: 100%;
   height: 100%;
-  min-height: 82px;
   object-fit: cover;
 }
 
@@ -565,6 +569,7 @@ a.jojo-citation:hover {
 }
 
 .recent-cover-book small { font-size: .55rem; opacity: .72; }
+.recent-cover.book-cover b { max-height: 100%; font-size: .76rem; letter-spacing: .04em; }
 .recent-copy { min-width: 0; }
 .recent-copy strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .recent-meta { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }

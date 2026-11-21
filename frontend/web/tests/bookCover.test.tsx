@@ -36,4 +36,21 @@ describe("BookCover", () => {
     expect(second.container.querySelector("img")?.getAttribute("src")).toBe("blob:cached-cover");
     expect(contentMocks.loadBookCoverUrl).toHaveBeenCalledTimes(1);
   });
+
+  it("retries a failed cover load instead of keeping the placeholder cover", async () => {
+    contentMocks.loadBookCoverUrl
+      .mockRejectedValueOnce(new Error("network"))
+      .mockResolvedValueOnce("blob:retried-cover");
+
+    const view = render(
+      <BookCover title="重试测试书" tone="ink" datasetId="retry-test" itemKey="volume-1" />,
+    );
+    expect(view.container.querySelector(".book-cover")?.className).toContain("is-loading");
+
+    await waitFor(
+      () => expect(view.container.querySelector("img")?.getAttribute("src")).toBe("blob:retried-cover"),
+      { timeout: 3000 },
+    );
+    expect(contentMocks.loadBookCoverUrl).toHaveBeenCalledTimes(2);
+  });
 });

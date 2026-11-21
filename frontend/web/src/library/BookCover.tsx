@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { loadBookCoverUrl } from "../rag/content";
 
 const loadedCoverUrls = new Map<string, string>();
+const coverRetryDelays = [600, 1800];
 
 export function BookCover({
   className = "library-cover",
@@ -28,24 +29,49 @@ export function BookCover({
       return;
     }
     let active = true;
+    let timer: number | undefined;
     setImageUrl("");
     setLoaded(false);
-    void loadBookCoverUrl(datasetId, itemKey).then((url) => {
-      if (!active) return;
-      if (url) {
-        loadedCoverUrls.set(cacheKey, url);
-        setImageUrl(url);
-      }
-      setLoaded(true);
-    }).catch(() => {
-      if (active) setLoaded(true);
-    });
-    return () => { active = false; };
+
+    const attempt = (retry: number) => {
+      void loadBookCoverUrl(datasetId, itemKey).then((url) => {
+        if (!active) return;
+        if (url) {
+          loadedCoverUrls.set(cacheKey, url);
+          setImageUrl(url);
+        }
+        setLoaded(true);
+      }).catch(() => {
+        if (!active) return;
+        const delay = coverRetryDelays[retry];
+        if (delay === undefined) {
+          setLoaded(true);
+          return;
+        }
+        timer = window.setTimeout(() => { if (active) attempt(retry + 1); }, delay);
+      });
+    };
+
+    attempt(0);
+    return () => {
+      active = false;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
   }, [cacheKey, datasetId, itemKey]);
 
   return (
     <div className={`${className} book-cover book-cover-${tone}${imageUrl ? " has-image" : loaded ? "" : " is-loading"}`}>
-      {imageUrl ? <img src={imageUrl} alt="" /> : loaded ? <b>{title}</b> : null}
+      {imageUrl ? (
+        <img
+          src={imageUrl}
+          alt=""
+          onError={() => {
+            loadedCoverUrls.delete(cacheKey);
+            setImageUrl("");
+            setLoaded(true);
+          }}
+        />
+      ) : loaded ? <b>{title}</b> : null}
     </div>
   );
 }
