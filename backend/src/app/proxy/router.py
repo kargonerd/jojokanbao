@@ -1,0 +1,139 @@
+"""Same-origin Supabase proxy for readers on filtered mobile networks.
+
+Mainland mobile carriers reset TLS to `*.supabase.co`, so browsers on those
+networks cannot reach Auth or PostgREST at all. The reader origin forwards those
+calls from the Shanghai cloud function, whose egress is not filtered.
+
+Auth calls are re-signed with the project secret key. Supabase only honours
+`Sb-Forwarded-For` for secret keys, and that header is what keeps GoTrue's
+per-address rate limit meaningful instead of bucketing every reader behind the
+function's single address. PostgREST calls keep the caller's publishable key and
+JWT: re-signing them would run every request as `service_role` and disable row
+level security.
+"""
+from __future__ import annotations
+
+import ipaddress
+import logging
+from typing import Mapping
+
+import httpx
+from fastapi import APIRouter, Depends, Request
+from fastapi.responses import JSONResponse, Response
+
+from ..core.config import Settings, get_settings
+
+logger = logging.getLogger("jojo.platform_api.proxy")
+router = APIRouter(tags=["proxy"])
+
+AUTH_PREFIX = "auth/v1/"
+METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]
+UPSTREAM_TIMEOUT = httpx.Timeout(20.0, connect=5.0)
+
+# Framing headers are rebuilt by httpx and Starlette; the body arrives decoded,
+# so forwarding the original length or encoding would corrupt the message.
+_HOP_BY_HOP = frozenset({
+    "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
+    "te", "trailer", "transfer-encoding", "upgrade", "host", "content-length",
+})
+# Only the address header stamped below may reach the project. Anything a
+# reader sends here would let them pick their own rate-limit bucket.
+_ADDRESS_HEADERS = frozenset({
+    "sb-forwarded-for", "eo-connecting-ip", "x-forwarded-for", "x-real-ip",
+})
+# CORS and cookies belong to the reader origin; the body is already decoded.
+_UPSTREAM_ONLY_RESPONSE = frozenset({
+    "content-encoding", "content-length", "set-cookie",
+    "access-control-allow-origin", "access-control-allow-credentials",
+    "access-control-allow-headers", "access-control-allow-methods",
+    "access-control-expose-headers", "access-control-max-age",
+})
+
+
+def client_ip(request: Request) -> str | None:
+    """Return the address EdgeOne saw, ignoring client-supplied values.
+
+    `EO-Connecting-IP` is stamped at the edge. `X-Forwarded-For` is only a
+    fallback because EdgeOne appends to whatever the client sent, so its last
+    entry is the closest trustworthy hop.
+    """
+    candidate = request.headers.get("eo-connecting-ip")
+    if candidate is None:
+        candidate = (request.headers.get("x-forwarded-for") or "").rsplit(",", 1)[-1]
+    try:
+        return str(ipaddress.ip_address((candidate or "").strip()))
+    except ValueError:
+        return None
+
+
+def upstream_headers(request: Request, *, secret: str | None) -> dict[str, str]:
+    headers = {
+        name: value
+        for name, value in request.headers.items()
+        if name.lower() not in _HOP_BY_HOP and name.lower() not in _ADDRESS_HEADERS
+    }
+    if secret is None:
+        return headers
+    headers["apikey"] = secret
+    ip = client_ip(request)
+    if ip:
+        headers["sb-forwarded-for"] = ip
+    return headers
+
+
+def browser_headers(headers: Mapping[str, str]) -> dict[str, str]:
+    return {
+        name: value
+        for name, value in headers.items()
+        if name.lower() not in _HOP_BY_HOP and name.lower() not in _UPSTREAM_ONLY_RESPONSE
+    }
+
+
+@router.api_route("/supabase/{path:path}", methods=METHODS, include_in_schema=False)
+async def proxy_supabase(
+    path: str,
+    request: Request,
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    is_auth = path.startswith(AUTH_PREFIX)
+    if not settings.supabase_url or (is_auth and not settings.supabase_secret_key):
+        return _error(503, "账号服务尚未配置，请稍后重试。")
+    try:
+        upstream = await _send(
+            request.method,
+            f"{settings.supabase_url}/{path}",
+            headers=upstream_headers(
+                request,
+                secret=settings.supabase_secret_key if is_auth else None,
+            ),
+            content=await request.body() or None,
+            params=list(request.query_params.multi_items()),
+        )
+    except httpx.HTTPError:
+        logger.warning("Supabase proxy request failed: %s /%s", request.method, path, exc_info=True)
+        return _error(502, "暂时无法连接账号服务，请检查网络后重试。")
+    return Response(
+        content=upstream.content,
+        status_code=upstream.status_code,
+        headers=browser_headers(upstream.headers),
+    )
+
+
+async def _send(
+    method: str,
+    url: str,
+    *,
+    headers: Mapping[str, str],
+    content: bytes | None,
+    params: list[tuple[str, str]],
+) -> httpx.Response:
+    async with httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as client:
+        return await client.request(method, url, headers=headers, content=content, params=params)
+
+
+def _error(status: int, message: str) -> JSONResponse:
+    """GoTrue's error shape, so supabase-js surfaces the message verbatim."""
+    return JSONResponse(
+        {"code": status, "error_code": "proxy_unavailable", "msg": message},
+        status_code=status,
+    )
