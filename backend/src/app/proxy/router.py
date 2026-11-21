@@ -27,6 +27,9 @@ logger = logging.getLogger("jojo.platform_api.proxy")
 router = APIRouter(tags=["proxy"])
 
 AUTH_PREFIX = "auth/v1/"
+# Supabase refuses a secret key on requests whose User-Agent looks like a
+# browser, so re-signed calls identify themselves as this proxy instead.
+PROXY_USER_AGENT = "jojo-reader-proxy/1.0"
 # GoTrue's admin namespace is the only part of Auth that acts with service
 # rights. Re-signing it would let any reader create or delete accounts.
 AUTH_ADMIN_PREFIX = "auth/v1/admin"
@@ -69,13 +72,14 @@ def client_ip(request: Request) -> str | None:
 
 def upstream_headers(request: Request, *, secret: str | None) -> dict[str, str]:
     headers = {
-        name: value
+        name.lower(): value
         for name, value in request.headers.items()
         if name.lower() not in _HOP_BY_HOP and name.lower() not in _ADDRESS_HEADERS
     }
     if secret is None:
         return headers
     headers["apikey"] = secret
+    headers["user-agent"] = PROXY_USER_AGENT
     ip = client_ip(request)
     if ip:
         headers["sb-forwarded-for"] = ip

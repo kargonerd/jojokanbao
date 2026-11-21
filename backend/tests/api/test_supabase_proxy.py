@@ -149,6 +149,31 @@ def test_admin_namespace_never_reaches_the_project(monkeypatch, path: str) -> No
     assert seen == {}
 
 
+def test_auth_calls_stop_looking_like_a_browser(monkeypatch) -> None:
+    seen = capture(monkeypatch)
+
+    client().post(
+        "/supabase/auth/v1/token?grant_type=password",
+        headers={
+            "apikey": "publishable-key",
+            "user-agent": "Mozilla/5.0 (Macintosh) Chrome/131.0",
+        },
+    )
+
+    # Supabase rejects its own secret key when the caller claims to be a
+    # browser, so the proxy must present a server identity.
+    assert seen["headers"]["user-agent"] == proxy.PROXY_USER_AGENT
+    assert seen["headers"]["apikey"] == "secret-key"
+
+
+def test_rest_calls_keep_the_caller_user_agent(monkeypatch) -> None:
+    seen = capture(monkeypatch)
+
+    client().get("/supabase/rest/v1/profiles", headers={"user-agent": "reader/1.0"})
+
+    assert seen["headers"]["user-agent"] == "reader/1.0"
+
+
 def test_missing_upstream_path_answers_gone(monkeypatch) -> None:
     capture(monkeypatch, httpx.Response(404, content=b"404 page not found"))
 
