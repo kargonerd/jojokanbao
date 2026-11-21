@@ -90,6 +90,16 @@ def browser_headers(headers: Mapping[str, str]) -> dict[str, str]:
     }
 
 
+@router.get("/supabase/__debug/ip", include_in_schema=False)
+async def debug_ip(request: Request) -> dict[str, str | None]:
+    return {
+        "client": request.client.host if request.client else None,
+        "eo": request.headers.get("eo-connecting-ip"),
+        "xff": request.headers.get("x-forwarded-for"),
+        "real": request.headers.get("x-real-ip"),
+    }
+
+
 @router.api_route("/supabase/{path:path}", methods=METHODS, include_in_schema=False)
 async def proxy_supabase(
     path: str,
