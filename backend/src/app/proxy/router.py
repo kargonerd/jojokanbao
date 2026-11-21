@@ -13,7 +13,6 @@ level security.
 """
 from __future__ import annotations
 
-import asyncio
 import ipaddress
 import logging
 from typing import Mapping
@@ -89,44 +88,6 @@ def browser_headers(headers: Mapping[str, str]) -> dict[str, str]:
         for name, value in headers.items()
         if name.lower() not in _HOP_BY_HOP and name.lower() not in _UPSTREAM_ONLY_RESPONSE
     }
-
-
-@router.get("/supabase/__probe/fast404", include_in_schema=False)
-async def probe_fast404() -> Response:
-    return Response(status_code=404, content=b"not found")
-
-
-@router.get("/supabase/__probe/slow404", include_in_schema=False)
-async def probe_slow404() -> Response:
-    await asyncio.sleep(2)
-    return Response(status_code=404, content=b"not found")
-
-
-@router.get("/supabase/__probe/upstream404", include_in_schema=False)
-async def probe_upstream404(settings: Settings = Depends(get_settings)) -> Response:
-    upstream = await _send(
-        "GET", f"{settings.supabase_url}/auth/v1/nope",
-        headers={"apikey": settings.supabase_secret_key or ""}, content=None, params=[],
-    )
-    return Response(status_code=404, content=b"not found")
-
-
-@router.get("/supabase/__probe/gone", include_in_schema=False)
-async def probe_gone() -> Response:
-    return Response(status_code=410, content=b"gone")
-
-
-@router.get("/supabase/__probe/echo404", include_in_schema=False)
-async def probe_echo404(settings: Settings = Depends(get_settings)) -> Response:
-    upstream = await _send(
-        "GET", f"{settings.supabase_url}/auth/v1/nope",
-        headers={"apikey": settings.supabase_secret_key or ""}, content=None, params=[],
-    )
-    return Response(
-        content=upstream.content,
-        status_code=upstream.status_code,
-        headers=browser_headers(upstream.headers),
-    )
 
 
 @router.api_route("/supabase/{path:path}", methods=METHODS, include_in_schema=False)
