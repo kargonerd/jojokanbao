@@ -36,6 +36,7 @@ PROXY_USER_AGENT = "jojo-reader-proxy/1.0"
 AUTH_ALLOWED_PATHS = frozenset({
     "auth/v1/signup", "auth/v1/token", "auth/v1/verify", "auth/v1/resend",
     "auth/v1/otp", "auth/v1/recover", "auth/v1/user", "auth/v1/logout",
+    "auth/v1/health",
 })
 METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]
 UPSTREAM_TIMEOUT = httpx.Timeout(20.0, connect=5.0)
