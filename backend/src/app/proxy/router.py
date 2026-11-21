@@ -118,6 +118,10 @@ async def proxy_supabase(
     except httpx.HTTPError:
         logger.warning("Supabase proxy request failed: %s /%s", request.method, path, exc_info=True)
         return _error(502, "暂时无法连接账号服务，请检查网络后重试。")
+    if upstream.status_code == 404:
+        # EdgeOne withholds a proxied 404 from safe methods until the client
+        # times out, so a missing path answers 410 instead.
+        return _error(410, "Not found")
     return Response(
         content=upstream.content,
         status_code=upstream.status_code,

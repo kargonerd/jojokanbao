@@ -149,6 +149,16 @@ def test_admin_namespace_never_reaches_the_project(monkeypatch, path: str) -> No
     assert seen == {}
 
 
+def test_missing_upstream_path_answers_gone(monkeypatch) -> None:
+    capture(monkeypatch, httpx.Response(404, content=b"404 page not found"))
+
+    response = client().get("/supabase/auth/v1/nope")
+
+    # The edge stalls a proxied 404; 410 is the closest delivered status.
+    assert response.status_code == 410
+    assert response.json()["msg"] == "Not found"
+
+
 def test_auth_proxy_without_a_secret_is_unavailable(monkeypatch) -> None:
     seen = capture(monkeypatch)
 
