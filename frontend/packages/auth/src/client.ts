@@ -4,6 +4,12 @@ import type { Database } from "./types";
 export interface AuthClientOptions {
   supabaseUrl: string;
   publishableKey: string;
+  /**
+   * Same-origin proxy used only when the direct request cannot connect.
+   * Mainland carriers reset TLS to *.supabase.co on some routes; the proxy
+   * forwards from the cloud function, whose egress is not filtered.
+   */
+  fallbackUrl?: string;
   storageKey?: string;
   storage?: SupportedStorage;
   detectSessionInUrl?: boolean;
@@ -13,9 +19,38 @@ export type JojoAuthClient = SupabaseClient<Database> & {
   createRecoveryClient: () => Pick<SupabaseClient<Database>, "auth">;
 };
 
+/**
+ * Replays a request against `fallbackUrl` when the direct connection fails.
+ *
+ * Only connection-level failures are retried: a TypeError (no answer, the
+ * request never left) is safe to replay, while an abort or timeout may have
+ * reached the service and must not be.
+ */
+export function createFallbackFetch(fallbackUrl: string): typeof fetch {
+  const base = fallbackUrl.replace(/\/$/, "");
+  const retarget = (input: RequestInfo | URL): RequestInfo | URL => {
+    if (typeof input === "string" || input instanceof URL) {
+      const url = new URL(input.toString());
+      return `${base}${url.pathname}${url.search}`;
+    }
+    const url = new URL(input.url);
+    return new Request(`${base}${url.pathname}${url.search}`, input);
+  };
+  return async (input, init) => {
+    try {
+      return await fetch(input, init);
+    } catch (error) {
+      // AbortError (a timeout we own) means the request may have been sent.
+      if (!(error instanceof TypeError)) throw error;
+      return fetch(retarget(input), init);
+    }
+  };
+}
+
 export function createJojoAuthClient({
   supabaseUrl,
   publishableKey,
+  fallbackUrl,
   storageKey = "jojo-auth-session",
   storage,
   detectSessionInUrl = true,
@@ -24,7 +59,9 @@ export function createJojoAuthClient({
     throw new Error("Missing VITE_SUPABASE_URL or VITE_SUPABASE_PUBLISHABLE_KEY.");
   }
 
+  const transport = fallbackUrl ? { fetch: createFallbackFetch(fallbackUrl) } : undefined;
   const client = createClient<Database>(supabaseUrl, publishableKey, {
+    global: transport,
     auth: {
       storageKey,
       storage,
@@ -38,6 +75,7 @@ export function createJojoAuthClient({
     // Password recovery writes must retain the verified session even when
     // another tab changes the application's persisted login concurrently.
     createRecoveryClient: () => createClient<Database>(supabaseUrl, publishableKey, {
+      global: transport,
       auth: {
         storageKey: `${storageKey}-password-recovery`,
         persistSession: false,

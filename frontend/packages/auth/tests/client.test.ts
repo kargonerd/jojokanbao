@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createJojoAuthClient } from "../src/client";
+import { createFallbackFetch, createJojoAuthClient } from "../src/client";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -43,5 +43,49 @@ describe("recovery session isolation", () => {
       await client.auth.dispose();
       await recovery.auth.dispose();
     }
+  });
+});
+describe("connection fallback", () => {
+  it("keeps the direct connection when it answers", async () => {
+    const calls: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      calls.push(String(input));
+      return new Response("{}", { status: 200 });
+    }));
+
+    const transport = createFallbackFetch("https://reader.example/api/supabase");
+    const response = await transport("https://project.supabase.co/auth/v1/token?grant_type=password", { method: "POST" });
+
+    expect(response.status).toBe(200);
+    expect(calls).toEqual(["https://project.supabase.co/auth/v1/token?grant_type=password"]);
+  });
+
+  it("replays a connection failure through the proxy, keeping path and query", async () => {
+    const calls: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      calls.push(String(input));
+      if (calls.length === 1) throw new TypeError("Failed to fetch");
+      return new Response("{}", { status: 200 });
+    }));
+
+    const transport = createFallbackFetch("https://reader.example/api/supabase/");
+    await transport("https://project.supabase.co/auth/v1/signup?redirect_to=x", { method: "POST" });
+
+    expect(calls).toEqual([
+      "https://project.supabase.co/auth/v1/signup?redirect_to=x",
+      "https://reader.example/api/supabase/auth/v1/signup?redirect_to=x",
+    ]);
+  });
+
+  it("does not replay a request that was aborted", async () => {
+    const fetchMock = vi.fn(async () => {
+      throw new DOMException("aborted", "AbortError");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const transport = createFallbackFetch("https://reader.example/api/supabase");
+
+    await expect(transport("https://project.supabase.co/auth/v1/user")).rejects.toThrow();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
