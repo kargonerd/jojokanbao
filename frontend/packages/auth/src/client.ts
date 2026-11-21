@@ -26,12 +26,33 @@ export type JojoAuthClient = SupabaseClient<Database> & {
  * request never left) is safe to replay, while an abort or timeout may have
  * reached the service and must not be.
  */
+const DIRECT_BROKEN_KEY = "jojo-auth-direct-broken-until";
+const DIRECT_BROKEN_MS = 10 * 60_000;
+
+// sessionStorage is per tab and survives a reload; it is absent in React
+// Native and can throw in private mode, so both helpers stay total.
+function readDirectBroken(): number {
+  try {
+    const until = Number(globalThis.sessionStorage?.getItem(DIRECT_BROKEN_KEY) ?? 0);
+    return Number.isFinite(until) ? until : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function rememberDirectBroken(until: number): void {
+  try {
+    globalThis.sessionStorage?.setItem(DIRECT_BROKEN_KEY, String(until));
+  } catch {
+    // Storage unavailable: fall back to the in-memory value.
+  }
+}
+
 export function createFallbackFetch(fallbackUrl: string): typeof fetch {
   const base = fallbackUrl.replace(/\/$/, "");
   // Once direct is known to be blocked, stop paying the failed attempt on
-  // every request. Short enough to recover when the network changes.
-  const directBrokenForMs = 60_000;
-  let directBrokenUntil = 0;
+  // every request until the block likely clears or the network changes.
+  let directBrokenUntil = readDirectBroken();
   const retarget = (input: RequestInfo | URL): RequestInfo | URL => {
     if (typeof input === "string" || input instanceof URL) {
       const url = new URL(input.toString());
@@ -47,7 +68,8 @@ export function createFallbackFetch(fallbackUrl: string): typeof fetch {
     } catch (error) {
       // AbortError (a timeout we own) means the request may have been sent.
       if (!(error instanceof TypeError)) throw error;
-      directBrokenUntil = Date.now() + directBrokenForMs;
+      directBrokenUntil = Date.now() + DIRECT_BROKEN_MS;
+      rememberDirectBroken(directBrokenUntil);
       return fetch(retarget(input), init);
     }
   };
