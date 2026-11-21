@@ -28,6 +28,10 @@ export type JojoAuthClient = SupabaseClient<Database> & {
  */
 export function createFallbackFetch(fallbackUrl: string): typeof fetch {
   const base = fallbackUrl.replace(/\/$/, "");
+  // Once direct is known to be blocked, stop paying the failed attempt on
+  // every request. Short enough to recover when the network changes.
+  const directBrokenForMs = 60_000;
+  let directBrokenUntil = 0;
   const retarget = (input: RequestInfo | URL): RequestInfo | URL => {
     if (typeof input === "string" || input instanceof URL) {
       const url = new URL(input.toString());
@@ -37,11 +41,13 @@ export function createFallbackFetch(fallbackUrl: string): typeof fetch {
     return new Request(`${base}${url.pathname}${url.search}`, input);
   };
   return async (input, init) => {
+    if (Date.now() < directBrokenUntil) return fetch(retarget(input), init);
     try {
       return await fetch(input, init);
     } catch (error) {
       // AbortError (a timeout we own) means the request may have been sent.
       if (!(error instanceof TypeError)) throw error;
+      directBrokenUntil = Date.now() + directBrokenForMs;
       return fetch(retarget(input), init);
     }
   };

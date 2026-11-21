@@ -88,4 +88,23 @@ describe("connection fallback", () => {
     await expect(transport("https://project.supabase.co/auth/v1/user")).rejects.toThrow();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it("stops retrying direct for a while after one failure", async () => {
+    const calls: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      calls.push(String(input));
+      if (calls.length === 1) throw new TypeError("Failed to fetch");
+      return new Response("{}", { status: 200 });
+    }));
+
+    const transport = createFallbackFetch("https://reader.example/api/supabase");
+    await transport("https://project.supabase.co/auth/v1/user");
+    await transport("https://project.supabase.co/rest/v1/profiles");
+
+    expect(calls).toEqual([
+      "https://project.supabase.co/auth/v1/user",
+      "https://reader.example/api/supabase/auth/v1/user",
+      "https://reader.example/api/supabase/rest/v1/profiles",
+    ]);
+  });
 });
