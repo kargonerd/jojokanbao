@@ -111,6 +111,11 @@ async def probe_upstream404(settings: Settings = Depends(get_settings)) -> Respo
     return Response(status_code=404, content=b"not found")
 
 
+@router.get("/supabase/__probe/gone", include_in_schema=False)
+async def probe_gone() -> Response:
+    return Response(status_code=410, content=b"gone")
+
+
 @router.get("/supabase/__probe/echo404", include_in_schema=False)
 async def probe_echo404(settings: Settings = Depends(get_settings)) -> Response:
     upstream = await _send(
