@@ -20,6 +20,28 @@
   zone `zone-3lvq1mme05le`，dnsPodAccess 接入，回源直连 supabase.co），
   作为直连异常时的传统入口与调试入口。
 
+## 读者代理（可选）
+
+`VITE_SUPABASE_PROXY_PATH` 未设置时，Web 客户端照旧直连项目域名。设置为
+`/api/supabase` 后，直连仍是主路径，只有连接层失败（TLS 被重置、连不上）时，
+同一个请求才重放到同源代理，由上海云函数代为访问项目。用路径而不是绝对域名，
+是为了让同一份构建在 beta 与生产都指向各自的源。
+
+重放只覆盖连接失败：超时或主动中断的请求可能已经送达，不能重放，否则会重复
+发送验证码或重复写入。首次失败后会记住 10 分钟（sessionStorage，按标签页），
+期间请求直接走代理，避免每次刷新都重付一次失败的开销。
+
+代理按路径分流：
+
+- `/auth/v1/*` 用 `SUPABASE_SECRET_KEY` 重签，并写入 `Sb-Forwarded-For`
+  （取自 EdgeOne 的 `EO-Connecting-IP`）。Supabase 只对 secret key 采信该
+  头；需在 Authentication → Rate Limits 打开 IP Address Forwarding，限流才会
+  按读者地址而不是函数出口地址计数。
+- `/rest/v1/*` 原样透传浏览器的 publishable key 与 JWT。这里改用 secret key
+  会让未登录请求以 `service_role` 执行、绕过 RLS，因此不能重签。
+- 上游返回 404 时统一应答 410：EdgeOne 会把 GET 系请求的转发 404 扣住直到
+  客户端超时，410 能正常送达。
+
 ## 已知线路风险
 
 EdgeOne 中国大陆**移动**运营商边缘节点回源 `supabase.co` 时，TLS 握手会被

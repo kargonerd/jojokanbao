@@ -13,6 +13,7 @@ from app.core.http_middleware import (
     UnhandledErrorMiddleware,
     install_exception_handlers,
 )
+from app.proxy.router import router as proxy_router
 from app.speech.router import router as speech_router
 
 
@@ -39,7 +40,9 @@ def create_app() -> FastAPI:
         allow_origins=list(settings.allowed_origins),
         allow_credentials=False,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type", "X-JOJO-Visitor-ID", "X-Request-ID"],
+        # `apikey` is required by supabase-js on the proxied account calls;
+        # desktop and mobile clients reach them from a different origin.
+        allow_headers=["Authorization", "Content-Type", "X-JOJO-Visitor-ID", "X-Request-ID", "apikey"],
         expose_headers=["ETag", "X-Request-ID"],
     )
     app.add_middleware(ResponseHeadersMiddleware)
@@ -48,4 +51,5 @@ def create_app() -> FastAPI:
     app.include_router(signup_router, prefix="/v1")
     app.include_router(admin_router, prefix="/v1")
     app.include_router(speech_router, prefix="/v1")
+    app.include_router(proxy_router)
     return app

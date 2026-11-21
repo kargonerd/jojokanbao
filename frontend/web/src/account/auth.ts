@@ -7,9 +7,16 @@ import {
 import { startSignupPolicy } from "./signupPolicy";
 import { readerApiUrl } from "../api/agentGateway";
 
+// Mainland carriers reset TLS to *.supabase.co on some routes, so a
+// deployment can nominate an own-origin proxy as a fallback. Direct stays the
+// primary path: it is faster wherever it connects. A path rather than an
+// absolute URL keeps one build valid on both beta and production.
+const proxyPath = import.meta.env.VITE_SUPABASE_PROXY_PATH?.trim();
+
 export const authClient = createJojoAuthClient({
   supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
   publishableKey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+  fallbackUrl: proxyPath ? new URL(proxyPath, window.location.origin).toString() : undefined,
 });
 
 export const { useAuthStore, startAuthSync } = createJojoAuthStore(authClient, {

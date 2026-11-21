@@ -64,6 +64,7 @@ jobs:
       # default in `src/api/agentGateway.ts`, which is production.
       VITE_AGENT_API_BASE: ${{ (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'preview') || (github.event_name == 'push' && github.ref == 'refs/heads/master')) && vars.EDGEONE_AGENT_BETA_BASE_URL || vars.EDGEONE_AGENT_BASE_URL }}
       VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_PROXY_PATH: ${{ vars.VITE_SUPABASE_PROXY_PATH }}
       VITE_POSTHOG_TOKEN: ${{ vars.POSTHOG_PROJECT_TOKEN }}
       VITE_POSTHOG_HOST: ${{ vars.POSTHOG_API_HOST }}
       VITE_APP_VERSION: ${{ github.sha }}
