@@ -101,7 +101,7 @@ async def proxy_supabase(
         # Answer exactly like a missing route: the proxy exists to be invisible,
         # and the caller has no legitimate reason to learn that it has a key.
         logger.warning("Rejected admin proxy request: %s /%s", request.method, path)
-        return _error(404, "Not found")
+        return _error(410, "Not found")
     if not settings.supabase_url or (is_auth and not settings.supabase_secret_key):
         return _error(503, "账号服务尚未配置，请稍后重试。")
     try:
