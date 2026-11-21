@@ -30,9 +30,13 @@ AUTH_PREFIX = "auth/v1/"
 # Supabase refuses a secret key on requests whose User-Agent looks like a
 # browser, so re-signed calls identify themselves as this proxy instead.
 PROXY_USER_AGENT = "jojo-reader-proxy/1.0"
-# GoTrue's admin namespace is the only part of Auth that acts with service
-# rights. Re-signing it would let any reader create or delete accounts.
-AUTH_ADMIN_PREFIX = "auth/v1/admin"
+# The only Auth endpoints supabase-js needs. Re-signed calls carry a service
+# key, so the reachable surface stays as small as the client's real flows:
+# anything else (admin, OAuth, MFA, SSO) answers like a missing route.
+AUTH_ALLOWED_PATHS = frozenset({
+    "auth/v1/signup", "auth/v1/token", "auth/v1/verify", "auth/v1/resend",
+    "auth/v1/otp", "auth/v1/recover", "auth/v1/user", "auth/v1/logout",
+})
 METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]
 UPSTREAM_TIMEOUT = httpx.Timeout(20.0, connect=5.0)
 
@@ -101,10 +105,8 @@ async def proxy_supabase(
     settings: Settings = Depends(get_settings),
 ) -> Response:
     is_auth = path.startswith(AUTH_PREFIX)
-    if path.startswith(AUTH_ADMIN_PREFIX):
-        # Answer exactly like a missing route: the proxy exists to be invisible,
-        # and the caller has no legitimate reason to learn that it has a key.
-        logger.warning("Rejected admin proxy request: %s /%s", request.method, path)
+    if is_auth and path.rstrip("/") not in AUTH_ALLOWED_PATHS:
+        logger.warning("Rejected auth path: %s /%s", request.method, path)
         return _error(410, "Not found")
     if not settings.supabase_url or (is_auth and not settings.supabase_secret_key):
         return _error(503, "账号服务尚未配置，请稍后重试。")

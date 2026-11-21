@@ -135,18 +135,27 @@ def test_upstream_cors_and_cookies_stay_upstream(monkeypatch) -> None:
     assert "set-cookie" not in response.headers
 
 
-@pytest.mark.parametrize("path", ["auth/v1/admin/users", "auth/v1/admin/generate_link"])
-def test_admin_namespace_never_reaches_the_project(monkeypatch, path: str) -> None:
+@pytest.mark.parametrize(
+    "path",
+    ["auth/v1/admin/users", "auth/v1/admin/generate_link", "auth/v1/sso/saml", "auth/v1/authorize"],
+)
+def test_auth_paths_outside_the_allowlist_never_reach_the_project(monkeypatch, path: str) -> None:
     seen = capture(monkeypatch)
 
     response = client().post(f"/supabase/{path}")
 
-    # The proxy holds a service key; exposing GoTrue's admin namespace would
-    # let any reader create or delete accounts through it. The reply matches a
-    # missing route so the namespace stays indistinguishable.
+    # Re-signed calls carry a service key; only the flows supabase-js actually
+    # uses may reach GoTrue. The reply matches a missing route.
     assert response.status_code == 410
-    assert "代理" not in response.json()["msg"]
     assert seen == {}
+
+
+@pytest.mark.parametrize("path", sorted(proxy.AUTH_ALLOWED_PATHS))
+def test_allowlisted_auth_paths_are_forwarded(monkeypatch, path: str) -> None:
+    seen = capture(monkeypatch)
+
+    assert client().post(f"/supabase/{path}").status_code == 200
+    assert seen["url"] == f"https://project.supabase.co/{path}"
 
 
 def test_auth_calls_stop_looking_like_a_browser(monkeypatch) -> None:
@@ -177,7 +186,7 @@ def test_rest_calls_keep_the_caller_user_agent(monkeypatch) -> None:
 def test_missing_upstream_path_answers_gone(monkeypatch) -> None:
     capture(monkeypatch, httpx.Response(404, content=b"404 page not found"))
 
-    response = client().get("/supabase/auth/v1/nope")
+    response = client().get("/supabase/nope")
 
     # The edge stalls a proxied 404; 410 is the closest delivered status.
     assert response.status_code == 410
