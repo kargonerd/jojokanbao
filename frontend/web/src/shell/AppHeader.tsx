@@ -1,8 +1,9 @@
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { AccountMenu } from "../account/AccountMenu";
 import { useAccountSessionStore } from "../account/session";
 import { isBetaChannel } from "../betaChannel";
+import { syncBrowserBottomInset } from "./browserBottomInset";
 
 export type AppNavigationItem = {
   label: string;
@@ -84,6 +85,11 @@ export function AppHeader({
   const mobileTitleBadge = navigationItems.find((item) => isActive(pathname, item.href))?.badge;
   const showMobileNavigation = !hidesMobileNavigation(pathname);
   const showMobileBack = !isPrimaryMobilePage(pathname);
+
+  useEffect(() => {
+    if (!showMobileNavigation) return;
+    return syncBrowserBottomInset();
+  }, [showMobileNavigation]);
 
   const navigateBack = () => {
     if (location.key !== "default" && window.history.length > 1) navigate(-1);
