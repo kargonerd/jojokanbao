@@ -259,6 +259,7 @@ export function BookReader({
   const currentPageRef = useRef(0);
   const pendingPageRef = useRef<"start" | "end" | null>("start");
   const swipeRef = useRef<{ x: number; y: number; time: number; dragging: boolean; start: number; distance: number; maxMove: number }>(undefined);
+  const pageAnimationRef = useRef<number | undefined>(undefined);
   const suppressSwipeClickRef = useRef(false);
   const resumePositionRef = useRef((() => {
     const query = new URLSearchParams(location.search);
@@ -423,6 +424,7 @@ export function BookReader({
 
   useEffect(() => () => {
     if (jumpTimerRef.current) window.clearTimeout(jumpTimerRef.current);
+    if (pageAnimationRef.current !== undefined) window.cancelAnimationFrame(pageAnimationRef.current);
   }, []);
 
   useEffect(() => {
@@ -578,7 +580,34 @@ export function BookReader({
 
   const goToPage = useCallback((page: number, behavior: ScrollBehavior = "smooth") => {
     const bounded = Math.max(0, Math.min(page, pageMetrics.spreads - 1));
-    flowRef.current?.scrollTo({ left: bounded * pageMetrics.step, behavior });
+    if (pageAnimationRef.current !== undefined) {
+      window.cancelAnimationFrame(pageAnimationRef.current);
+      pageAnimationRef.current = undefined;
+    }
+    const flow = flowRef.current;
+    const left = bounded * pageMetrics.step;
+    if (flow) {
+      if (behavior === "auto" || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+        flow.scrollLeft = left;
+      } else {
+        // Chrome's smooth scroll over a full column takes several hundred
+        // milliseconds, which reads as lag after the finger lifts. Finish the
+        // turn in a short, fixed duration instead.
+        const from = flow.scrollLeft;
+        const distance = left - from;
+        if (Math.abs(distance) < 1) {
+          flow.scrollLeft = left;
+        } else {
+          const started = performance.now();
+          const tick = (now: number) => {
+            const progress = Math.min(1, (now - started) / 150);
+            flow.scrollLeft = from + distance * (1 - Math.pow(1 - progress, 3));
+            pageAnimationRef.current = progress < 1 ? window.requestAnimationFrame(tick) : undefined;
+          };
+          pageAnimationRef.current = window.requestAnimationFrame(tick);
+        }
+      }
+    }
     currentPageRef.current = bounded;
     setPageMetrics((current) => ({ ...current, page: bounded }));
     setReadingProgress(pageMetrics.spreads <= 1 ? 100 : Math.round((bounded / (pageMetrics.spreads - 1)) * 100));
@@ -641,10 +670,17 @@ export function BookReader({
 
   function changeMode(value: BookReaderMode): void {
     if (value === mode) return;
+    if (pageAnimationRef.current !== undefined) {
+      window.cancelAnimationFrame(pageAnimationRef.current);
+      pageAnimationRef.current = undefined;
+    }
     pendingPageRef.current = "start";
     currentPageRef.current = 0;
     setReadingProgress(0);
     setPageMetrics((current) => ({ ...current, page: 0 }));
+    // Persist in the click itself so leaving the reader immediately after
+    // choosing a mode cannot race the post-render effect.
+    try { window.localStorage.setItem("jojo-reader-mode", value); } catch { /* Storage can be unavailable in private contexts. */ }
     setMode(value);
   }
 
@@ -766,6 +802,11 @@ export function BookReader({
 
   function startReaderTap(event: ReactPointerEvent<HTMLElement>): void {
     suppressSwipeClickRef.current = false;
+    if (mode === "paged" && pageAnimationRef.current !== undefined) {
+      window.cancelAnimationFrame(pageAnimationRef.current);
+      pageAnimationRef.current = undefined;
+      if (flowRef.current) flowRef.current.scrollLeft = currentPageRef.current * pageMetrics.step;
+    }
     if (mode === "paged" && !contentLoading && !readerOverlayOpen && event.pointerType !== "mouse" && event.isPrimary !== false
       && !(event.target as Element).closest("a,button,input,textarea,[role='button']") && !window.getSelection()?.toString()) {
       swipeRef.current = { x: event.clientX, y: event.clientY, time: Date.now(), dragging: false, start: currentPageRef.current * pageMetrics.step, distance: 0, maxMove: 0 };
@@ -833,7 +874,11 @@ export function BookReader({
     if (flowRef.current) flowRef.current.style.transform = "";
     const distance = swipe.distance;
     const duration = Math.max(1, Date.now() - swipe.time);
-    const turn = Math.abs(distance) > Math.min(90, pageMetrics.step * .2) || (Math.abs(distance) > 24 && Math.abs(distance) / duration > .45);
+    // A page turn should complete on a short pull or a flick, not only after a
+    // long drag: the drag follows the finger, so the release distance is what
+    // users compare with native novel readers.
+    const turn = Math.abs(distance) > Math.min(56, pageMetrics.step * .12)
+      || (Math.abs(distance) > 18 && Math.abs(distance) / duration > .3);
     if (turn && focusRequestKey) dismissedFocusRef.current = focusRequestKey;
     const target = pageMetrics.page + (turn ? (distance < 0 ? 1 : -1) : 0);
     if (target < 0 && previousChapter) chooseChapter(previousChapter.id, "end");

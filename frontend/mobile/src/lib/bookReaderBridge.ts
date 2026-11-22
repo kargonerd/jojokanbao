@@ -511,7 +511,7 @@ ${ANNOTATION_DOM_SCRIPT}
         var offset = currentSpread * pageWidth();
         var article = document.querySelector("article");
         if (article) {
-          article.style.transition = animate && !reduceMotion ? "transform 180ms ease-out" : "none";
+          article.style.transition = animate && !reduceMotion ? "transform 150ms ease-out" : "none";
           article.style.transform = "translate3d(" + (-offset) + "px, 0, 0)";
         }
         updateFooter();
@@ -768,9 +768,9 @@ ${ANNOTATION_DOM_SCRIPT}
           var touch = event.changedTouches[0];
           var dx = touch.clientX - touchStartX;
           var dy = touch.clientY - touchStartY;
-          var quickSwipe = Math.abs(dx) > 24 && Date.now() - touchStartAt < 250;
+          var quickSwipe = Math.abs(dx) > 18 && Date.now() - touchStartAt < 280;
           var width = dragWidth || pageWidth();
-          if ((draggingPage || Date.now() - touchStartAt < 450) && (Math.abs(dx) > Math.min(72, width * .16) || quickSwipe) && Math.abs(dx) > Math.abs(dy) * 1.15) {
+          if ((draggingPage || Date.now() - touchStartAt < 450) && (Math.abs(dx) > Math.min(56, width * .12) || quickSwipe) && Math.abs(dx) > Math.abs(dy) * 1.15) {
             lastSwipeAt = Date.now();
             var next = currentSpread + (dx < 0 ? 1 : -1);
             if (next >= 0 && next < spreadCount) showSpread(next, true);
