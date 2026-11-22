@@ -16,7 +16,11 @@
 
 const HOLD_MS = 450;
 const GLIDE_EPSILON = 2;
-const DRIFT_TRIGGERS_PX = 2;
+// A real finger always trembles at least a pixel or two during a hold, and in
+// paged mode that drift already suppresses the native gesture — so one pixel
+// of drift hands the press to the fallback. A truly motionless finger keeps
+// the native long-press (and its handles).
+const DRIFT_TRIGGERS_PX = 1;
 const MOVE_CANCELS_PX = 10;
 const INTERACTIVE_SELECTOR = "a,button,input,textarea,select,label,[role='button'],[contenteditable='true'],img";
 
@@ -93,12 +97,15 @@ export function createHoldTextSelection(deps: HoldTextSelectionDeps): HoldTextSe
   function holdFired(x: number, y: number, offsetAtStart: number): void {
     const surface = deps.surface();
     const selection = deps.selection();
-    if (!surface || !selection || !selection.isCollapsed || deps.blocked?.()) { cancel(); return; }
+    if (!surface || !selection || deps.blocked?.()) { cancel(); return; }
     // A surface that stayed put and a finger that did not drift mean the
-    // native long-press owns this press.
+    // native long-press owns this press — even over an existing selection.
     const surfaceMoved = Math.abs(surface.scrollLeft + surface.scrollTop - offsetAtStart) > GLIDE_EPSILON;
     const fingerDrifted = maxDrift > DRIFT_TRIGGERS_PX;
     if (!surfaceMoved && !(deps.driftTriggers && fingerDrifted)) { cancel(); return; }
+    // When the fallback fires, the native gesture has already lost this press
+    // and an older selection (ours or a stale native one) must not block the
+    // re-selection: it gets replaced below.
     const range = pickWordRange(surface, x, y, deps.hitTest);
     if (!range) { cancel(); return; }
     // Interrupting the scroller stops the glide so the highlight, the toolbar
@@ -131,16 +138,35 @@ export function pickWordRange(
   hitTest?: (x: number, y: number) => Range | null,
 ): Range | null {
   const document = surface.ownerDocument;
-  const collapsed = hitTest ? hitTest(x, y) : document.caretRangeFromPoint
-    ? document.caretRangeFromPoint(x, y)
-    : null;
-  if (!collapsed) return null;
-  const node = collapsed.startContainer;
-  if (node.nodeType !== Node.TEXT_NODE) return null;
-  const textNode = node as Text;
-  const bounds = expandWordAround(textNode, collapsed.startOffset);
-  if (!bounds || bounds.end <= bounds.start) return null;
-  return asOwnedRange(textNode, bounds);
+  const probe = hitTest ?? ((px: number, py: number) => caretRangeAt(document, px, py));
+  // Fingers land between lines (the reader uses a tall line height) and on
+  // block padding, where the caret APIs answer with an element instead of a
+  // text position; probe the immediate surroundings before giving up.
+  const offsets: Array<[number, number]> = [[0, 0], [0, -8], [0, 8], [-10, 0], [10, 0]];
+  for (const [dx, dy] of offsets) {
+    const collapsed = probe(x + dx, y + dy);
+    if (!collapsed) continue;
+    const node = collapsed.startContainer;
+    if (node.nodeType !== Node.TEXT_NODE) continue;
+    const bounds = expandWordAround(node as Text, collapsed.startOffset);
+    if (!bounds || bounds.end <= bounds.start) continue;
+    return asOwnedRange(node as Text, bounds);
+  }
+  return null;
+}
+
+function caretRangeAt(document: Document, x: number, y: number): Range | null {
+  // caretPositionFromPoint is the standard API (Chrome 128+); its position
+  // must be wrapped in a range. caretRangeFromPoint is the legacy equivalent.
+  if (document.caretPositionFromPoint) {
+    const position = document.caretPositionFromPoint(x, y);
+    if (!position || position.offsetNode.nodeType !== Node.TEXT_NODE) return null;
+    const range = document.createRange();
+    range.setStart(position.offsetNode, position.offset);
+    range.collapse(true);
+    return range;
+  }
+  return document.caretRangeFromPoint?.(x, y) ?? null;
 }
 
 function asOwnedRange(node: Text, bounds: { start: number; end: number }): Range {
