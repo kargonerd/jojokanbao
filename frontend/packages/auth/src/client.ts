@@ -120,6 +120,15 @@ export function createFallbackFetch(fallbackUrl: string): typeof fetch {
   };
 }
 
+/**
+ * Whether the next request is expected to take the proxy. Diagnostics only:
+ * it reads the stored marker, so it stays accurate across requests.
+ */
+export function supabaseRouteState(): "direct" | "proxy" {
+  const stored = readDirectBroken();
+  return stored && stored.until > Date.now() && stored.network === networkSignature() ? "proxy" : "direct";
+}
+
 export function createJojoAuthClient({
   supabaseUrl,
   publishableKey,

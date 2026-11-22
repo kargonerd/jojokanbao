@@ -1,4 +1,4 @@
-export { createJojoAuthClient } from "./client";
+export { createFallbackFetch, createJojoAuthClient, supabaseRouteState } from "./client";
 export type { AuthClientOptions, JojoAuthClient } from "./client";
 export { getAuthErrorMessage } from "./errors";
 export { createPersonalInvitationRepository } from "./invitations";

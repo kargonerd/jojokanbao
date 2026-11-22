@@ -11,6 +11,7 @@ import {
   useState,
 } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { analytics } from "@jojo/analytics";
 import { IoBookOutline, IoCopyOutline, IoCreateOutline, IoDownloadOutline, IoFlagOutline, IoListOutline, IoRadioButtonOnOutline, IoSearchOutline, IoSparklesOutline, IoTextOutline } from "react-icons/io5";
 import { bookProgressPercent, estimatedReadingMinutes, formatReadingTime, type SpeechLocation } from "@jojo/content";
 import { createSpeechReader, SPEECH_EXCLUDED_ELEMENTS } from "@jojo/content/speech-dom";
@@ -1027,12 +1028,29 @@ export function BookReader({
     return textSelection?.anchor;
   }
 
+  // Cancelling pointerdown keeps the selection alive, but on touch it also
+  // suppresses the synthesised click, which made the toolbar look dead.
+  const pointerActionRef = useRef(false);
+  function pressAction(event: ReactPointerEvent<HTMLButtonElement>, action: () => void): void {
+    if (event.pointerType === "mouse") return;
+    pointerActionRef.current = true;
+    action();
+  }
+  function clickAction(action: () => void): void {
+    if (pointerActionRef.current) { pointerActionRef.current = false; return; }
+    action();
+  }
+
+  function reportBlocked(operation: "underline" | "thought", reason: string): void {
+    analytics.track("annotation_blocked", { operation, reason });
+  }
+
   async function underlineSelection(): Promise<void> {
     // Never fail silently: a reader who taps and sees nothing cannot report it.
-    if (!currentUserId) { setReaderNotice("请先登录后再划线"); return; }
-    if (annotationSaving) { setReaderNotice("上一次操作还没结束，请稍候"); return; }
+    if (!currentUserId) { reportBlocked("underline", "not_signed_in"); setReaderNotice("请先登录后再划线"); return; }
+    if (annotationSaving) { reportBlocked("underline", "busy"); setReaderNotice("上一次操作还没结束，请稍候"); return; }
     const anchor = selectionAnchor();
-    if (!anchor) { setReaderNotice("没能定位到选中的文字，请重新选择"); return; }
+    if (!anchor) { reportBlocked("underline", "no_anchor"); setReaderNotice("没能定位到选中的文字，请重新选择"); return; }
     const savedSelection = textSelection;
     const savedRange = window.getSelection()?.rangeCount
       ? window.getSelection()?.getRangeAt(0).cloneRange()
@@ -1056,11 +1074,11 @@ export function BookReader({
   }
 
   async function saveThought(): Promise<void> {
-    if (!annotationAccess) { setThoughtError("请先登录后再写想法"); return; }
-    if (!thought.trim()) { setThoughtError("请先写下想法"); return; }
-    if (annotationSaving) { setThoughtError("上一次操作还没结束，请稍候"); return; }
+    if (!annotationAccess) { reportBlocked("thought", "not_signed_in"); setThoughtError("请先登录后再写想法"); return; }
+    if (!thought.trim()) { reportBlocked("thought", "empty_thought"); setThoughtError("请先写下想法"); return; }
+    if (annotationSaving) { reportBlocked("thought", "busy"); setThoughtError("上一次操作还没结束，请稍候"); return; }
     const anchor = thoughtSelection?.anchor;
-    if (!anchor) { setThoughtError("没能定位到选中的文字，请重新选择"); return; }
+    if (!anchor) { reportBlocked("thought", "no_anchor"); setThoughtError("没能定位到选中的文字，请重新选择"); return; }
     setAnnotationSaving(true);
     setThoughtError("");
     try {
@@ -1306,11 +1324,11 @@ export function BookReader({
 
     {textSelection && <ReaderSelectionPopover rect={textSelection.rect} width={annotationAccess ? 360 : 216}>
       <div className="book-selection-actions" role="toolbar" aria-label="选中文字工具">
-        <button type="button" onClick={() => void copySelection()} className="reader-selection-action"><IoCopyOutline aria-hidden="true" /><span>复制</span></button>
-        {annotationAccess && <><button type="button" disabled={annotationSaving} onClick={() => void underlineSelection()} className="reader-selection-action"><span aria-hidden="true" className="book-selection-underline">A</span><span>划线</span></button>
-        <button type="button" disabled={annotationSaving} onClick={composeThought} className="reader-selection-action"><IoCreateOutline aria-hidden="true" /><span>写想法</span></button></>}
-        <button type="button" onClick={() => agentAccess ? void explainSelection() : openBookAi()} className="reader-selection-action" aria-label="AI 解释"><IoSparklesOutline aria-hidden="true" /><span>AI 解释</span></button>
-        <button type="button" disabled={annotationSaving} onClick={composeCorrection} className="reader-selection-action" aria-label="内容纠错"><IoFlagOutline aria-hidden="true" /><span>纠错</span></button>
+        <button type="button" onClick={() => clickAction(() => void copySelection())} onPointerDown={(event) => pressAction(event, () => void copySelection())} className="reader-selection-action"><IoCopyOutline aria-hidden="true" /><span>复制</span></button>
+        {annotationAccess && <><button type="button" disabled={annotationSaving} onClick={() => clickAction(() => void underlineSelection())} onPointerDown={(event) => pressAction(event, () => void underlineSelection())} className="reader-selection-action"><span aria-hidden="true" className="book-selection-underline">A</span><span>划线</span></button>
+        <button type="button" disabled={annotationSaving} onClick={() => clickAction(composeThought)} onPointerDown={(event) => pressAction(event, composeThought)} className="reader-selection-action"><IoCreateOutline aria-hidden="true" /><span>写想法</span></button></>}
+        <button type="button" onClick={() => clickAction(() => agentAccess ? void explainSelection() : openBookAi())} onPointerDown={(event) => pressAction(event, () => agentAccess ? void explainSelection() : openBookAi())} className="reader-selection-action" aria-label="AI 解释"><IoSparklesOutline aria-hidden="true" /><span>AI 解释</span></button>
+        <button type="button" disabled={annotationSaving} onClick={() => clickAction(composeCorrection)} onPointerDown={(event) => pressAction(event, composeCorrection)} className="reader-selection-action" aria-label="内容纠错"><IoFlagOutline aria-hidden="true" /><span>纠错</span></button>
       </div>
     </ReaderSelectionPopover>}
 

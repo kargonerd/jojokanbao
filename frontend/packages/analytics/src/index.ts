@@ -1,7 +1,8 @@
 /** Shared event contract. No browser or native SDK is imported by this entry. */
 export type AnalyticsEvent = "app_started" | "app_active" | "screen_viewed" | "reading_loaded"
   | "reading_failed" | "search_started" | "search_completed" | "search_failed" | "download_clicked"
-  | "update_available" | "update_downloaded" | "update_failed";
+  | "update_available" | "update_downloaded" | "update_failed"
+  | "annotation_failed" | "annotation_blocked";
 export type Properties = Record<string, string | number | boolean>;
 export interface AnalyticsContext extends Properties {
   client: "web" | "desktop" | "mobile" | "homepage";
@@ -27,6 +28,7 @@ export interface AnalyticsIdentity {
 export const propertyNames = new Set([
   "screen", "content_type", "content_id", "duration_ms", "result_count", "page", "outcome",
   "target_platform", "available_version", "error_source", "referrer_host",
+  "operation", "reason", "error_code", "error_name", "http_status", "route",
 ]);
 export function eventProperties(input: Properties): Properties {
   return Object.fromEntries(Object.entries(input).filter(([key, value]) => propertyNames.has(key)
