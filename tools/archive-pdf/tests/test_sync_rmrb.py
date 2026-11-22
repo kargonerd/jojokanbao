@@ -44,6 +44,33 @@ class SyncTests(unittest.TestCase):
                 self.assertEqual(source.name, "merged.pdf")
                 canonical.file.assert_not_called()
 
+    def test_local_source_dir_replaces_remote_download(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "20260910.pdf"
+            source.write_bytes(b"%PDF-1.7\nlocal")
+            canonical = Mock()
+            canonical.read.return_value = None
+            result = sync.obtain_pdf(date(2026, 9, 10), root, canonical, Mock(), source_dir=root)
+            self.assertEqual(result, source)
+
+    def test_local_source_dir_reports_missing_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            canonical = Mock()
+            canonical.read.return_value = None
+            with self.assertRaisesRegex(FileNotFoundError, "Missing local source PDF"):
+                sync.obtain_pdf(date(2026, 9, 10), root, canonical, Mock(), source_dir=root)
+
+    def test_local_source_dir_rejects_non_pdf(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "20260910.pdf").write_bytes(b"not a pdf")
+            canonical = Mock()
+            canonical.read.return_value = None
+            with self.assertRaisesRegex(ValueError, "not a PDF"):
+                sync.obtain_pdf(date(2026, 9, 10), root, canonical, Mock(), source_dir=root)
+
     def test_date_validation_rejects_invalid_or_noncompact_dates(self):
         for value in ("20260230", "2026-09-10", "2026091", "../../tmp"):
             with self.assertRaises(sync.argparse.ArgumentTypeError):

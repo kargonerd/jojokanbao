@@ -119,7 +119,7 @@ def linearize_pdf(source, output):
     print(f"[6/8] Linearized to {output.name} ({output.stat().st_size} bytes)", flush=True)
 
 
-def obtain_pdf(day, day_dir, canonical, delivery, *, reuse_legacy=False, refresh=False):
+def obtain_pdf(day, day_dir, canonical, delivery, *, reuse_legacy=False, refresh=False, source_dir=None):
     item_key, pdf_key, _ = issue_keys(day)
     existing = canonical.read(item_key)
     if existing and not refresh:
@@ -128,6 +128,15 @@ def obtain_pdf(day, day_dir, canonical, delivery, *, reuse_legacy=False, refresh
             path = canonical.file("newspapers/rmrb/" + asset["path"])
             if path:
                 return path
+    if source_dir is not None:
+        local = source_dir / f"{day:%Y%m%d}.pdf"
+        if not local.is_file():
+            raise FileNotFoundError(f"Missing local source PDF: {local}")
+        with local.open("rb") as stream:
+            if stream.read(5) != b"%PDF-":
+                raise ValueError(f"Local source is not a PDF: {local}")
+        print(f"[4/8] Using local source {local} ({local.stat().st_size} bytes)", flush=True)
+        return local
     if reuse_legacy:
         # Migration input only; no reader or publisher writes this old prefix.
         compact = day.strftime("%Y%m%d")
@@ -156,7 +165,7 @@ def obtain_pdf(day, day_dir, canonical, delivery, *, reuse_legacy=False, refresh
     return merged
 
 
-def sync_day(day, force=False, *, dry_run=False, reuse_legacy=False):
+def sync_day(day, force=False, *, dry_run=False, reuse_legacy=False, source_dir=None):
     day_dir = WORK_DIR / day.strftime("%Y%m%d")
     day_dir.mkdir(parents=True, exist_ok=True)
     canonical = HuggingFace()
@@ -179,7 +188,7 @@ def sync_day(day, force=False, *, dry_run=False, reuse_legacy=False):
                     return {"date": day.isoformat(), "asset": key, "manifest": manifest_key, "index": INDEX, "published": True}
                 if check.returncode not in (0, 3, 4):
                     raise RuntimeError(f"Unable to check published PDF: {check.stderr.decode(errors='replace')[:500]}")
-    source = obtain_pdf(day, day_dir, canonical, delivery, reuse_legacy=reuse_legacy and not force, refresh=force)
+    source = obtain_pdf(day, day_dir, canonical, delivery, reuse_legacy=reuse_legacy and not force, refresh=force, source_dir=source_dir)
     linearized = day_dir / "linearized.pdf"
     linearized.unlink(missing_ok=True)
     linearize_pdf(source, linearized)
@@ -210,6 +219,7 @@ def parse_args():
     parser.add_argument("--reuse-legacy", action="store_true", help="Use old B2 PDFs as migration input when Canonical lacks them.")
     parser.add_argument("--force", action="store_true", help="Refresh the source PDF and publish a new immutable asset.")
     parser.add_argument("--dry-run", action="store_true", help="Stage exact publication files locally without uploading.")
+    parser.add_argument("--source-dir", type=Path, help="Use local YYYYMMDD.pdf files instead of downloading from paper.people.com.cn.")
     return parser.parse_args()
 
 
@@ -230,7 +240,7 @@ def main():
     report_path.write_text("[]\n", encoding="utf-8")
     day = first
     while day <= args.date:
-        report = sync_day(day, force=args.force, dry_run=args.dry_run, reuse_legacy=args.reuse_legacy)
+        report = sync_day(day, force=args.force, dry_run=args.dry_run, reuse_legacy=args.reuse_legacy, source_dir=args.source_dir)
         if report:
             reports.append(report)
             report_path.write_text(json.dumps(reports, indent=2) + "\n", encoding="utf-8")
