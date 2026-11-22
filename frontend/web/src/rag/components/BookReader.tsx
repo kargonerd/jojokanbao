@@ -1019,9 +1019,11 @@ export function BookReader({
   }
 
   async function underlineSelection(): Promise<void> {
-    if (!currentUserId || annotationSaving) return;
+    // Never fail silently: a reader who taps and sees nothing cannot report it.
+    if (!currentUserId) { setReaderNotice("请先登录后再划线"); return; }
+    if (annotationSaving) { setReaderNotice("上一次操作还没结束，请稍候"); return; }
     const anchor = selectionAnchor();
-    if (!anchor) return;
+    if (!anchor) { setReaderNotice("没能定位到选中的文字，请重新选择"); return; }
     const savedSelection = textSelection;
     const savedRange = window.getSelection()?.rangeCount
       ? window.getSelection()?.getRangeAt(0).cloneRange()
@@ -1045,9 +1047,11 @@ export function BookReader({
   }
 
   async function saveThought(): Promise<void> {
-    if (!annotationAccess || !thought.trim() || annotationSaving) return;
+    if (!annotationAccess) { setThoughtError("请先登录后再写想法"); return; }
+    if (!thought.trim()) { setThoughtError("请先写下想法"); return; }
+    if (annotationSaving) { setThoughtError("上一次操作还没结束，请稍候"); return; }
     const anchor = thoughtSelection?.anchor;
-    if (!anchor) return;
+    if (!anchor) { setThoughtError("没能定位到选中的文字，请重新选择"); return; }
     setAnnotationSaving(true);
     setThoughtError("");
     try {
