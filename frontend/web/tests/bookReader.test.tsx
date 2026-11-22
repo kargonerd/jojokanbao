@@ -265,8 +265,8 @@ describe("BookReader", () => {
     expect(quiet.className).toContain("h-12");
     // It must be the same paper: texture included, no chrome background left.
     expect(quiet.className).toContain("book-page-texture");
-    // Sans-serif label against the serif body is the only visual cue.
-    expect(quiet.className).toContain("font-sans");
+    // The calligraphic face, not a second colour band, marks it as a label.
+    expect(quiet.className).toContain("book-quiet-title");
   });
 
   it("switches to scrolling mode and remembers the choice", async () => {

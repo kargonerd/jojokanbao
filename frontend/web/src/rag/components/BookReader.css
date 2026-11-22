@@ -148,6 +148,14 @@
   background-blend-mode: screen;
 }
 
+/* The dismissed toolbar leaves the chapter name on the paper. A calligraphic
+   face separates it from the serif body without adding another colour band. */
+.book-quiet-title {
+  font-family: "STKaiti", "Kaiti SC", "KaiTi", "Noto Serif SC", serif;
+  font-size: 13px;
+  letter-spacing: .12em;
+}
+
 .book-chapter-title {
   margin: 0 0 3rem;
   color: var(--color-red);
