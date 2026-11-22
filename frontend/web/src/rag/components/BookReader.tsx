@@ -12,6 +12,7 @@ import {
 } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { analytics } from "@jojo/analytics";
+import { createHoldTextSelection } from "../../rag/holdTextSelection";
 import { IoBookOutline, IoCopyOutline, IoCreateOutline, IoDownloadOutline, IoFlagOutline, IoListOutline, IoRadioButtonOnOutline, IoSearchOutline, IoSparklesOutline, IoTextOutline } from "react-icons/io5";
 import { bookProgressPercent, estimatedReadingMinutes, formatReadingTime, type SpeechLocation } from "@jojo/content";
 import { createSpeechReader, SPEECH_EXCLUDED_ELEMENTS } from "@jojo/content/speech-dom";
@@ -1035,6 +1036,36 @@ export function BookReader({
       window.removeEventListener("resize", reposition);
     };
   }, [captureTextSelection]);
+
+  // A long-press whose touch began while the reading surface was still gliding
+  // never selects natively on Chromium; capture the word ourselves instead.
+  const readerOverlayOpenRef = useRef(readerOverlayOpen);
+  readerOverlayOpenRef.current = readerOverlayOpen;
+  useEffect(() => {
+    if (mode !== "scroll" || !mobileViewport) return;
+    const surface = scrollRef.current;
+    if (!surface) return;
+    const hold = createHoldTextSelection({
+      surface: () => scrollRef.current,
+      selection: () => window.getSelection(),
+      schedule: (task, delayMs) => {
+        const id = window.setTimeout(task, delayMs);
+        return () => window.clearTimeout(id);
+      },
+      blocked: () => readerOverlayOpenRef.current,
+    });
+    surface.addEventListener("touchstart", hold.onTouchStart, { passive: true });
+    surface.addEventListener("touchmove", hold.onTouchMove, { passive: true });
+    surface.addEventListener("touchend", hold.onTouchEnd, { passive: true });
+    surface.addEventListener("touchcancel", hold.onTouchCancel, { passive: true });
+    return () => {
+      surface.removeEventListener("touchstart", hold.onTouchStart);
+      surface.removeEventListener("touchmove", hold.onTouchMove);
+      surface.removeEventListener("touchend", hold.onTouchEnd);
+      surface.removeEventListener("touchcancel", hold.onTouchCancel);
+      hold.dispose();
+    };
+  }, [mode, mobileViewport]);
 
   function capturePointerTextSelection(): void {
     window.setTimeout(captureTextSelection, 0);
