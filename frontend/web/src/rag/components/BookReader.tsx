@@ -12,6 +12,7 @@ import {
 } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { analytics } from "@jojo/analytics";
+import { createNativeMenuSuppressor, type NativeMenuSuppressor } from "../../rag/nativeSelectionMenu";
 import { IoBookOutline, IoCopyOutline, IoCreateOutline, IoDownloadOutline, IoFlagOutline, IoListOutline, IoRadioButtonOnOutline, IoSearchOutline, IoSparklesOutline, IoTextOutline } from "react-icons/io5";
 import { bookProgressPercent, estimatedReadingMinutes, formatReadingTime, type SpeechLocation } from "@jojo/content";
 import { createSpeechReader, SPEECH_EXCLUDED_ELEMENTS } from "@jojo/content/speech-dom";
@@ -986,12 +987,36 @@ export function BookReader({
     revealElement(target);
   }
 
+  // Touch platforms draw a copy/share menu over the selection and above the
+  // page. Re-applying the range programmatically keeps that menu away; events
+  // from our own re-application are ignored so the toolbar never flickers.
+  const menuSuppressorRef = useRef<NativeMenuSuppressor | undefined>(undefined);
+  menuSuppressorRef.current ??= createNativeMenuSuppressor({
+    selection: () => window.getSelection(),
+    schedule: (task, delay) => window.setTimeout(task, delay),
+  });
+  const menuSuppressor = menuSuppressorRef.current;
+  const suppressArmTimer = useRef<number | undefined>(undefined);
+  const armMenuSuppression = useCallback((): void => {
+    if (navigator.maxTouchPoints === 0) return;
+    window.clearTimeout(suppressArmTimer.current);
+    suppressArmTimer.current = window.setTimeout(() => menuSuppressor.arm(), 300);
+  }, []);
+
+  const cancelMenuSuppression = useCallback((): void => {
+    window.clearTimeout(suppressArmTimer.current);
+  }, []);
+
   const captureTextSelection = useCallback((): void => {
     if (readerOverlayOpen) return;
+    // Selection events caused by our own remove/re-add round trip must not
+    // collapse the captured state or re-trigger the suppression.
+    if (menuSuppressor.busy) return;
     if (document.activeElement?.closest(".book-selection-tools")) return;
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed || !selection.rangeCount) {
       setTextSelection(undefined);
+      cancelMenuSuppression();
       return;
     }
     const range = selection.getRangeAt(0);
@@ -1010,7 +1035,8 @@ export function BookReader({
       anchor,
       rect: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom },
     });
-  }, [activeChapterId, chapterRoot, readerOverlayOpen]);
+    armMenuSuppression();
+  }, [activeChapterId, armMenuSuppression, cancelMenuSuppression, chapterRoot, menuSuppressor, readerOverlayOpen]);
 
   useEffect(() => {
     const onContextMenu = (event: MouseEvent) => {
@@ -1029,6 +1055,7 @@ export function BookReader({
     document.addEventListener("scroll", reposition, true);
     window.addEventListener("resize", reposition);
     return () => {
+      window.clearTimeout(suppressArmTimer.current);
       document.removeEventListener("selectionchange", captureTextSelection);
       document.removeEventListener("contextmenu", onContextMenu);
       document.removeEventListener("scroll", reposition, true);
@@ -1136,6 +1163,7 @@ export function BookReader({
   function reportBlocked(operation: "underline" | "thought", reason: string): void {
     analytics.track("annotation_blocked", { operation, reason });
   }
+
 
   async function underlineSelection(): Promise<void> {
     // Never fail silently: a reader who taps and sees nothing cannot report it.
