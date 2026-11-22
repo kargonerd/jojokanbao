@@ -135,4 +135,60 @@ describe("connection fallback", () => {
       "https://reader.example/api/supabase/rest/v1/profiles",
     ]);
   });
+
+  it("re-probes direct once the connection changes", async () => {
+    const store = new Map<string, string>();
+    vi.stubGlobal("sessionStorage", {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => { store.set(key, value); },
+      removeItem: (key: string) => { store.delete(key); },
+    });
+    vi.stubGlobal("navigator", { connection: { type: "cellular", effectiveType: "4g" } });
+    const calls: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      calls.push(String(input));
+      if (calls.length === 1) throw new TypeError("Failed to fetch");
+      return new Response("{}", { status: 200 });
+    }));
+
+    await createFallbackFetch("https://reader.example/api/supabase")("https://project.supabase.co/auth/v1/user");
+
+    // Same reader, now on Wi-Fi: the earlier failure says nothing about this link.
+    vi.stubGlobal("navigator", { connection: { type: "wifi", effectiveType: "4g" } });
+    await createFallbackFetch("https://reader.example/api/supabase")("https://project.supabase.co/rest/v1/profiles");
+
+    expect(calls).toEqual([
+      "https://project.supabase.co/auth/v1/user",
+      "https://reader.example/api/supabase/auth/v1/user",
+      "https://project.supabase.co/rest/v1/profiles",
+    ]);
+  });
+
+  it("expires the marker so a recovered connection is tried again", async () => {
+    vi.useFakeTimers();
+    try {
+      const store = new Map<string, string>();
+      vi.stubGlobal("sessionStorage", {
+        getItem: (key: string) => store.get(key) ?? null,
+        setItem: (key: string, value: string) => { store.set(key, value); },
+        removeItem: (key: string) => { store.delete(key); },
+      });
+      const calls: string[] = [];
+      vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+        calls.push(String(input));
+        if (calls.length === 1) throw new TypeError("Failed to fetch");
+        return new Response("{}", { status: 200 });
+      }));
+
+      await createFallbackFetch("https://reader.example/api/supabase")("https://project.supabase.co/auth/v1/user");
+      expect(calls).toHaveLength(2);
+
+      await vi.advanceTimersByTimeAsync(5 * 60_000);
+      await createFallbackFetch("https://reader.example/api/supabase")("https://project.supabase.co/rest/v1/profiles");
+
+      expect(calls.at(-1)).toBe("https://project.supabase.co/rest/v1/profiles");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
