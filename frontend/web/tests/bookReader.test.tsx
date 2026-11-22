@@ -263,6 +263,8 @@ describe("BookReader", () => {
     expect(quiet).not.toBeNull();
     expect(quiet.textContent).toBe("第一章");
     expect(quiet.className).toContain("h-12");
+    // It must be the same paper: texture included, no chrome background left.
+    expect(quiet.className).toContain("book-page-texture");
   });
 
   it("switches to scrolling mode and remembers the choice", async () => {
