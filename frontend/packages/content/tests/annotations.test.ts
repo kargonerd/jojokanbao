@@ -35,6 +35,23 @@ function setup() {
 }
 
 describe("shared annotation API", () => {
+  it("times out a stalled write so the reader regains control", async () => {
+    vi.useFakeTimers();
+    try {
+      const { api, rpc } = setup();
+      rpc.mockReturnValueOnce(new Promise(() => {}));
+
+      const saving = api.createAnnotation(subject, anchor);
+      const assertion = expect(saving).rejects.toThrow("保存超时，请检查网络后重试");
+      await vi.advanceTimersByTimeAsync(10_000);
+      await assertion;
+
+      // The stalled request is aborted rather than left dangling.
+      expect(rpc.mock.lastCall?.[3]?.aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it("times out a stalled public request and rejects a non-advancing page", async () => {
     vi.useFakeTimers(); const {api,rpc}=setup();
     rpc.mockReturnValueOnce(new Promise(()=>{}));
@@ -122,7 +139,7 @@ describe("shared annotation API", () => {
       : "set_annotation_comment_like",
       operation === "delete" ? { p_annotation_id: "one" }
       : operation === "delete-comment" ? { p_comment_id: "comment" }
-      : { p_comment_id: "comment", p_liked: true }, "reader:a");
+      : { p_comment_id: "comment", p_liked: true }, "reader:a", expect.any(AbortSignal));
     const notes = await read();
     expect(notes.find((note) => note.id === "two")).toEqual(untouched);
     if (operation === "delete") expect(notes.map((note) => note.id)).toEqual(["two"]);
@@ -139,11 +156,11 @@ describe("shared annotation API", () => {
       p_content_title: "示例书", p_content_url: "/reader/book?chapter=one", p_quote: "示例正文",
       p_prefix: "前", p_suffix: "后", p_start_offset: 3, p_end_offset: 7,
       p_initial_comment: "私密想法", p_initial_comment_visibility: "private",
-    }, "reader:a");
+    }, "reader:a", expect.any(AbortSignal));
     await api.addAnnotationComment("one", "  私密回复  ", "parent", "private");
     expect(rpc).toHaveBeenLastCalledWith("add_annotation_comment", {
       p_annotation_id: "one", p_body: "私密回复", p_parent_comment_id: "parent", p_visibility: "private",
-    }, "reader:a");
+    }, "reader:a", expect.any(AbortSignal));
     await api.createAnnotation(subject, anchor, "公开想法", "public");
     expect(rpc.mock.calls.at(-1)?.[1]).not.toHaveProperty("p_initial_comment_visibility");
     await api.addAnnotationComment("one", "公开回复");

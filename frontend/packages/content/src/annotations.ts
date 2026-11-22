@@ -70,6 +70,32 @@ function checkAborted(signal?: AbortSignal) {
   throw signal.reason ?? error;
 }
 
+// Long enough for a cold function (about 4.6s) plus one round trip to the
+// project, short enough that a stalled connection frees the controls quickly.
+const WRITE_TIMEOUT_MS = 10_000;
+
+/**
+ * Bound a write so a stalled connection cannot leave the reader's controls
+ * disabled forever: the caller gets an error it can surface, and the request
+ * is aborted. Writes never retry, since the first attempt may have been stored.
+ */
+async function withinWriteDeadline<T>(run: (signal: AbortSignal) => PromiseLike<T> | Promise<T>): Promise<T> {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      const error = new Error("保存超时，请检查网络后重试");
+      reject(error);
+      controller.abort(error);
+    }, WRITE_TIMEOUT_MS);
+  });
+  try {
+    return await Promise.race([run(controller.signal), expired]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Same deployed annotation RPCs for browser and native readers, with no UI/runtime dependency. */
 export function createAnnotationApi({ rpc, getCurrentUserId, currentPath = () => "/" }: AnnotationApiDependencies) {
   async function requireSameReader(currentUserId: string) {
@@ -261,7 +287,7 @@ export function createAnnotationApi({ rpc, getCurrentUserId, currentPath = () =>
     expectedUserId?: string,
   ): Promise<AnnotationThread> {
     return forCurrentReader(async (userId) => {
-      const { data, error } = await rpc("create_content_annotation", {
+      const { data, error } = await withinWriteDeadline((signal) => rpc("create_content_annotation", {
         ...subjectParams(subject),
         p_content_title: subject.contentTitle,
         p_content_url: subject.contentUrl || currentPath(),
@@ -276,7 +302,7 @@ export function createAnnotationApi({ rpc, getCurrentUserId, currentPath = () =>
         ...(initialCommentVisibility === "private"
           ? { p_initial_comment_visibility: initialCommentVisibility }
           : {}),
-      }, userId);
+      }, userId, signal));
       const result = resultOrThrow<AnnotationThread>(data, error);
       if (subject.contentType === "book") invalidateBookAnnotations(subject.contentId);
       return result;
@@ -291,12 +317,12 @@ export function createAnnotationApi({ rpc, getCurrentUserId, currentPath = () =>
     expectedUserId?: string,
   ): Promise<AnnotationComment> {
     return forCurrentReader(async (userId) => {
-      const { data, error } = await rpc("add_annotation_comment", {
+      const { data, error } = await withinWriteDeadline((signal) => rpc("add_annotation_comment", {
         p_annotation_id: annotationId,
         p_body: body.trim(),
         p_parent_comment_id: parentCommentId || null,
         ...(visibility === "private" ? { p_visibility: visibility } : {}),
-      }, userId);
+      }, userId, signal));
       const result = resultOrThrow<AnnotationComment>(data, error);
       invalidateBookAnnotationComment(annotationId);
       return result;
@@ -310,18 +336,18 @@ export function createAnnotationApi({ rpc, getCurrentUserId, currentPath = () =>
     expectedUserId?: string,
   ): Promise<void> {
     return forCurrentReader(async (userId) => {
-      const { error } = await rpc("report_annotation_comment", {
+      const { error } = await withinWriteDeadline((signal) => rpc("report_annotation_comment", {
         p_comment_id: commentId,
         p_reason: reason,
         p_details: details?.trim() || null,
-      }, userId);
+      }, userId, signal));
       if (error) throw new Error(error.message || "举报提交失败");
     }, expectedUserId);
   }
 
   async function setAnnotationCommentLike(commentId: string, liked: boolean, expectedUserId?: string): Promise<AnnotationCommentLike> {
     return forCurrentReader(async (userId) => {
-      const { data, error } = await rpc("set_annotation_comment_like", { p_comment_id: commentId, p_liked: liked }, userId);
+      const { data, error } = await withinWriteDeadline((signal) => rpc("set_annotation_comment_like", { p_comment_id: commentId, p_liked: liked }, userId, signal));
       const result = resultOrThrow<AnnotationCommentLike>(data, error);
       invalidateBookAnnotationLike(commentId);
       return result;
@@ -330,7 +356,7 @@ export function createAnnotationApi({ rpc, getCurrentUserId, currentPath = () =>
 
   async function deleteMyAnnotationMark(annotationId: string, expectedUserId?: string): Promise<AnnotationThread | null> {
     return forCurrentReader(async (userId) => {
-      const { data, error } = await rpc("delete_my_annotation_mark", { p_annotation_id: annotationId }, userId);
+      const { data, error } = await withinWriteDeadline((signal) => rpc("delete_my_annotation_mark", { p_annotation_id: annotationId }, userId, signal));
       const result = resultOrThrow<{ thread: AnnotationThread | null }>(data, error);
       invalidateBookAnnotationComment(annotationId);
       return result.thread;
@@ -339,7 +365,7 @@ export function createAnnotationApi({ rpc, getCurrentUserId, currentPath = () =>
 
   async function deleteMyAnnotationComment(commentId: string, expectedUserId?: string): Promise<DeleteAnnotationCommentResult> {
     return forCurrentReader(async (userId) => {
-      const { data, error } = await rpc("delete_my_annotation_comment", { p_comment_id: commentId }, userId);
+      const { data, error } = await withinWriteDeadline((signal) => rpc("delete_my_annotation_comment", { p_comment_id: commentId }, userId, signal));
       const result = resultOrThrow<DeleteAnnotationCommentResult>(data, error);
       if (result.annotationId) invalidateBookAnnotationComment(result.annotationId);
       else invalidateBookAnnotationLike(commentId);
