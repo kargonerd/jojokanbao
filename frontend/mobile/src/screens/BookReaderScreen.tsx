@@ -641,6 +641,12 @@ export function BookReaderScreen({ route, navigation }: Props) {
       setChromeVisible((visible) => !visible);
       return;
     }
+    if (message.type === "reader-page-turn") {
+      // Turning a page hides the reading chrome, including the listen button and
+      // the bottom tool tabs, so a swipe never leaves them covering the text.
+      if (!activeTool && !noteComposer && !activeAnnotationId && !selection && !expandedImageUri) setChromeVisible(false);
+      return;
+    }
     if (message.type === "reader-scroll-gesture") {
       if (bookReadingMode === "scroll" && !activeTool && !noteComposer && !activeAnnotationId) setChromeVisible(false);
       return;
