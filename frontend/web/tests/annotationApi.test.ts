@@ -5,6 +5,7 @@ const { rpc, getSession, setHeader, abortSignal } = vi.hoisted(() => ({ rpc: vi.
 let api: typeof import("../src/annotations/api");
 
 vi.mock("../src/account/auth", () => ({
+  supabaseRouteState: () => "direct",
   authClient: {
     rpc: (name: string, params: Record<string, unknown>) => {
       const request = {
@@ -49,6 +50,24 @@ function comment(id: string, authorId: string, visibility: "public" | "private" 
 }
 
 describe("annotation API compatibility", () => {
+  it("reports a failed write with its operation, code and route", async () => {
+    const { analytics } = await import("@jojo/analytics");
+    const track = vi.spyOn(analytics, "track");
+    rpc.mockResolvedValueOnce({ data: null, error: { code: "42501", message: "permission denied" } });
+
+    // The tool must still see the error; the event is for diagnosis only.
+    await expect(api.createAnnotation(subject, anchor)).rejects.toThrow("permission denied");
+
+    expect(track).toHaveBeenCalledWith("annotation_failed", {
+      operation: "create_content_annotation",
+      route: "direct",
+      error_code: "42501",
+      error_name: "Error",
+      http_status: 0,
+    });
+    track.mockRestore();
+  });
+
   it("deletes the authenticated reader's mark and accepts a no-longer-visible thread", async () => {
     rpc.mockResolvedValue({ data: { thread: null }, error: null });
     await expect(api.deleteMyAnnotationMark("annotation:one")).resolves.toBeNull();

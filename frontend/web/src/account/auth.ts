@@ -3,7 +3,10 @@ import {
   createJojoAuthStore,
   createPersonalInvitationRepository,
   authorizeSignup,
+  supabaseRouteState,
 } from "@jojo/auth";
+
+export { supabaseRouteState };
 import { startSignupPolicy } from "./signupPolicy";
 import { readerApiUrl } from "../api/agentGateway";
 
