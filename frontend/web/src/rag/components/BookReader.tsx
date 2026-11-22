@@ -1309,7 +1309,16 @@ export function BookReader({
 
     {readerNotice && <button type="button" onClick={() => setReaderNotice("")} className={`fixed bottom-20 left-1/2 z-[66] -translate-x-1/2 border px-4 py-2 font-sans text-xs shadow-lg md:bottom-6 ${panelClass}`}>{readerNotice}</button>}
 
-    <header {...chromeProps} className={`relative z-20 h-12 border-b backdrop-blur-md ${chromeClass}`}>
+    {/* The slot keeps its height so the page never jumps. Dismissed, it becomes
+        paper with a quiet chapter name instead of an empty strip of chrome. */}
+    <header
+      {...(mobileChromeHidden ? {} : chromeProps)}
+      data-reader-quiet-title={mobileChromeHidden || undefined}
+      className={mobileChromeHidden
+        ? `relative z-20 flex h-12 items-center px-6 font-sans text-[11px] tracking-[.06em] ${pageClass}`
+        : `relative z-20 h-12 border-b backdrop-blur-md ${chromeClass}`}
+    >
+      {mobileChromeHidden ? <span className="truncate text-muted">{chapters[activeChapterIndex]?.title || bookTitle}</span> : (
       <div className="mx-auto flex h-full max-w-[1180px] items-center gap-3 px-4 font-sans text-xs md:px-10">
         <Link to={backHref} className="flex h-7 w-6 shrink-0 items-center justify-start text-current no-underline hover:text-red focus-visible:outline-2 focus-visible:outline-red" aria-label="返回上一页">
           <svg viewBox="0 0 20 20" className="h-4 w-4" aria-hidden="true">
@@ -1337,6 +1346,7 @@ export function BookReader({
         <span className="min-w-0 flex-1" aria-hidden="true" />
         <span className="hidden max-w-[42%] truncate text-muted md:block">{chapters[activeChapterIndex]?.title}</span>
       </div>
+      )}
     </header>
 
     {expandedImage && <div role="dialog" aria-modal="true" aria-label="图片预览" onClick={() => setExpandedImage(undefined)} className="fixed inset-0 z-[70] flex items-center justify-center bg-black/85 p-5 md:p-10">
