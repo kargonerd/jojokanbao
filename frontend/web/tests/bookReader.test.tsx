@@ -508,12 +508,14 @@ describe("BookReader", () => {
     fireEvent.pointerMove(paragraph, { clientX: 180, clientY: 202 });
     expect(screen.queryByRole("navigation", { name: "阅读工具" })).toBeNull();
     expect(screen.queryByRole("link", { name: "返回上一页" })).toBeNull();
+    expect(fireEvent.touchEnd(paragraph, { touches: [], changedTouches: [{ clientX: 180, clientY: 202 }] })).toBe(false);
     fireEvent.pointerUp(paragraph);
 
     // The first tap on the new page must toggle the tools back on; the old
     // implementation swallowed it as the swipe's synthetic click.
     fireEvent.pointerDown(paragraph, { clientX: 195, clientY: 200 });
     fireEvent.pointerUp(paragraph, { clientX: 195, clientY: 200 });
+    expect(screen.getByRole("navigation", { name: "阅读工具" })).toBeTruthy();
     fireEvent.click(paragraph, { clientX: 195, clientY: 200, detail: 1 });
     expect(screen.getByRole("navigation", { name: "阅读工具" })).toBeTruthy();
   });

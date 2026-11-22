@@ -767,22 +767,28 @@ ${ANNOTATION_DOM_SCRIPT}
           dragArticle.style.transform = "translate3d(" + offset + "px, 0, 0)";
         }, { passive: false });
         document.addEventListener("touchend", function (event) {
-          if (touchGestureCancelled || selectionGesture || touchInteractive || (window.getSelection && window.getSelection().toString())) { if (draggingPage) showSpread(currentSpread); reportSelection(); return; }
+          var wasDragging = draggingPage;
+          draggingPage = false;
+          // Do not let a page swipe leave a synthesized click behind. If the
+          // browser delivers it after the next tap, the toolbar toggles twice
+          // and the first tap appears to do nothing.
+          if (wasDragging && event.preventDefault) event.preventDefault();
+          if (touchGestureCancelled || selectionGesture || touchInteractive || (window.getSelection && window.getSelection().toString())) { if (wasDragging) showSpread(currentSpread); reportSelection(); return; }
           var touch = event.changedTouches[0];
           var dx = touch.clientX - touchStartX;
           var dy = touch.clientY - touchStartY;
           var quickSwipe = Math.abs(dx) > 18 && Date.now() - touchStartAt < 280;
           var width = dragWidth || pageWidth();
-          if ((draggingPage || Date.now() - touchStartAt < 450) && (Math.abs(dx) > Math.min(56, width * .12) || quickSwipe) && Math.abs(dx) > Math.abs(dy) * 1.15) {
+          if ((wasDragging || Date.now() - touchStartAt < 450) && (Math.abs(dx) > Math.min(56, width * .12) || quickSwipe) && Math.abs(dx) > Math.abs(dy) * 1.15) {
             lastSwipeAt = Date.now();
             var next = currentSpread + (dx < 0 ? 1 : -1);
             if (next >= 0 && next < spreadCount) showSpread(next, true);
             else { showSpread(currentSpread, true); turn(dx < 0 ? "next" : "previous"); }
           } else {
-            if (draggingPage) { lastSwipeAt = Date.now(); showSpread(currentSpread, true); }
+            if (wasDragging) { lastSwipeAt = Date.now(); showSpread(currentSpread, true); }
             window.setTimeout(reportSelection, 80);
           }
-        }, { passive: true });
+        }, { passive: false });
         document.addEventListener("touchcancel", function () { if (draggingPage) showSpread(currentSpread, true); draggingPage = false; }, { passive: true });
         // A gesture can end without touchend/touchcancel (the app backgrounds, a
         // system gesture takes over, the WebView is suspended) which used to
