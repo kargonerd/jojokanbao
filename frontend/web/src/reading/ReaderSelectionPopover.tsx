@@ -22,7 +22,10 @@ export function ReaderSelectionPopover({ rect, width, children }: { rect: Reader
     window.visualViewport?.addEventListener("scroll", measure);
     return () => { observer.disconnect(); window.removeEventListener("resize", measure); window.visualViewport?.removeEventListener("resize", measure); window.visualViewport?.removeEventListener("scroll", measure); };
   }, [width]);
-  const position = positionReaderSelection(rect, layout, layout);
+  // Touch platforms draw their own copy/share bar right above the selection.
+  // Lift ours past it, otherwise the reader can only reach the system menu.
+  const clearance = typeof navigator !== "undefined" && navigator.maxTouchPoints > 0 ? 44 : 0;
+  const position = positionReaderSelection(rect, layout, layout, clearance);
   return <div ref={ref} onPointerDown={(event) => { if ((event.target as Element).closest("button")) event.preventDefault(); }} className="book-selection-tools" data-side={position?.above ? "above" : "below"}
     style={{ width, left: position?.left, top: position?.top, visibility: position ? "visible" : "hidden", maxWidth: Math.max(0, layout.right - layout.left - 24), maxHeight: Math.max(64, layout.bottom - layout.top - 16) }}>
     {children}

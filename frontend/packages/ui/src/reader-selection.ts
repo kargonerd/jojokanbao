@@ -6,10 +6,16 @@ export interface ReaderSelectionRect {
 }
 
 /** Place a reading action menu in viewport coordinates, clear of the selection handles. */
+/**
+ * `clearance` lifts the menu above anything the platform draws over the selection
+ * itself. Mobile browsers show their own copy/share bar there, and it always
+ * paints above the page.
+ */
 export function positionReaderSelection(
   selection: ReaderSelectionRect,
   viewport: ReaderSelectionRect,
   menu: { width: number; height: number },
+  clearance = 0,
 ) {
   if (selection.bottom <= viewport.top || selection.top >= viewport.bottom
     || selection.right <= viewport.left || selection.left >= viewport.right) return undefined;
@@ -19,11 +25,11 @@ export function positionReaderSelection(
   const bottomEdge = viewport.bottom - 8;
   const center = (Math.max(viewport.left, selection.left) + Math.min(viewport.right, selection.right)) / 2;
   const left = clamp(center - width / 2, viewport.left + 12, viewport.right - width - 12);
-  const aboveTop = selection.top - 14 - menu.height;
+  const aboveTop = selection.top - 14 - menu.height - clearance;
   // Leave extra room below the range for native selection handles.
   const belowTop = selection.bottom + 28;
   const above = aboveTop >= topEdge || (belowTop + menu.height > bottomEdge
-    && selection.top - topEdge > bottomEdge - selection.bottom);
+    && selection.top - topEdge > bottomEdge - selection.bottom + clearance);
   return {
     left,
     top: clamp(above ? aboveTop : belowTop, topEdge, bottomEdge - menu.height),
