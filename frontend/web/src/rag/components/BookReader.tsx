@@ -12,7 +12,7 @@ import {
 } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { analytics } from "@jojo/analytics";
-import EasyMarker, { MenuType, type SelectionContent } from "easy-marker";
+import EasyMarker, { type MenuType, type SelectionContent } from "easy-marker";
 import { createNativeMenuSuppressor, type NativeMenuSuppressor } from "../../rag/nativeSelectionMenu";
 import { IoBookOutline, IoCopyOutline, IoCreateOutline, IoDownloadOutline, IoFlagOutline, IoListOutline, IoRadioButtonOnOutline, IoSearchOutline, IoSparklesOutline, IoTextOutline } from "react-icons/io5";
 import { bookProgressPercent, estimatedReadingMinutes, formatReadingTime, type SpeechLocation } from "@jojo/content";
@@ -344,8 +344,8 @@ export function BookReader({
     try {
       const marker = new EasyMarker({
         menuItems: [
-          { text: "划线", type: MenuType.SELECT, handler: (selection) => easyMarkerActions.current.underline(selection) },
-          { text: "复制", type: MenuType.SELECT, handler: (selection) => easyMarkerActions.current.copy(selection) },
+          { text: "划线", type: "select" as MenuType, handler: (selection) => easyMarkerActions.current.underline(selection) },
+          { text: "复制", type: "select" as MenuType, handler: (selection) => easyMarkerActions.current.copy(selection) },
         ],
         cursor: { color: "#8b1a1a" },
         mask: { color: "rgba(230,197,197,.55)" },
