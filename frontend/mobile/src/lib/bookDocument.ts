@@ -184,7 +184,9 @@ export function createBookDocument({ fragment, assetUrls, textScale, lineHeight,
   const rule = effectivePaperColor === "dark" ? "#3c403d" : "#d8d8d8";
   const readingLayout = readingMode === "paged" ? `
   html, body { width: 100%; height: 100%; overflow: hidden; overscroll-behavior: none; }
-  body { touch-action: pan-y pinch-zoom; }
+  /* Paged layout has nothing to pan: keeping the browser out of the
+     horizontal gesture avoids a pan-detection delay and gesture cancels. */
+  body { touch-action: pinch-zoom; }
   article {
     width: 100vw;
     height: 100vh;

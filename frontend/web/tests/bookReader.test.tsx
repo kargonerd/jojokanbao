@@ -459,6 +459,18 @@ describe("BookReader", () => {
     expect(screen.getByRole("navigation", { name: "阅读工具" })).toBeTruthy();
   });
 
+  it("hides mobile tools while a page follows a sideways drag", () => {
+    window.innerWidth = 390;
+    window.localStorage.setItem("jojo-reader-mode", "paged");
+    renderReader();
+    const paragraph = screen.getByText("这是正文。");
+    fireEvent.pointerDown(paragraph, { clientX: 300, clientY: 200 });
+    fireEvent.pointerMove(paragraph, { clientX: 180, clientY: 202 });
+    expect(screen.queryByRole("navigation", { name: "阅读工具" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "返回上一页" })).toBeNull();
+    fireEvent.pointerUp(paragraph);
+  });
+
   it("turns to the previous chapter with a left-edge tap", () => {
     window.innerWidth = 390;
     window.localStorage.setItem("jojo-reader-mode", "paged");

@@ -259,7 +259,7 @@ export function BookReader({
   const tocPanelRef = useRef<HTMLDivElement>(null);
   const currentPageRef = useRef(0);
   const pendingPageRef = useRef<"start" | "end" | null>("start");
-  const swipeRef = useRef<{ x: number; y: number; time: number; dragging: boolean; start: number; distance: number }>(undefined);
+  const swipeRef = useRef<{ x: number; y: number; time: number; dragging: boolean; start: number; distance: number; maxMove: number }>(undefined);
   const suppressSwipeClickRef = useRef(false);
   const resumePositionRef = useRef((() => {
     const query = new URLSearchParams(location.search);
@@ -769,7 +769,7 @@ export function BookReader({
     suppressSwipeClickRef.current = false;
     if (mode === "paged" && !contentLoading && !readerOverlayOpen && event.pointerType !== "mouse" && event.isPrimary !== false
       && !(event.target as Element).closest("a,button,input,textarea,[role='button']") && !window.getSelection()?.toString()) {
-      swipeRef.current = { x: event.clientX, y: event.clientY, time: Date.now(), dragging: false, start: currentPageRef.current * pageMetrics.step, distance: 0 };
+      swipeRef.current = { x: event.clientX, y: event.clientY, time: Date.now(), dragging: false, start: currentPageRef.current * pageMetrics.step, distance: 0, maxMove: 0 };
     }
     if (!mobileViewport) return;
     if (event.isPrimary === false) {
@@ -803,9 +803,18 @@ export function BookReader({
     const dx = event.clientX - swipe.x;
     const dy = event.clientY - swipe.y;
     if (!swipe.dragging) {
-      if (Math.abs(dy) > Math.abs(dx) + 8 || Date.now() - swipe.time > 450 || window.getSelection()?.toString()) { swipeRef.current = undefined; return; }
-      if (Math.abs(dx) < 10 || Math.abs(dx) < Math.abs(dy) * 1.3) return;
+      if (Math.abs(dy) > Math.abs(dx) + 8 || window.getSelection()?.toString()) { swipeRef.current = undefined; return; }
+      const previousMaxMove = swipe.maxMove;
+      swipe.maxMove = Math.max(previousMaxMove, Math.abs(dx), Math.abs(dy));
+      // A still finger for 450ms is a long press for text selection; a finger
+      // that was already moving keeps its drag even if the swipe is slow.
+      if (Date.now() - swipe.time > 450 && previousMaxMove < 10) { swipeRef.current = undefined; return; }
+      if (Math.abs(dx) < 6 || Math.abs(dx) < Math.abs(dy) * 1.15) return;
       swipe.dragging = true;
+      // Hide the mobile chrome as soon as the page follows the finger, the way
+      // WeChat Reading does, so the listen button and tool tabs never sit on
+      // top of the text being swiped.
+      if (mobileViewport) setChromeHidden(true);
       event.currentTarget.setPointerCapture?.(event.pointerId);
     }
     event.preventDefault();
@@ -1394,7 +1403,7 @@ export function BookReader({
       <div className="relative mx-auto h-full max-w-[1180px]">
         <article onClick={handleReaderClick} onPointerDown={startReaderTap} onPointerMove={moveReaderTap} onPointerCancel={cancelReaderTap} onPointerUp={finishReaderPointer} onKeyUp={captureTextSelection} className={`relative h-full overflow-hidden border-0 px-6 pb-32 pt-4 shadow-none sm:px-10 md:border md:px-16 md:py-14 md:shadow-[0_16px_55px_rgba(32,32,28,.14)] ${pageClass} ${paperTexture ? "book-page-texture" : ""} ${isDark ? "md:border-[#2d312e]" : "md:border-[#d8d8d1]"}`}>
           {columnsPerSpread === 2 && <div className={`pointer-events-none absolute inset-y-0 left-1/2 z-10 w-10 -translate-x-1/2 ${isDark ? "bg-[linear-gradient(90deg,transparent,rgba(0,0,0,.22),transparent)]" : "bg-[linear-gradient(90deg,transparent,rgba(77,75,66,.09),transparent)]"}`} aria-hidden="true" />}
-          <div ref={flowRef} data-book-page-flow data-book-reading-surface className={`relative h-full overflow-hidden [column-fill:auto] [&_img]:cursor-zoom-in [&_figure]:break-inside-avoid [&_h1]:[break-after:avoid-column] [&_h2]:[break-after:avoid-column] [&_li]:break-inside-avoid `} style={{ touchAction: "pan-y", columnCount: columnsPerSpread, columnGap: columnsPerSpread === 2 ? "80px" : "48px", fontSize: `${fontSize}px`, lineHeight: 1.95 }}>
+          <div ref={flowRef} data-book-page-flow data-book-reading-surface className={`relative h-full overflow-hidden [column-fill:auto] [&_img]:cursor-zoom-in [&_figure]:break-inside-avoid [&_h1]:[break-after:avoid-column] [&_h2]:[break-after:avoid-column] [&_li]:break-inside-avoid `} style={{ touchAction: "pinch-zoom", columnCount: columnsPerSpread, columnGap: columnsPerSpread === 2 ? "80px" : "48px", fontSize: `${fontSize}px`, lineHeight: 1.95 }}>
             {error && <p className="border-l-4 border-red bg-red/5 px-4 py-3 text-sm text-red">{error}</p>}<div data-speech-content style={{ display: "contents" }}>{children}</div>
             {trailingBlankPage && <span data-book-trailing-page className="book-page-trailing-blank" aria-hidden="true" />}
           </div>

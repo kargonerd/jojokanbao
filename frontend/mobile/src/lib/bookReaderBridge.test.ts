@@ -82,6 +82,7 @@ describe("book reader bridge", () => {
 
   it("accepts page, tap and chapter-boundary messages", () => {
     expect(parseBookReaderMessage('{"type":"reader-tap"}')).toEqual({ type: "reader-tap" });
+    expect(parseBookReaderMessage('{"type":"reader-page-turn"}')).toEqual({ type: "reader-page-turn" });
     expect(parseBookReaderMessage('{"type":"reader-boundary","direction":"next"}')).toEqual({
       type: "reader-boundary",
       direction: "next",
@@ -192,6 +193,52 @@ describe("book reader bridge", () => {
     expect(root.style.transition).toBe("none");
   });
 
+  it("keeps following the finger when the device prefers reduced motion", () => {
+    const { handlers, root } = readerHarness("paged", {}, { reduceMotion: true });
+    handlers.get("touchstart")!({ changedTouches: [{ clientX: 80, clientY: 50 }] });
+    handlers.get("touchmove")!({ changedTouches: [{ clientX: 50, clientY: 50 }], touches: [{}], preventDefault() {} });
+    expect(root.style.transform).toBe("translate3d(-30px, 0, 0)");
+    handlers.get("touchend")!({ changedTouches: [{ clientX: 50, clientY: 50 }] });
+    expect(root.style.transition).toBe("none");
+  });
+
+  it("keeps a slow swipe tracking after 450ms once the finger has moved", () => {
+    const { handlers, root, advanceTime } = readerHarness("paged");
+    const preventDefault = vi.fn();
+    handlers.get("touchstart")!({ changedTouches: [{ clientX: 80, clientY: 50 }] });
+    advanceTime(200);
+    handlers.get("touchmove")!({ changedTouches: [{ clientX: 68, clientY: 50 }], touches: [{}], preventDefault });
+    expect(root.style.transform).toBe("translate3d(-12px, 0, 0)");
+    advanceTime(400);
+    handlers.get("touchmove")!({ changedTouches: [{ clientX: 20, clientY: 50 }], touches: [{}], preventDefault });
+    expect(root.style.transform).toBe("translate3d(-60px, 0, 0)");
+  });
+
+  it("does not move an e-ink page under the finger", () => {
+    const { handlers, root } = readerHarness("paged", {}, { eInk: true });
+    handlers.get("touchstart")!({ changedTouches: [{ clientX: 80, clientY: 50 }] });
+    const before = root.style.transform;
+    handlers.get("touchmove")!({ changedTouches: [{ clientX: 50, clientY: 50 }], touches: [{}], preventDefault() {} });
+    expect(root.style.transform).toBe(before);
+  });
+
+  it("dismisses reading chrome once per swipe", () => {
+    const { handlers, messages, advanceTime } = readerHarness("paged");
+    const touch = (x: number, y: number) => ({ touches: [{}], changedTouches: [{ clientX: x, clientY: y }] });
+    const preventDefault = vi.fn();
+    handlers.get("touchstart")!(touch(80, 50));
+    handlers.get("touchmove")!({ ...touch(70, 50), preventDefault });
+    expect(preventDefault).toHaveBeenCalled();
+    expect(messages.filter((message) => message.type === "reader-page-turn")).toHaveLength(1);
+    handlers.get("touchmove")!({ ...touch(30, 50), preventDefault });
+    expect(messages.filter((message) => message.type === "reader-page-turn")).toHaveLength(1);
+    handlers.get("touchend")!(touch(30, 50));
+    expect(messages.filter((message) => message.type === "reader-page-turn")).toHaveLength(1);
+    advanceTime(500);
+    handlers.get("click")!({ target: { closest: () => null }, clientX: 90, clientY: 50 });
+    expect(messages.filter((message) => message.type === "reader-page-turn")).toHaveLength(1);
+  });
+
   it("steps pages by the layout width and realigns after the view returns", () => {
     const { handlers, root, window } = readerHarness("paged");
     // window.innerWidth is 100 in the harness; the laid-out page is wider, which
@@ -277,7 +324,7 @@ describe("book reader bridge", () => {
   });
 });
 
-function readerHarness(mode: "paged" | "scroll", anchors: Record<string, number> = {}) {
+function readerHarness(mode: "paged" | "scroll", anchors: Record<string, number> = {}, options: { reduceMotion?: boolean; eInk?: boolean } = {}) {
   const handlers = new Map<string, (event?: any) => void>();
   const messages: Array<{ type: string; [key: string]: unknown }> = [];
   const nodes: Record<string, any> = {};
@@ -292,13 +339,13 @@ function readerHarness(mode: "paged" | "scroll", anchors: Record<string, number>
     querySelectorAll: () => [], getElementById: (id: string) => nodes[id], createElement,
     addEventListener: (name: string, handler: (event?: any) => void) => handlers.set(name, handler),
   };
-  const window: any = { innerWidth: 100, innerHeight: 100, matchMedia: () => ({ matches: false }),
+  const window: any = { innerWidth: 100, innerHeight: 100, matchMedia: (query: string) => ({ matches: Boolean(options.reduceMotion) && query.includes("prefers-reduced-motion") }),
     getSelection: () => ({ isCollapsed: true, rangeCount: 0, toString: () => "" }),
     ReactNativeWebView: { postMessage: (message: string) => messages.push(JSON.parse(message)) },
     requestAnimationFrame: (callback: () => void) => callback(), setTimeout() {}, clearTimeout() {}, addEventListener() {},
     scrollTo: (_: number, y: number) => { scrolling.scrollTop = y; },
   };
   let now = 1_000_000;
-  runInNewContext(createBookReaderBridgeScript("start", false, [], undefined, undefined, undefined, { hasNext: true, hasPrevious: false, tocAnchorIds: Object.keys(anchors) }), { document, window, Date: { now: () => now } });
+  runInNewContext(createBookReaderBridgeScript("start", false, [], undefined, undefined, undefined, { hasNext: true, hasPrevious: false, tocAnchorIds: Object.keys(anchors), eInk: options.eInk }), { document, window, Date: { now: () => now } });
   return { handlers, messages, root, window, scrolling, advanceTime: (milliseconds: number) => { now += milliseconds; } };
 }
