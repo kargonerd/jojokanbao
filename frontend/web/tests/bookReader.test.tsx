@@ -244,6 +244,27 @@ describe("BookReader", () => {
     expect(screen.getByRole("link", { name: "返回上一页" })).toBeTruthy();
   });
 
+  it("keeps the chapter name on the paper once the chrome is dismissed", () => {
+    window.innerWidth = 390;
+    window.localStorage.setItem("jojo-reader-mode", "scroll");
+    renderReader();
+    const surface = document.querySelector("[data-book-reading-surface]") as HTMLElement;
+
+    // The toolbar strip names the book while it is showing.
+    expect(screen.getByRole("link", { name: "返回上一页" })).toBeTruthy();
+    expect(document.querySelector("[data-reader-quiet-title]")).toBeNull();
+
+    fireEvent.click(surface, { clientX: 200, clientY: 200, detail: 1 });
+
+    // Dismissed chrome must not leave an empty band: the same slot keeps its
+    // height but shows the chapter on the page instead.
+    expect(screen.queryByRole("link", { name: "返回上一页" })).toBeNull();
+    const quiet = document.querySelector("[data-reader-quiet-title]") as HTMLElement;
+    expect(quiet).not.toBeNull();
+    expect(quiet.textContent).toBe("第一章");
+    expect(quiet.className).toContain("h-12");
+  });
+
   it("switches to scrolling mode and remembers the choice", async () => {
     renderReader();
     fireEvent.click(screen.getByRole("button", { name: "文字设置" }));
@@ -403,8 +424,9 @@ describe("BookReader", () => {
     fireEvent.click(paragraph, { clientX: 195, detail: 1 });
     expect(screen.queryByRole("navigation", { name: "阅读工具" })).toBeNull();
     expect(screen.queryByRole("link", { name: "返回上一页" })).toBeNull();
-    expect(within(container.querySelector("header")!).getByText("测试书")).toBeTruthy();
-    expect(container.querySelector("header")?.hasAttribute("inert")).toBe(true);
+    // Dismissed chrome leaves the chapter name on the paper, not an empty strip.
+    expect(container.querySelector("header")?.getAttribute("data-reader-quiet-title")).toBe("true");
+    expect(within(container.querySelector("header")!).getByText("第一章")).toBeTruthy();
     expect(container.querySelector("[data-reader-mobile-toolbar]")?.hasAttribute("inert")).toBe(true);
     expect(container.querySelector("[data-book-reading-surface]")).toBe(surface);
     expect(screen.getByText("这是正文。")).toBe(paragraph);
@@ -413,6 +435,7 @@ describe("BookReader", () => {
     fireEvent.click(paragraph, { clientX: 195, detail: 1 });
     expect(screen.getByRole("navigation", { name: "阅读工具" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "返回上一页" })).toBeTruthy();
+    expect(container.querySelector("header")?.hasAttribute("data-reader-quiet-title")).toBe(false);
     expect(container.querySelector("header")?.hasAttribute("inert")).toBe(false);
     expect(container.querySelector("[data-reader-mobile-toolbar]")?.hasAttribute("inert")).toBe(false);
   });
