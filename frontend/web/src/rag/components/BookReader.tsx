@@ -261,8 +261,10 @@ export function BookReader({
   const pendingPageRef = useRef<"start" | "end" | null>("start");
   const swipeRef = useRef<{ x: number; y: number; time: number; dragging: boolean; start: number; distance: number; maxMove: number }>(undefined);
   const pageAnimationRef = useRef<number | undefined>(undefined);
+  const articleRef = useRef<HTMLElement>(null);
   const swipeEndedAtRef = useRef(0);
   const suppressSwipeClickRef = useRef(false);
+  const tapHandledRef = useRef(false);
   const resumePositionRef = useRef((() => {
     const query = new URLSearchParams(location.search);
     const requestedChapter = query.get("chapter");
@@ -428,6 +430,22 @@ export function BookReader({
     if (jumpTimerRef.current) window.clearTimeout(jumpTimerRef.current);
     if (pageAnimationRef.current !== undefined) window.cancelAnimationFrame(pageAnimationRef.current);
   }, []);
+
+  useEffect(() => {
+    const element = articleRef.current;
+    if (!element || mode !== "paged") return;
+    // A page drag must not leave a synthesized click behind. Browsers may
+    // deliver it after the finger has already tapped the new page, which
+    // toggles the toolbar twice and makes the first tap look ignored.
+    const suppressSyntheticClick = (event: TouchEvent): void => {
+      if (!swipeRef.current?.dragging && !suppressSwipeClickRef.current) return;
+      event.preventDefault();
+      suppressSwipeClickRef.current = false;
+      swipeEndedAtRef.current = 0;
+    };
+    element.addEventListener("touchend", suppressSyntheticClick, { passive: false });
+    return () => element.removeEventListener("touchend", suppressSyntheticClick);
+  }, [mode]);
 
   useEffect(() => {
     if (!tocOpen || tocQuery) return;
@@ -804,6 +822,7 @@ export function BookReader({
 
   function startReaderTap(event: ReactPointerEvent<HTMLElement>): void {
     suppressSwipeClickRef.current = false;
+    tapHandledRef.current = false;
     if (mode === "paged" && pageAnimationRef.current !== undefined) {
       window.cancelAnimationFrame(pageAnimationRef.current);
       pageAnimationRef.current = undefined;
@@ -874,7 +893,24 @@ export function BookReader({
   function finishReaderPointer(event: ReactPointerEvent<HTMLElement>): void {
     const swipe = swipeRef.current;
     swipeRef.current = undefined;
-    if (!swipe?.dragging) { capturePointerTextSelection(); return; }
+    if (!swipe?.dragging) {
+      // With the chrome hidden after a swipe, show it on the first touch-up in
+      // the middle of the page. Some mobile browsers drop the click for that
+      // first tap, which used to require a second tap.
+      if (mode === "paged" && mobileViewport && chromeHidden && event.pointerType !== "mouse"
+        && readerTapRef.current && !readerTapRef.current.cancelled
+        && !readerOverlayOpen && !textSelection
+        && !(event.target as Element).closest("a,button,input,textarea,select,label,[role='button'],[contenteditable='true'],img,mark[data-annotation-id]")) {
+        const bounds = event.currentTarget.getBoundingClientRect();
+        const position = (event.clientX - bounds.left) / (bounds.width || window.innerWidth);
+        if (position > 1 / 3 && position < 2 / 3) {
+          setChromeHidden(false);
+          tapHandledRef.current = true;
+        }
+      }
+      capturePointerTextSelection();
+      return;
+    }
     suppressSwipeClickRef.current = true;
     swipeEndedAtRef.current = Date.now();
     if (flowRef.current) flowRef.current.style.transform = "";
@@ -903,6 +939,7 @@ export function BookReader({
   }
 
   function handleReaderClick(event: ReactMouseEvent<HTMLElement>): void {
+    if (tapHandledRef.current) { tapHandledRef.current = false; event.preventDefault(); return; }
     const tap = readerTapRef.current;
     readerTapRef.current = null;
     if (suppressSwipeClickRef.current) {
@@ -1456,7 +1493,7 @@ export function BookReader({
       </main>
     </div> : <main className="relative h-[calc(100%-48px)] px-0 py-0 md:px-20 md:py-6">
       <div className="relative mx-auto h-full max-w-[1180px]">
-        <article onClick={handleReaderClick} onPointerDown={startReaderTap} onPointerMove={moveReaderTap} onPointerCancel={cancelReaderTap} onPointerUp={finishReaderPointer} onKeyUp={captureTextSelection} className={`relative h-full overflow-hidden border-0 px-6 pb-32 pt-4 shadow-none sm:px-10 md:border md:px-16 md:py-14 md:shadow-[0_16px_55px_rgba(32,32,28,.14)] ${pageClass} ${paperTexture ? "book-page-texture" : ""} ${isDark ? "md:border-[#2d312e]" : "md:border-[#d8d8d1]"}`}>
+        <article ref={articleRef} onClick={handleReaderClick} onPointerDown={startReaderTap} onPointerMove={moveReaderTap} onPointerCancel={cancelReaderTap} onPointerUp={finishReaderPointer} onKeyUp={captureTextSelection} className={`relative h-full overflow-hidden border-0 px-6 pb-32 pt-4 shadow-none sm:px-10 md:border md:px-16 md:py-14 md:shadow-[0_16px_55px_rgba(32,32,28,.14)] ${pageClass} ${paperTexture ? "book-page-texture" : ""} ${isDark ? "md:border-[#2d312e]" : "md:border-[#d8d8d1]"}`}>
           {columnsPerSpread === 2 && <div className={`pointer-events-none absolute inset-y-0 left-1/2 z-10 w-10 -translate-x-1/2 ${isDark ? "bg-[linear-gradient(90deg,transparent,rgba(0,0,0,.22),transparent)]" : "bg-[linear-gradient(90deg,transparent,rgba(77,75,66,.09),transparent)]"}`} aria-hidden="true" />}
           <div ref={flowRef} data-book-page-flow data-book-reading-surface className={`relative h-full overflow-hidden [column-fill:auto] [&_img]:cursor-zoom-in [&_figure]:break-inside-avoid [&_h1]:[break-after:avoid-column] [&_h2]:[break-after:avoid-column] [&_li]:break-inside-avoid `} style={{ touchAction: "pinch-zoom", columnCount: columnsPerSpread, columnGap: columnsPerSpread === 2 ? "80px" : "48px", fontSize: `${fontSize}px`, lineHeight: 1.95 }}>
             {error && <p className="border-l-4 border-red bg-red/5 px-4 py-3 text-sm text-red">{error}</p>}<div data-speech-content style={{ display: "contents" }}>{children}</div>
