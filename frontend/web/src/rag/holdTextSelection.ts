@@ -44,6 +44,12 @@ export interface HoldTextSelectionDeps {
    * glide; when true, any finger drift triggers the fallback.
    */
   driftTriggers?: boolean;
+  /**
+   * True while the surface has scrolled within the recent past: Chromium
+   * keeps suppressing the native long-press for a second or two after a
+   * glide has visually stopped, while the surface itself no longer moves.
+   */
+  recentMotion?: () => boolean;
 }
 
 export interface HoldTextSelectionHandlers {
@@ -98,11 +104,12 @@ export function createHoldTextSelection(deps: HoldTextSelectionDeps): HoldTextSe
     const surface = deps.surface();
     const selection = deps.selection();
     if (!surface || !selection || deps.blocked?.()) { cancel(); return; }
-    // A surface that stayed put and a finger that did not drift mean the
-    // native long-press owns this press — even over an existing selection.
+    // The native long-press owns this press only when nothing hints that it
+    // will fail: a surface that stayed put, a finger that did not drift, and
+    // no recent scrolling (its suppression outlives the visible glide).
     const surfaceMoved = Math.abs(surface.scrollLeft + surface.scrollTop - offsetAtStart) > GLIDE_EPSILON;
     const fingerDrifted = maxDrift > DRIFT_TRIGGERS_PX;
-    if (!surfaceMoved && !(deps.driftTriggers && fingerDrifted)) { cancel(); return; }
+    if (!surfaceMoved && !(deps.driftTriggers && fingerDrifted) && !deps.recentMotion?.()) { cancel(); return; }
     // When the fallback fires, the native gesture has already lost this press
     // and an older selection (ours or a stale native one) must not block the
     // re-selection: it gets replaced below.
