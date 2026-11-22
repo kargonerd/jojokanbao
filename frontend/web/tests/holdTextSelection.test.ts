@@ -46,7 +46,7 @@ function touchEvent(overrides: { touches?: Array<{ clientX: number; clientY: num
   } as unknown as TouchEvent;
 }
 
-function setup(options: { scrollTop?: number; selectionCollapsed?: boolean; blocked?: boolean; hitTest?: () => Range | null; driftTriggers?: boolean; freeze?: (surface: HTMLElement) => void } = {}) {
+function setup(options: { scrollTop?: number; selectionCollapsed?: boolean; blocked?: boolean; hitTest?: (x: number, y: number) => Range | null; driftTriggers?: boolean; freeze?: (surface: HTMLElement) => void } = {}) {
   const surface = fakeSurface(options.scrollTop ?? 0);
   const selectionCalls: string[] = [];
   const queue = immediateQueue();
@@ -194,6 +194,37 @@ describe("hold text selection fallback", () => {
     hold.onTouchMove(touchEvent({ touches: [{ clientX: 102, clientY: 202 }] }));
     queue.flush();
     expect(selectionCalls).toEqual(["removeAllRanges", "addRange"]);
+  });
+
+  it("paged: an existing selection does not block a drifted re-selection", () => {
+    const { selectionCalls, queue, hold } = setup({ scrollTop: 0, driftTriggers: true, freeze: () => {}, selectionCollapsed: false });
+    hold.onTouchStart(touchEvent());
+    hold.onTouchMove(touchEvent({ touches: [{ clientX: 103, clientY: 203 }] }));
+    queue.flush();
+    expect(selectionCalls).toEqual(["removeAllRanges", "addRange"]);
+  });
+
+  it("paged: probes nearby points when the caret lands off a text line", () => {
+    const node = textNode("示例文本内容");
+    const probes: Array<[number, number]> = [];
+    const { selectionCalls, queue, hold } = setup({
+      scrollTop: 0,
+      driftTriggers: true,
+      freeze: () => {},
+      hitTest: (x: number, y: number) => {
+        probes.push([x, y]);
+        // The first probe (exact point, between two lines) answers an element;
+        // the upward probe finds the text line above.
+        if (probes.length === 1) return { startContainer: { nodeType: Node.ELEMENT_NODE } } as unknown as Range;
+        return { startContainer: node, startOffset: 2 } as unknown as Range;
+      },
+    });
+    hold.onTouchStart(touchEvent({ touches: [{ clientX: 200, clientY: 300 }] }));
+    hold.onTouchMove(touchEvent({ touches: [{ clientX: 203, clientY: 303 }] }));
+    queue.flush();
+    expect(selectionCalls).toEqual(["removeAllRanges", "addRange"]);
+    expect(probes[0]).toEqual([200, 300]);
+    expect(probes[1]).toEqual([200, 292]);
   });
 
   it("paged: a perfectly still finger on a still surface stays native", () => {
