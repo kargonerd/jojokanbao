@@ -226,8 +226,10 @@ describe("hold text selection fallback", () => {
     hold.onTouchMove(touchEvent({ touches: [{ clientX: 203, clientY: 303 }] }));
     queue.flush();
     expect(selectionCalls).toEqual(["removeAllRanges", "addRange"]);
-    expect(probes[0]).toEqual([200, 300]);
-    expect(probes[1]).toEqual([200, 292]);
+    // The probe runs at the finger's live position (3px drift), not the
+    // touchstart point: mid-glide the page has moved under the finger.
+    expect(probes[0]).toEqual([203, 303]);
+    expect(probes[1]).toEqual([203, 295]);
   });
 
   it("paged: a perfectly still finger on a still surface stays native", () => {

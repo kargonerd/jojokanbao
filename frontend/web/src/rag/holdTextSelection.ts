@@ -50,6 +50,13 @@ export interface HoldTextSelectionDeps {
    * glide has visually stopped, while the surface itself no longer moves.
    */
   recentMotion?: () => boolean;
+  /**
+   * How long a still finger waits before the fallback takes over. Must
+   * outwait the native long-press (~500ms) so a successful native gesture
+   * wins the race; scroll mode waits longer because its glide makes the
+   * native start-up slower and jumpier.
+   */
+  holdMs?: number;
 }
 
 export interface HoldTextSelectionHandlers {
@@ -64,6 +71,8 @@ export function createHoldTextSelection(deps: HoldTextSelectionDeps): HoldTextSe
   let cancelHold: (() => void) | undefined;
   let startX = 0;
   let startY = 0;
+  let fingerX = 0;
+  let fingerY = 0;
   let startOffset = 0;
   let maxDrift = 0;
   let collapsedAtStart = true;
@@ -83,20 +92,24 @@ export function createHoldTextSelection(deps: HoldTextSelectionDeps): HoldTextSe
     if (!surface) return;
     startX = event.touches[0]!.clientX;
     startY = event.touches[0]!.clientY;
+    fingerX = startX;
+    fingerY = startY;
     startOffset = surface.scrollLeft + surface.scrollTop;
     collapsedAtStart = deps.selection()?.isCollapsed ?? true;
     maxDrift = 0;
     tracking = true;
     cancelHold = deps.schedule(() => {
       cancelHold = undefined;
-      holdFired(startX, startY, startOffset);
-    }, HOLD_MS);
+      holdFired(fingerX, fingerY, startOffset);
+    }, deps.holdMs ?? HOLD_MS);
   }
 
   function onTouchMove(event: TouchEvent): void {
     if (!tracking) return;
     const touch = event.touches[0];
     if (!touch) { cancel(); return; }
+    fingerX = touch.clientX;
+    fingerY = touch.clientY;
     const drift = Math.hypot(touch.clientX - startX, touch.clientY - startY);
     maxDrift = Math.max(maxDrift, drift);
     if (drift > MOVE_CANCELS_PX) cancel();

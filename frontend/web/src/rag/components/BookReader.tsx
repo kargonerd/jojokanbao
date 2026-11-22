@@ -1058,6 +1058,10 @@ export function BookReader({
       },
       blocked: () => readerOverlayOpenRef.current,
       recentMotion: () => performance.now() - lastScrollAtRef.current < 2000,
+      // Outwait the native long-press: it starts selecting around 500ms, so a
+      // still-collapsed selection at 700ms means the native gesture lost this
+      // press and the fallback is safe to take over without a fight.
+      holdMs: mode === "scroll" ? 700 : undefined,
       ...(mode === "scroll" ? {} : {
         // The page-turn animation slides the text away from under the finger:
         // a selection made mid-flight ends up in an off-screen column. Snap to
