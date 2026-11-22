@@ -269,6 +269,29 @@ describe("BookReader", () => {
     expect(quiet.className).toContain("book-quiet-title");
   });
 
+  it("acts on a touch press even when the browser withholds the click", async () => {
+    annotationApi.createAnnotation.mockResolvedValue(ownUnderline);
+    const { container } = renderReader();
+    const paragraph = container.querySelector("#citation-target")!;
+    const range = document.createRange();
+    range.selectNodeContents(paragraph);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+    fireEvent.pointerUp(container.querySelector("[data-book-page-flow]")!);
+
+    const button = await screen.findByRole("button", { name: "划线" });
+    // The popover cancels pointerdown to keep the selection; on touch that also
+    // suppresses the synthesised click, so the press itself must act.
+    fireEvent.pointerDown(button, { pointerType: "touch" });
+    // The press alone must be enough: no click is synthesised on this path.
+    await waitFor(() => expect(annotationApi.createAnnotation).toHaveBeenCalledTimes(1));
+
+    // If a click still arrives, it must not run the write twice.
+    fireEvent.click(button);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+    expect(annotationApi.createAnnotation).toHaveBeenCalledTimes(1);
+  });
+
   it("switches to scrolling mode and remembers the choice", async () => {
     renderReader();
     fireEvent.click(screen.getByRole("button", { name: "文字设置" }));
