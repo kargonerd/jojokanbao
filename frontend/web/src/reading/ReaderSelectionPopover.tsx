@@ -22,10 +22,10 @@ export function ReaderSelectionPopover({ rect, width, children }: { rect: Reader
     window.visualViewport?.addEventListener("scroll", measure);
     return () => { observer.disconnect(); window.removeEventListener("resize", measure); window.visualViewport?.removeEventListener("resize", measure); window.visualViewport?.removeEventListener("scroll", measure); };
   }, [width]);
-  // Touch platforms draw their own copy/share bar right above the selection, so
-  // ours goes below it instead of stacking another row on top.
-  const clearance = typeof navigator !== "undefined" && navigator.maxTouchPoints > 0 ? 44 : 0;
-  const position = positionReaderSelection(rect, layout, layout, clearance);
+  // Native selection menus are suppressed upstream, so the plain layout above
+  // the passage is safe again. The positioner keeps its clearance switch as the
+  // documented fallback for engines that ignore the suppression.
+  const position = positionReaderSelection(rect, layout, layout);
   return <div ref={ref} onPointerDown={(event) => { if ((event.target as Element).closest("button")) event.preventDefault(); }} className="book-selection-tools" data-side={position?.above ? "above" : "below"}
     style={{ width, left: position?.left, top: position?.top, visibility: position ? "visible" : "hidden", maxWidth: Math.max(0, layout.right - layout.left - 24), maxHeight: Math.max(64, layout.bottom - layout.top - 16) }}>
     {children}
