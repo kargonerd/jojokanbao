@@ -1037,10 +1037,10 @@ export function BookReader({
     };
   }, [captureTextSelection]);
 
-  // A long-press whose touch began while the reading surface was still gliding
+  // A long-press whose touch began while the reading surface was still moving
   // never selects natively on Chromium — and the suppression outlives the
-  // visible glide by a second or two, even when the surface has stopped
-  // moving. Capture the word ourselves whenever that is the case.
+  // visible motion by a second or two, in scroll glides as well as page-turn
+  // animations. Capture the word ourselves whenever that is the case.
   const readerOverlayOpenRef = useRef(readerOverlayOpen);
   readerOverlayOpenRef.current = readerOverlayOpen;
   const lastScrollAtRef = useRef(0);
@@ -1048,6 +1048,7 @@ export function BookReader({
     if (!mobileViewport) return;
     const surface = mode === "scroll" ? scrollRef.current : flowRef.current;
     if (!surface) return;
+    const onSurfaceScroll = (): void => { lastScrollAtRef.current = performance.now(); };
     const hold = createHoldTextSelection({
       surface: () => mode === "scroll" ? scrollRef.current : flowRef.current,
       selection: () => window.getSelection(),
@@ -1056,15 +1057,16 @@ export function BookReader({
         return () => window.clearTimeout(id);
       },
       blocked: () => readerOverlayOpenRef.current,
-      ...(mode === "scroll" ? {
-        recentMotion: () => performance.now() - lastScrollAtRef.current < 2000,
-      } : {
-        // No freeze here: the fallback fires 450ms into the hold, by which
-        // time the page-turn glide has finished, and snapping scrollLeft mid
-        // animation would strand the article between two spreads. A drifting
-        // finger alone suppresses the native long-press in this mode, so any
-        // drift hands the press to the fallback.
-        freeze: () => {},
+      recentMotion: () => performance.now() - lastScrollAtRef.current < 2000,
+      ...(mode === "scroll" ? {} : {
+        // The page-turn animation slides the text away from under the finger:
+        // a selection made mid-flight ends up in an off-screen column. Snap to
+        // the page the turn is heading for (currentPageRef is its target), so
+        // the passage stays where the finger left it.
+        freeze: (flow: HTMLElement) => {
+          const gap = Number.parseFloat(window.getComputedStyle(flow).columnGap) || 64;
+          flow.scrollLeft = currentPageRef.current * (flow.clientWidth + gap);
+        },
         driftTriggers: true,
       }),
     });
@@ -1072,11 +1074,13 @@ export function BookReader({
     surface.addEventListener("touchmove", hold.onTouchMove, { passive: true });
     surface.addEventListener("touchend", hold.onTouchEnd, { passive: true });
     surface.addEventListener("touchcancel", hold.onTouchCancel, { passive: true });
+    surface.addEventListener("scroll", onSurfaceScroll, { passive: true });
     return () => {
       surface.removeEventListener("touchstart", hold.onTouchStart);
       surface.removeEventListener("touchmove", hold.onTouchMove);
       surface.removeEventListener("touchend", hold.onTouchEnd);
       surface.removeEventListener("touchcancel", hold.onTouchCancel);
+      surface.removeEventListener("scroll", onSurfaceScroll);
       hold.dispose();
     };
   }, [mode, mobileViewport]);

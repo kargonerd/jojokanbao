@@ -66,6 +66,7 @@ export function createHoldTextSelection(deps: HoldTextSelectionDeps): HoldTextSe
   let startY = 0;
   let startOffset = 0;
   let maxDrift = 0;
+  let collapsedAtStart = true;
   let tracking = false;
 
   function cancel(): void {
@@ -83,6 +84,7 @@ export function createHoldTextSelection(deps: HoldTextSelectionDeps): HoldTextSe
     startX = event.touches[0]!.clientX;
     startY = event.touches[0]!.clientY;
     startOffset = surface.scrollLeft + surface.scrollTop;
+    collapsedAtStart = deps.selection()?.isCollapsed ?? true;
     maxDrift = 0;
     tracking = true;
     cancelHold = deps.schedule(() => {
@@ -104,6 +106,10 @@ export function createHoldTextSelection(deps: HoldTextSelectionDeps): HoldTextSe
     const surface = deps.surface();
     const selection = deps.selection();
     if (!surface || !selection || deps.blocked?.()) { cancel(); return; }
+    // A selection that appeared during this very hold was built by the native
+    // gesture — it succeeded, keep it (and its handles). Only a selection
+    // that predates the press is stale and gets replaced below.
+    if (collapsedAtStart && !selection.isCollapsed) { cancel(); return; }
     // The native long-press owns this press only when nothing hints that it
     // will fail: a surface that stayed put, a finger that did not drift, and
     // no recent scrolling (its suppression outlives the visible glide).
