@@ -11,6 +11,19 @@ describe("reader selection menu placement", () => {
     expect(position.top + menu.height).toBe(386);
     expect(position.left + position.arrowLeft).toBe(185);
   });
+  it("leaves room for the platform's own selection bar on touch", () => {
+    const position = positionReaderSelection({ left: 160, right: 210, top: 400, bottom: 428 }, viewport, menu, 44)!;
+    expect(position.above).toBe(true);
+    // Sits one system-bar height above where the plain layout would put it.
+    expect(position.top + menu.height).toBe(386 - 44);
+  });
+
+  it("prefers the space below when the platform bar leaves no room above", () => {
+    const position = positionReaderSelection({ left: 60, right: 120, top: 150, bottom: 176 }, viewport, menu, 44)!;
+    expect(position.above).toBe(false);
+    expect(position.top).toBe(204);
+  });
+
   it("uses the space below a top-of-page selection, clearing its handles", () => {
     const position = positionReaderSelection({ left: 35, right: 90, top: 64, bottom: 90 }, viewport, menu)!;
     expect(position.above).toBe(false);
