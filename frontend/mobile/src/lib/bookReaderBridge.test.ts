@@ -202,6 +202,20 @@ describe("book reader bridge", () => {
     expect(root.style.transition).toBe("none");
   });
 
+  it("accepts the first tap after a swipe while still ignoring the swipe's own click", () => {
+    const { handlers, messages, advanceTime } = readerHarness("paged");
+    const touch = (x: number, y: number) => ({ touches: [{}], changedTouches: [{ clientX: x, clientY: y }] });
+    handlers.get("touchstart")!(touch(80, 50));
+    handlers.get("touchmove")!({ ...touch(30, 50), preventDefault() {} });
+    handlers.get("touchend")!(touch(30, 50));
+    handlers.get("click")!({ target: { closest: () => null }, clientX: 50, clientY: 50 });
+    expect(messages.some((message) => message.type === "reader-tap")).toBe(false);
+    advanceTime(100);
+    handlers.get("touchstart")!(touch(50, 50));
+    handlers.get("click")!({ target: { closest: () => null }, clientX: 50, clientY: 50 });
+    expect(messages.some((message) => message.type === "reader-tap")).toBe(true);
+  });
+
   it("keeps a slow swipe tracking after 450ms once the finger has moved", () => {
     const { handlers, root, advanceTime } = readerHarness("paged");
     const preventDefault = vi.fn();
