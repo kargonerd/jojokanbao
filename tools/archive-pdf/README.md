@@ -82,6 +82,21 @@ python tools/archive-pdf/canonicalize_magazines.py prepare --publication hq
 python tools/archive-pdf/canonicalize_magazines.py upload --publication hq
 ```
 
+## Local PDF import
+
+`sync_rmrb.py --source-dir` reads full-issue PDFs named `YYYYMMDD.pdf`
+from a local directory instead of fetching pages from the publisher. It goes
+through the same linearize, Canonical, and Delivery publishing path, so a
+missing archive year can be imported from an offline copy.
+
+```bash
+# Stage one date locally; no remote is modified.
+pnpm sync:rmrb --date 20130101 --source-dir /path/to/rmrb-pdfs --dry-run
+
+# Publish an inclusive range to HF Canonical and B2 Delivery.
+pnpm sync:rmrb --start-date 20130101 --date 20131231 --source-dir /path/to/rmrb-pdfs
+```
+
 `sync_rmrb.py` requires `pip install -r tools/archive-pdf/requirements.txt`, plus
 the `qpdf`, `node`, and `rclone` executables. It publishes to the Canonical
 dataset `luoxiaozhuang/jojokanbao-dataset` (`HF_TOKEN`
