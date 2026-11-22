@@ -51,6 +51,7 @@ export type BookReaderMessage =
   | { type: "reader-speech-position"; requestId: number; position: SpeechReadingPosition }
   | { type: "reader-selection-clear" }
   | { type: "reader-tap" }
+  | { type: "reader-page-turn" }
   | { type: "reader-scroll-gesture" }
   | { type: "reader-boundary"; direction: "previous" | "next" }
   | { type: "reader-chapter-request"; chapterId: string }
@@ -132,6 +133,7 @@ export function parseBookReaderMessage(value: string): BookReaderMessage | null 
       return message as Extract<BookReaderMessage, { type: "reader-speech-position" }>;
     }
     if (message.type === "reader-tap") return { type: "reader-tap" };
+    if (message.type === "reader-page-turn") return { type: "reader-page-turn" };
     if (message.type === "reader-scroll-gesture") return { type: "reader-scroll-gesture" };
     if (message.type === "reader-chapter-request" && typeof message.chapterId === "string" && message.chapterId) return { type: "reader-chapter-request", chapterId: message.chapterId };
     if (message.type === "reader-annotation" && typeof message.id === "string" && message.id) {
@@ -236,11 +238,16 @@ export function createBookReaderBridgeScript(
       var touchStartY = 0;
       var touchStartAt = 0;
       var draggingPage = false;
+      var dragArticle = null;
+      var dragWidth = 0;
+      var touchMaxMove = 0;
+      var longPressGesture = false;
       var touchInteractive = false;
       var touchGestureCancelled = false;
       var scrollGestureReported = false;
       var tocAnchorIds = ${jsonArgument(navigation.tocAnchorIds ?? [])};
-      var reduceMotion = ${navigation.eInk ? "true" : "false"} || Boolean(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+      var eInk = ${navigation.eInk ? "true" : "false"};
+      var reduceMotion = eInk || Boolean(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
       var selectionGesture = false;
       var lastSwipeAt = 0;
       var measureTimer = 0;
@@ -664,6 +671,8 @@ ${ANNOTATION_DOM_SCRIPT}
         draggingPage = false;
         touchGestureCancelled = Boolean(event.touches && event.touches.length !== 1);
         scrollGestureReported = false;
+        touchMaxMove = 0;
+        longPressGesture = false;
         touchInteractive = Boolean(event.target && event.target.closest && event.target.closest("a, button, input"));
 
       }, { passive: true });
@@ -725,19 +734,34 @@ ${ANNOTATION_DOM_SCRIPT}
             if (draggingPage) { showSpread(currentSpread); draggingPage = false; }
             return;
           }
-          if (!draggingPage && Date.now() - touchStartAt > 450) return;
           var touch = event.changedTouches[0];
           var dx = touch.clientX - touchStartX;
           var dy = touch.clientY - touchStartY;
-          if (!draggingPage && (Math.abs(dx) < 10 || Math.abs(dx) < Math.abs(dy) * 1.25)) return;
+          // Hold still for 450ms and the gesture belongs to text selection.
+          // A finger that was already moving keeps its drag, however slowly.
+          if (!draggingPage && !longPressGesture && Date.now() - touchStartAt > 450 && touchMaxMove < 10) {
+            longPressGesture = true;
+          }
+          if (longPressGesture) return;
+          touchMaxMove = Math.max(touchMaxMove, Math.abs(dx), Math.abs(dy));
+          if (!draggingPage && (Math.abs(dx) < 6 || Math.abs(dx) < Math.abs(dy) * 1.15)) return;
+          if (!draggingPage) {
+            // Cache layout reads for the whole gesture: reading clientWidth on
+            // every move forces the multi-column document to lay out again.
+            dragArticle = articleRoot();
+            dragWidth = pageWidth();
+            if (dragArticle) dragArticle.style.transition = "none";
+            post({ type: "reader-page-turn" });
+          }
           draggingPage = true;
           event.preventDefault();
-          var article = articleRoot();
-          if (!article || reduceMotion) return;
+          // Reduced motion suppresses the release animation, not direct
+          // manipulation: the page must still follow the finger. E-ink screens
+          // keep the page still because every drag redraw ghosts badly.
+          if (!dragArticle || eInk) return;
           var boundary = (currentSpread === 0 && dx > 0) || (currentSpread === spreadCount - 1 && dx < 0);
-          var offset = -currentSpread * pageWidth() + (boundary ? dx * .25 : dx);
-          article.style.transition = "none";
-          article.style.transform = "translate3d(" + offset + "px, 0, 0)";
+          var offset = -currentSpread * dragWidth + (boundary ? dx * .25 : dx);
+          dragArticle.style.transform = "translate3d(" + offset + "px, 0, 0)";
         }, { passive: false });
         document.addEventListener("touchend", function (event) {
           if (touchGestureCancelled || selectionGesture || touchInteractive || (window.getSelection && window.getSelection().toString())) { if (draggingPage) showSpread(currentSpread); reportSelection(); return; }
@@ -745,7 +769,8 @@ ${ANNOTATION_DOM_SCRIPT}
           var dx = touch.clientX - touchStartX;
           var dy = touch.clientY - touchStartY;
           var quickSwipe = Math.abs(dx) > 24 && Date.now() - touchStartAt < 250;
-          if ((draggingPage || Date.now() - touchStartAt < 450) && (Math.abs(dx) > Math.min(90, window.innerWidth * .2) || quickSwipe) && Math.abs(dx) > Math.abs(dy) * 1.25) {
+          var width = dragWidth || pageWidth();
+          if ((draggingPage || Date.now() - touchStartAt < 450) && (Math.abs(dx) > Math.min(72, width * .16) || quickSwipe) && Math.abs(dx) > Math.abs(dy) * 1.15) {
             lastSwipeAt = Date.now();
             var next = currentSpread + (dx < 0 ? 1 : -1);
             if (next >= 0 && next < spreadCount) showSpread(next, true);
