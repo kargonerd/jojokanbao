@@ -629,6 +629,19 @@ describe("BookReader", () => {
     });
   });
 
+  it("restores the saved reading mode on the next visit", () => {
+    window.innerWidth = 390;
+    const first = renderReader();
+    fireEvent.click(screen.getByRole("button", { name: "文字设置" }));
+    fireEvent.click(screen.getByRole("button", { name: "翻页" }));
+    expect(window.localStorage.getItem("jojo-reader-mode")).toBe("paged");
+    first.unmount();
+
+    const { container } = renderReader();
+    expect(container.querySelector("[data-book-page-flow]")).toBeTruthy();
+    expect(container.querySelector(".book-scroll-surface")).toBeNull();
+  });
+
   it.each([390, 1200])("previews font changes throughout a drag and dismisses settings only on release at %spx", (width) => {
     window.innerWidth = width;
     renderReader();
