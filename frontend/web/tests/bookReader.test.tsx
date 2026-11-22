@@ -269,6 +269,23 @@ describe("BookReader", () => {
     expect(quiet.className).toContain("book-quiet-title");
   });
 
+  it("offers only the actions a signed-out reader can finish", async () => {
+    useAccountSessionStore.setState({ initialized: true, userId: null, displayName: null });
+    const { container } = renderReader();
+    const paragraph = container.querySelector("#citation-target")!;
+    const range = document.createRange();
+    range.selectNodeContents(paragraph);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+    fireEvent.pointerUp(container.querySelector("[data-book-page-flow]")!);
+
+    expect(await screen.findByRole("button", { name: "复制" })).toBeTruthy();
+    // Everything below needs an account: AI explains and saving both do.
+    expect(screen.queryByRole("button", { name: "划线" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "写想法" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "AI 解释" })).toBeNull();
+  });
+
   it("acts on a touch press even when the browser withholds the click", async () => {
     annotationApi.createAnnotation.mockResolvedValue(ownUnderline);
     const { container } = renderReader();

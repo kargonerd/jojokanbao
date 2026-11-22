@@ -11,17 +11,17 @@ describe("reader selection menu placement", () => {
     expect(position.top + menu.height).toBe(386);
     expect(position.left + position.arrowLeft).toBe(185);
   });
-  it("leaves room for the platform's own selection bar on touch", () => {
+  it("keeps clear of the platform's own bar by using the space below", () => {
     const position = positionReaderSelection({ left: 160, right: 210, top: 400, bottom: 428 }, viewport, menu, 44)!;
-    expect(position.above).toBe(true);
-    // Sits one system-bar height above where the plain layout would put it.
-    expect(position.top + menu.height).toBe(386 - 44);
+    expect(position.above).toBe(false);
+    expect(position.top).toBe(456);
   });
 
-  it("prefers the space below when the platform bar leaves no room above", () => {
-    const position = positionReaderSelection({ left: 60, right: 120, top: 150, bottom: 176 }, viewport, menu, 44)!;
-    expect(position.above).toBe(false);
-    expect(position.top).toBe(204);
+  it("still goes above when the passage sits too low for that", () => {
+    const position = positionReaderSelection({ left: 60, right: 120, top: 640, bottom: 668 }, viewport, menu, 44)!;
+    expect(position.above).toBe(true);
+    // One reserved bar height higher than the plain layout would place it.
+    expect(position.top + menu.height).toBe(640 - 14 - 44);
   });
 
   it("uses the space below a top-of-page selection, clearing its handles", () => {
