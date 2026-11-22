@@ -515,6 +515,9 @@ importers:
       dompurify:
         specifier: ^3.4.12
         version: 3.4.12
+      easy-marker:
+        specifier: 1.1.23
+        version: 1.1.23
       iconoir-react:
         specifier: ^7.12.1
         version: 7.12.1(react@19.2.6)
@@ -4803,6 +4806,9 @@ packages:
   duplexer2@0.1.4:
     resolution: {integrity: sha512-asLFVfWWtJ90ZyOUHMqk7/S2w2guQKxUI2itj3d92ADHhxUSbCMGi1f1cBcJ7xM1To+pE/Khbwo1yuNbMEPKeA==}
 
+  easy-marker@1.1.23:
+    resolution: {integrity: sha512-hh1x9OhdUEKXCDtmAqgCyqf3Lf96xEoid+/dS6GTurQH53qRRcta7S/rkWMKTxESY1nN2ag8qBk4y/y/4pKy8w==}
+
   ecdsa-sig-formatter@1.0.11:
     resolution: {integrity: sha512-nagl3RYrbNv6kQkeJIpt6NJZy8twLB/2vtz6yN9Z4vRKHN4/QZJIEbqohALSgwKdnksuY3k5Addp5lg8sVoVcQ==}
 
@@ -7868,6 +7874,7 @@ packages:
   tsconfck@3.1.6:
     resolution: {integrity: sha512-ks6Vjr/jEw0P1gmOVwutM3B7fWxoWBL2KRDb1JfqGVawBmO5UsvmWOQFGHBPl5yxYz4eERr19E6L7NMv+Fej4w==}
     engines: {node: ^18 || >=20}
+    deprecated: unmaintained
     hasBin: true
     peerDependencies:
       typescript: ^5.0.0
@@ -13257,6 +13264,8 @@ snapshots:
   duplexer2@0.1.4:
     dependencies:
       readable-stream: 2.3.8
+
+  easy-marker@1.1.23: {}
 
   ecdsa-sig-formatter@1.0.11:
     dependencies:

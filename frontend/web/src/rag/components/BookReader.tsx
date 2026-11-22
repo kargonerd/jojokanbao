@@ -12,6 +12,7 @@ import {
 } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { analytics } from "@jojo/analytics";
+import EasyMarker, { MenuType, type SelectionContent } from "easy-marker";
 import { createNativeMenuSuppressor, type NativeMenuSuppressor } from "../../rag/nativeSelectionMenu";
 import { IoBookOutline, IoCopyOutline, IoCreateOutline, IoDownloadOutline, IoFlagOutline, IoListOutline, IoRadioButtonOnOutline, IoSearchOutline, IoSparklesOutline, IoTextOutline } from "react-icons/io5";
 import { bookProgressPercent, estimatedReadingMinutes, formatReadingTime, type SpeechLocation } from "@jojo/content";
@@ -319,6 +320,45 @@ export function BookReader({
   }, [activeChapterId, continuous]);
   const annotationAccess = Boolean(currentUserId);
   const annotations = useAnnotationThreads(annotationSubject, annotationAccess, currentUserId);
+
+  // --- easy-marker (self-drawn selection) ---------------------------------
+  // Touch browsers draw their own copy menu over the selection and suppress
+  // clicks after a cancelled pointerdown, so on mobile scroll mode the whole
+  // selection layer is delegated to easy-marker: it sets user-select: none on
+  // the surface, draws its own cursors and menu, and hands the selection back
+  // as DOM nodes/offsets which feed the existing anchor pipeline unchanged.
+  const easyMarkerRef = useRef<EasyMarker | undefined>(undefined);
+  const easyMarkerActions = useRef({
+    underline: (selection: SelectionContent) => {},
+    copy: (selection: SelectionContent) => {},
+  });
+  easyMarkerActions.current = {
+    underline: (selection) => void underlineFromEasyMarker(selection),
+    copy: (selection) => void copyFromEasyMarker(selection),
+  };
+
+  useEffect(() => {
+    if (!(mobileViewport && mode === "scroll")) return;
+    const surface = scrollRef.current;
+    if (!surface || easyMarkerRef.current) return;
+    try {
+      const marker = new EasyMarker({
+        menuItems: [
+          { text: "划线", type: MenuType.SELECT, handler: (selection) => easyMarkerActions.current.underline(selection) },
+          { text: "复制", type: MenuType.SELECT, handler: (selection) => easyMarkerActions.current.copy(selection) },
+        ],
+        cursor: { color: "#8b1a1a" },
+        mask: { color: "rgba(230,197,197,.55)" },
+        highlight: { color: "rgba(230,197,197,.55)" },
+      });
+      marker.create(surface, surface);
+      easyMarkerRef.current = marker;
+    } catch { /* jsdom/unsupported environment */ }
+    return () => {
+      try { easyMarkerRef.current?.destroy(); } catch { /* already gone */ }
+      easyMarkerRef.current = undefined;
+    };
+  }, [mobileViewport, mode]);
   const loadPublicPage = useCallback(async (cursor: string | null, signal: AbortSignal) => {
     const page = await loadPublicBookAnnotations(datasetId + ":" + itemId, currentUserId ?? null, { afterId: cursor, signal });
     return { items: page.notes, nextCursor: page.nextCursor };
@@ -1164,6 +1204,52 @@ export function BookReader({
     analytics.track("annotation_blocked", { operation, reason });
   }
 
+
+  function rangeFromSelectionContent(selection: SelectionContent): Range {
+    const { anchorNode, anchorOffset, focusNode, focusOffset } = selection;
+    const forward = document.createRange();
+    forward.setStart(anchorNode, anchorOffset);
+    forward.setEnd(focusNode, focusOffset);
+    if (!forward.collapsed || (anchorNode === focusNode && anchorOffset === focusOffset)) return forward;
+    const backward = document.createRange();
+    backward.setStart(focusNode, focusOffset);
+    backward.setEnd(anchorNode, anchorOffset);
+    return backward.collapsed ? forward : backward;
+  }
+
+  function rootForRange(range: Range): HTMLElement | null {
+    const ancestor = range.commonAncestorContainer;
+    const element = ancestor instanceof Element ? ancestor : ancestor.parentElement;
+    return element?.closest<HTMLElement>("[data-book-chapter-id]")?.querySelector<HTMLElement>("[data-speech-content]") ?? chapterRoot();
+  }
+
+  async function underlineFromEasyMarker(selection: SelectionContent): Promise<void> {
+    if (!currentUserId) { setReaderNotice("请先登录后再划线"); return; }
+    if (annotationSaving) { setReaderNotice("上一次操作还没结束，请稍候"); return; }
+    const range = rangeFromSelectionContent(selection);
+    const root = rootForRange(range);
+    const anchor = root ? textAnchorFromRange(root, range, 1200) : null;
+    if (!anchor) { setReaderNotice("没能定位到选中的文字，请重新选择"); return; }
+    setReaderNotice("已划线");
+    setAnnotationSaving(true);
+    try {
+      await annotations.create(anchor);
+    } catch (reason) {
+      setReaderNotice(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setAnnotationSaving(false);
+    }
+  }
+
+  async function copyFromEasyMarker(selection: SelectionContent): Promise<void> {
+    const text = rangeFromSelectionContent(selection).toString();
+    try {
+      await navigator.clipboard.writeText(text);
+      setReaderNotice("已复制");
+    } catch {
+      setReaderNotice("复制失败，请重试");
+    }
+  }
 
   async function underlineSelection(): Promise<void> {
     // Never fail silently: a reader who taps and sees nothing cannot report it.
