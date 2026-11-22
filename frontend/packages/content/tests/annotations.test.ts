@@ -43,7 +43,7 @@ describe("shared annotation API", () => {
 
       const saving = api.createAnnotation(subject, anchor);
       const assertion = expect(saving).rejects.toThrow("保存超时，请检查网络后重试");
-      await vi.advanceTimersByTimeAsync(15_000);
+      await vi.advanceTimersByTimeAsync(10_000);
       await assertion;
 
       // The stalled request is aborted rather than left dangling.

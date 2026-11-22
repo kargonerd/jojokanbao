@@ -70,7 +70,9 @@ function checkAborted(signal?: AbortSignal) {
   throw signal.reason ?? error;
 }
 
-const WRITE_TIMEOUT_MS = 15_000;
+// Long enough for a cold function (about 4.6s) plus one round trip to the
+// project, short enough that a stalled connection frees the controls quickly.
+const WRITE_TIMEOUT_MS = 10_000;
 
 /**
  * Bound a write so a stalled connection cannot leave the reader's controls
