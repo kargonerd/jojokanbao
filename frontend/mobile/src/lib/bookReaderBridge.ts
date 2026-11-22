@@ -714,8 +714,11 @@ ${ANNOTATION_DOM_SCRIPT}
           }
           return;
         }
-        if (Date.now() - lastSwipeAt < 400 || isLink(event.target)) return;
+        if (isLink(event.target)) return;
         if (window.getSelection && window.getSelection().toString()) return;
+        // Suppress only the synthetic click produced by the swipe itself. A new
+        // tap starts a new touchstart after the swipe ended and must still work.
+        if (Date.now() - lastSwipeAt < 400 && touchStartAt <= lastSwipeAt) return;
         var x = event.clientX / window.innerWidth;
         var y = event.clientY / window.innerHeight;
         if (paged && x < 0.24) {

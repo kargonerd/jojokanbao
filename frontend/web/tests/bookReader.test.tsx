@@ -492,6 +492,13 @@ describe("BookReader", () => {
     expect(screen.queryByRole("navigation", { name: "阅读工具" })).toBeNull();
     expect(screen.queryByRole("link", { name: "返回上一页" })).toBeNull();
     fireEvent.pointerUp(paragraph);
+
+    // The first tap on the new page must toggle the tools back on; the old
+    // implementation swallowed it as the swipe's synthetic click.
+    fireEvent.pointerDown(paragraph, { clientX: 195, clientY: 200 });
+    fireEvent.pointerUp(paragraph, { clientX: 195, clientY: 200 });
+    fireEvent.click(paragraph, { clientX: 195, clientY: 200, detail: 1 });
+    expect(screen.getByRole("navigation", { name: "阅读工具" })).toBeTruthy();
   });
 
   it("turns to the previous chapter with a left-edge tap", () => {
