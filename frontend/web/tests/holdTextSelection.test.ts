@@ -18,6 +18,7 @@ function fakeRange(text = "示例文本内容") {
 function fakeSurface(initialTop = 0) {
   return {
     scrollTop: initialTop,
+    scrollLeft: 0,
     style: { overflow: "" },
   } as unknown as HTMLElement & { style: { overflow: string } };
 }
@@ -45,7 +46,7 @@ function touchEvent(overrides: { touches?: Array<{ clientX: number; clientY: num
   } as unknown as TouchEvent;
 }
 
-function setup(options: { scrollTop?: number; selectionCollapsed?: boolean; blocked?: boolean; hitTest?: () => Range | null } = {}) {
+function setup(options: { scrollTop?: number; selectionCollapsed?: boolean; blocked?: boolean; hitTest?: () => Range | null; driftTriggers?: boolean; freeze?: (surface: HTMLElement) => void } = {}) {
   const surface = fakeSurface(options.scrollTop ?? 0);
   const selectionCalls: string[] = [];
   const queue = immediateQueue();
@@ -54,6 +55,7 @@ function setup(options: { scrollTop?: number; selectionCollapsed?: boolean; bloc
     removeAllRanges: () => selectionCalls.push("removeAllRanges"),
     addRange: () => selectionCalls.push("addRange"),
   } as unknown as Selection;
+  let frozen = 0;
   const hold = createHoldTextSelection({
     surface: () => surface,
     selection: () => selection,
@@ -63,6 +65,8 @@ function setup(options: { scrollTop?: number; selectionCollapsed?: boolean; bloc
       return { startContainer: node, startOffset: 2 } as unknown as Range;
     }),
     blocked: () => Boolean(options.blocked),
+    ...(options.freeze ? { freeze: options.freeze } : {}),
+    driftTriggers: options.driftTriggers,
   });
   return { surface, selectionCalls, queue, hold };
 }
@@ -180,5 +184,52 @@ describe("hold text selection fallback", () => {
     surface.scrollTop = 620;
     queue.flush();
     expect(selectionCalls).toEqual([]);
+  });
+
+  it("paged: a drifting still finger triggers the fallback", () => {
+    const { selectionCalls, queue, hold } = setup({ scrollTop: 0, driftTriggers: true, freeze: () => {} });
+    hold.onTouchStart(touchEvent());
+    // A real finger always drifts a few pixels inside the drag threshold.
+    hold.onTouchMove(touchEvent({ touches: [{ clientX: 103, clientY: 203 }] }));
+    hold.onTouchMove(touchEvent({ touches: [{ clientX: 102, clientY: 202 }] }));
+    queue.flush();
+    expect(selectionCalls).toEqual(["removeAllRanges", "addRange"]);
+  });
+
+  it("paged: a perfectly still finger on a still surface stays native", () => {
+    const { selectionCalls, queue, hold } = setup({ scrollTop: 0, driftTriggers: true });
+    hold.onTouchStart(touchEvent());
+    queue.flush();
+    expect(selectionCalls).toEqual([]);
+  });
+
+  it("paged: a finger drift alone does not trigger without the flag", () => {
+    const { selectionCalls, queue, hold } = setup({ scrollTop: 0 });
+    hold.onTouchStart(touchEvent());
+    hold.onTouchMove(touchEvent({ touches: [{ clientX: 104, clientY: 204 }] }));
+    queue.flush();
+    expect(selectionCalls).toEqual([]);
+  });
+
+  it("paged: a surface glide (page turn) triggers the fallback without drift", () => {
+    const { surface, selectionCalls, queue, hold } = setup({ scrollTop: 0, driftTriggers: true });
+    hold.onTouchStart(touchEvent());
+    // The page-turn animation moves the flow horizontally.
+    surface.scrollLeft = 412;
+    queue.flush();
+    expect(selectionCalls).toEqual(["removeAllRanges", "addRange"]);
+  });
+
+  it("uses the injected freeze instead of the overflow toggle when provided", () => {
+    let frozen = 0;
+    const { surface, selectionCalls, queue, hold } = setup({
+      scrollTop: 500,
+      freeze: () => { frozen += 1; },
+    });
+    hold.onTouchStart(touchEvent());
+    surface.scrollTop = 620;
+    queue.flush();
+    expect(selectionCalls).toEqual(["removeAllRanges", "addRange"]);
+    expect(frozen).toBe(1);
   });
 });
