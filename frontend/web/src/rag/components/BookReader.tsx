@@ -1038,10 +1038,12 @@ export function BookReader({
   }, [captureTextSelection]);
 
   // A long-press whose touch began while the reading surface was still gliding
-  // never selects natively on Chromium, and in paged mode even a drifting
-  // finger kills the native gesture; capture the word ourselves instead.
+  // never selects natively on Chromium — and the suppression outlives the
+  // visible glide by a second or two, even when the surface has stopped
+  // moving. Capture the word ourselves whenever that is the case.
   const readerOverlayOpenRef = useRef(readerOverlayOpen);
   readerOverlayOpenRef.current = readerOverlayOpen;
+  const lastScrollAtRef = useRef(0);
   useEffect(() => {
     if (!mobileViewport) return;
     const surface = mode === "scroll" ? scrollRef.current : flowRef.current;
@@ -1054,7 +1056,9 @@ export function BookReader({
         return () => window.clearTimeout(id);
       },
       blocked: () => readerOverlayOpenRef.current,
-      ...(mode === "paged" ? {
+      ...(mode === "scroll" ? {
+        recentMotion: () => performance.now() - lastScrollAtRef.current < 2000,
+      } : {
         // No freeze here: the fallback fires 450ms into the hold, by which
         // time the page-turn glide has finished, and snapping scrollLeft mid
         // animation would strand the article between two spreads. A drifting
@@ -1062,7 +1066,7 @@ export function BookReader({
         // drift hands the press to the fallback.
         freeze: () => {},
         driftTriggers: true,
-      } : {}),
+      }),
     });
     surface.addEventListener("touchstart", hold.onTouchStart, { passive: true });
     surface.addEventListener("touchmove", hold.onTouchMove, { passive: true });
@@ -1318,6 +1322,7 @@ export function BookReader({
   }
 
   function updateScrollProgress(): void {
+    lastScrollAtRef.current = performance.now();
     cancelReaderTap();
     if (continuous) { setTextSelection(undefined); return; }
     const reader = scrollRef.current;

@@ -46,7 +46,7 @@ function touchEvent(overrides: { touches?: Array<{ clientX: number; clientY: num
   } as unknown as TouchEvent;
 }
 
-function setup(options: { scrollTop?: number; selectionCollapsed?: boolean; blocked?: boolean; hitTest?: (x: number, y: number) => Range | null; driftTriggers?: boolean; freeze?: (surface: HTMLElement) => void } = {}) {
+function setup(options: { scrollTop?: number; selectionCollapsed?: boolean; blocked?: boolean; hitTest?: (x: number, y: number) => Range | null; driftTriggers?: boolean; freeze?: (surface: HTMLElement) => void; recentMotion?: () => boolean } = {}) {
   const surface = fakeSurface(options.scrollTop ?? 0);
   const selectionCalls: string[] = [];
   const queue = immediateQueue();
@@ -67,6 +67,7 @@ function setup(options: { scrollTop?: number; selectionCollapsed?: boolean; bloc
     blocked: () => Boolean(options.blocked),
     ...(options.freeze ? { freeze: options.freeze } : {}),
     driftTriggers: options.driftTriggers,
+    recentMotion: options.recentMotion,
   });
   return { surface, selectionCalls, queue, hold };
 }
@@ -262,5 +263,22 @@ describe("hold text selection fallback", () => {
     queue.flush();
     expect(selectionCalls).toEqual(["removeAllRanges", "addRange"]);
     expect(frozen).toBe(1);
+  });
+
+  it("scroll: a still finger after a recent glide selects even on a settled surface", () => {
+    // Chromium keeps suppressing the native long-press for a moment after the
+    // glide visually stops; recent scrolling must hand the press over.
+    const { surface, selectionCalls, queue, hold } = setup({ scrollTop: 800, recentMotion: () => true, freeze: () => {} });
+    hold.onTouchStart(touchEvent());
+    queue.flush();
+    expect(selectionCalls).toEqual(["removeAllRanges", "addRange"]);
+    expect(surface.style.overflow).toBe("");
+  });
+
+  it("scroll: no recent motion and no drift stays native", () => {
+    const { selectionCalls, queue, hold } = setup({ scrollTop: 800, recentMotion: () => false });
+    hold.onTouchStart(touchEvent());
+    queue.flush();
+    expect(selectionCalls).toEqual([]);
   });
 });
