@@ -1317,7 +1317,7 @@ export function BookReader({
       className={mobileChromeHidden
         // Same paper and texture as the page, so dismissing the toolbar leaves
         // no visible seam; only the sans-serif type separates the two zones.
-        ? `relative z-20 flex h-12 items-center px-6 font-sans text-[11px] tracking-[.06em] ${pageClass} ${paperTexture ? "book-page-texture" : ""}`
+        ? `relative z-20 flex h-12 items-center px-6 font-sans text-[13px] font-medium tracking-[.14em] ${pageClass} ${paperTexture ? "book-page-texture" : ""}`
         : `relative z-20 h-12 border-b backdrop-blur-md ${chromeClass}`}
     >
       {mobileChromeHidden ? <span className="truncate text-muted">{chapters[activeChapterIndex]?.title || bookTitle}</span> : (
