@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>视口诊断</title>
+<style>
+  body { margin: 0; background: #fff; color: #111; font: 14px/1.9 ui-monospace, SFMono-Regular, Menlo, monospace; padding: 10px 12px 40px; word-break: break-all; }
+  h1 { font-size: 17px; margin: 4px 0 8px; }
+  p { margin: 6px 0; color: #555; font-family: system-ui, sans-serif; font-size: 13px; }
+  b { color: #8b1a1a; }
+  iframe { display: block; width: 100%; height: 55vh; border: 1px solid #ccc; margin-top: 10px; }
+</style>
+</head>
+<body>
+<h1>视口诊断</h1>
+<p>请把本页完整截图发给开发者，包括下面的内嵌首页。本页只在本机读取窗口尺寸，不上传任何数据。</p>
+<div id="o">测量中…</div>
+<iframe id="frame" src="/" title="首页"></iframe>
+<script>
+  function line(label, value) { return label + ": <b>" + value + "</b><br>"; }
+  function probe() {
+    var vv = window.visualViewport;
+    var probes = [];
+    function fixedProbe(cssText) {
+      var d = document.createElement("div");
+      d.style.cssText = "position:fixed;left:0;width:1px;pointer-events:none;" + cssText;
+      document.body.appendChild(d);
+      probes.push(d);
+      return d;
+    }
+    var dvh = fixedProbe("top:0;height:100dvh").offsetHeight;
+    var svh = fixedProbe("top:0;height:100svh").offsetHeight;
+    var lvh = fixedProbe("top:0;height:100lvh").offsetHeight;
+    var safe = fixedProbe("top:0;height:env(safe-area-inset-bottom)").offsetHeight;
+    var pinned = fixedProbe("bottom:0;height:1px");
+    var pinnedBottom = Math.round(pinned.getBoundingClientRect().bottom);
+    probes.forEach(function (d) { d.remove(); });
+    var visibleBottom = vv ? Math.round(vv.offsetTop + vv.height) : null;
+    var html = "";
+    html += line("浏览器 UA", navigator.userAgent);
+    html += line("innerHeight", window.innerHeight);
+    html += line("clientHeight", document.documentElement.clientHeight);
+    html += line("visualViewport.height", vv ? vv.height : "无");
+    html += line("visualViewport.offsetTop", vv ? vv.offsetTop : "无");
+    html += line("visualViewport.scale", vv ? vv.scale : "无");
+    html += line("100dvh / 100svh / 100lvh", dvh + " / " + svh + " / " + lvh);
+    html += line("env(safe-area-inset-bottom)", safe);
+    html += line("固定 bottom:0 元素的下边缘", pinnedBottom);
+    html += line("可视区下边缘", visibleBottom === null ? "无" : visibleBottom);
+    html += line("两者差值（&gt;0 即被浏览器 UI 盖住）", visibleBottom === null ? "无" : pinnedBottom - visibleBottom);
+    html += line("devicePixelRatio", window.devicePixelRatio);
+    html += line("滚动位置", Math.round(window.scrollY));
+    document.getElementById("o").innerHTML = html;
+  }
+  function probeFrame() {
+    var frame = document.getElementById("frame");
+    var out = document.getElementById("frame-report");
+    if (!out || !frame.contentWindow) return;
+    var lines = "";
+    try {
+      var win = frame.contentWindow;
+      var doc = win.document;
+      var nav = doc.querySelector(".app-mobile-navigation");
+      var inset = win.getComputedStyle(doc.documentElement).getPropertyValue("--app-browser-inset-bottom");
+      lines += line("内嵌页 innerHeight", win.innerHeight);
+      lines += line("内嵌页 visualViewport.height", win.visualViewport ? win.visualViewport.height : "无");
+      lines += line("底部导航元素", nav ? "存在" : "不存在");
+      if (nav) {
+        var rect = nav.getBoundingClientRect();
+        var vv = win.visualViewport;
+        var visibleBottom = vv ? Math.round(vv.offsetTop + vv.height) : null;
+        lines += line("底部导航 rect（top/bottom/height）", Math.round(rect.top) + " / " + Math.round(rect.bottom) + " / " + Math.round(rect.height));
+        lines += line("底部导航下边缘 - 可视区下边缘", visibleBottom === null ? "无" : Math.round(rect.bottom - visibleBottom));
+      }
+      lines += line("--app-browser-inset-bottom", inset.trim() || "未设置");
+    } catch (error) {
+      lines += line("读取失败", String(error));
+    }
+    out.innerHTML = "<p style='margin:10px 0 0'><b>内嵌首页（应用自身）：</b></p>" + lines;
+  }
+  probe();
+  var frame = document.getElementById("frame");
+  frame.addEventListener("load", function () { setTimeout(probeFrame, 1200); setTimeout(probeFrame, 3500); });
+  window.addEventListener("resize", function () { probe(); probeFrame(); });
+  if (window.visualViewport) {
+    visualViewport.addEventListener("resize", function () { probe(); probeFrame(); });
+    visualViewport.addEventListener("scroll", function () { probe(); probeFrame(); });
+  }
+  var extra = document.createElement("div");
+  extra.id = "frame-report";
+  document.body.appendChild(extra);
+</script>
+</body>
+</html>
