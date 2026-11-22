@@ -63,7 +63,8 @@ describe("native annotation RPC binding", () => {
     });
     expect(getSession).toHaveBeenCalledTimes(3);
     expect(setHeader).toHaveBeenCalledExactlyOnceWith("Authorization", "Bearer token-a");
-    expect(abortSignal).not.toHaveBeenCalled();
+    // Writes carry a deadline signal so a stalled connection cannot lock the UI.
+    expect(abortSignal).toHaveBeenCalledExactlyOnceWith(expect.any(AbortSignal));
   });
 
   it("keeps chapter discussions separate from completed personal-book reads", async () => {
