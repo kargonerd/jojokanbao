@@ -3,6 +3,8 @@
   --app-line: #ddd9d2;
   --app-gray: #706d69;
   --app-bottom-navigation-height: 0px;
+  /* 叠在网页之上的浏览器底栏高度，由 browserBottomInset.ts 实测写入。 */
+  --app-browser-inset-bottom: 0px;
 }
 
 .app-shell {
@@ -1019,7 +1021,7 @@ a.jojo-citation:hover {
     position: fixed;
     z-index: 75;
     right: 0;
-    bottom: 0;
+    bottom: var(--app-browser-inset-bottom);
     left: 0;
     display: grid;
     grid-auto-flow: column;
@@ -1064,7 +1066,7 @@ a.jojo-citation:hover {
   }
   .app-shell > .app-mobile-navigation + * {
     box-sizing: border-box;
-    padding-bottom: var(--app-bottom-navigation-height);
+    padding-bottom: calc(var(--app-bottom-navigation-height) + var(--app-browser-inset-bottom));
   }
   .app-login { font-size: .78rem; }
   .app-home { min-height: calc(100vh - 58px); padding: 38px 20px 40px; }
