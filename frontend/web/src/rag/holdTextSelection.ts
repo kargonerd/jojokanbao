@@ -1,20 +1,22 @@
 /**
  * Chromium does not start a long-press text selection for a touch that began
- * while the scroll surface was still gliding: the whole press is treated as a
- * scroll continuation and, by measurement on Chrome for Android, no selection
- * event fires even after the glide stops. Readers swipe to move and then want
- * to mark a passage, so they hit this constantly — and tapping "fixes" it only
- * because the tap consumes the glide.
+ * while the scroll surface was still gliding — and in paged mode even a real
+ * finger's few pixels of drift are enough to kill the native gesture. Readers
+ * swipe or turn a page and then want to mark a passage, so they hit this
+ * constantly; tapping "fixes" it only because the tap consumes the glide.
  *
- * The fallback watches for a still finger whose surface kept gliding during
- * the hold: it stops the glide, picks the word under the finger and applies it
- * as a programmatic selection. Our selectionchange capture then shows the
- * toolbar as usual. A stationary surface keeps the native gesture untouched,
- * so the native handles survive wherever they worked before.
+ * The fallback watches for a still finger (drift within the drag threshold)
+ * whose surface kept moving during the hold, or whose finger drifted at all in
+ * paged mode: it stops the glide, picks the word under the finger and applies
+ * it as a programmatic selection. Our selectionchange capture then shows the
+ * toolbar as usual. A stationary finger on a stationary surface keeps the
+ * native gesture untouched, so the native handles survive wherever they worked
+ * before.
  */
 
 const HOLD_MS = 450;
 const GLIDE_EPSILON = 2;
+const DRIFT_TRIGGERS_PX = 2;
 const MOVE_CANCELS_PX = 10;
 const INTERACTIVE_SELECTOR = "a,button,input,textarea,select,label,[role='button'],[contenteditable='true'],img";
 
@@ -28,6 +30,16 @@ export interface HoldTextSelectionDeps {
   hitTest?: (x: number, y: number) => Range | null;
   /** Skip the fallback when overlays own the screen. */
   blocked?: () => boolean;
+  /**
+   * Stop the surface's glide before the selection is applied. Defaults to
+   * hiding the overflow, which interrupts a scrolling surface.
+   */
+  freeze?: (surface: HTMLElement) => void;
+  /**
+   * Paged surfaces move the text under a drifting finger even without a
+   * glide; when true, any finger drift triggers the fallback.
+   */
+  driftTriggers?: boolean;
 }
 
 export interface HoldTextSelectionHandlers {
@@ -42,7 +54,8 @@ export function createHoldTextSelection(deps: HoldTextSelectionDeps): HoldTextSe
   let cancelHold: (() => void) | undefined;
   let startX = 0;
   let startY = 0;
-  let startTop = 0;
+  let startOffset = 0;
+  let maxDrift = 0;
   let tracking = false;
 
   function cancel(): void {
@@ -59,11 +72,12 @@ export function createHoldTextSelection(deps: HoldTextSelectionDeps): HoldTextSe
     if (!surface) return;
     startX = event.touches[0]!.clientX;
     startY = event.touches[0]!.clientY;
-    startTop = surface.scrollTop;
+    startOffset = surface.scrollLeft + surface.scrollTop;
+    maxDrift = 0;
     tracking = true;
     cancelHold = deps.schedule(() => {
       cancelHold = undefined;
-      holdFired(startX, startY, startTop);
+      holdFired(startX, startY, startOffset);
     }, HOLD_MS);
   }
 
@@ -71,22 +85,30 @@ export function createHoldTextSelection(deps: HoldTextSelectionDeps): HoldTextSe
     if (!tracking) return;
     const touch = event.touches[0];
     if (!touch) { cancel(); return; }
-    if (Math.hypot(touch.clientX - startX, touch.clientY - startY) > MOVE_CANCELS_PX) cancel();
+    const drift = Math.hypot(touch.clientX - startX, touch.clientY - startY);
+    maxDrift = Math.max(maxDrift, drift);
+    if (drift > MOVE_CANCELS_PX) cancel();
   }
 
-  function holdFired(x: number, y: number, topAtStart: number): void {
+  function holdFired(x: number, y: number, offsetAtStart: number): void {
     const surface = deps.surface();
     const selection = deps.selection();
     if (!surface || !selection || !selection.isCollapsed || deps.blocked?.()) { cancel(); return; }
-    // A surface that stayed put means the native long-press owns this press.
-    if (Math.abs(surface.scrollTop - topAtStart) <= GLIDE_EPSILON) { cancel(); return; }
+    // A surface that stayed put and a finger that did not drift mean the
+    // native long-press owns this press.
+    const surfaceMoved = Math.abs(surface.scrollLeft + surface.scrollTop - offsetAtStart) > GLIDE_EPSILON;
+    const fingerDrifted = maxDrift > DRIFT_TRIGGERS_PX;
+    if (!surfaceMoved && !(deps.driftTriggers && fingerDrifted)) { cancel(); return; }
     const range = pickWordRange(surface, x, y, deps.hitTest);
     if (!range) { cancel(); return; }
     // Interrupting the scroller stops the glide so the highlight, the toolbar
     // and any further layout agree on the same coordinates.
-    const previousOverflow = surface.style.overflow;
-    surface.style.overflow = "hidden";
-    deps.schedule(() => { surface.style.overflow = previousOverflow; }, 60);
+    if (deps.freeze) deps.freeze(surface);
+    else {
+      const previousOverflow = surface.style.overflow;
+      surface.style.overflow = "hidden";
+      deps.schedule(() => { surface.style.overflow = previousOverflow; }, 60);
+    }
     selection.removeAllRanges();
     selection.addRange(range);
     cancel();
