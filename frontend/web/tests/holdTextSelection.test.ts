@@ -50,8 +50,10 @@ function setup(options: { scrollTop?: number; selectionCollapsed?: boolean; bloc
   const surface = fakeSurface(options.scrollTop ?? 0);
   const selectionCalls: string[] = [];
   const queue = immediateQueue();
+  let collapsed = options.selectionCollapsed ?? true;
   const selection = {
-    isCollapsed: options.selectionCollapsed ?? true,
+    get isCollapsed() { return collapsed; },
+    set isCollapsed(value: boolean) { collapsed = value; },
     removeAllRanges: () => selectionCalls.push("removeAllRanges"),
     addRange: () => selectionCalls.push("addRange"),
   } as unknown as Selection;
@@ -69,7 +71,7 @@ function setup(options: { scrollTop?: number; selectionCollapsed?: boolean; bloc
     driftTriggers: options.driftTriggers,
     recentMotion: options.recentMotion,
   });
-  return { surface, selectionCalls, queue, hold };
+  return { surface, selectionCalls, queue, hold, setCollapsed: (value: boolean) => { collapsed = value; } };
 }
 
 describe("expandWordAround", () => {
@@ -224,8 +226,10 @@ describe("hold text selection fallback", () => {
     hold.onTouchMove(touchEvent({ touches: [{ clientX: 203, clientY: 303 }] }));
     queue.flush();
     expect(selectionCalls).toEqual(["removeAllRanges", "addRange"]);
-    expect(probes[0]).toEqual([200, 300]);
-    expect(probes[1]).toEqual([200, 292]);
+    // The probe runs at the finger's live position (3px drift), not the
+    // touchstart point: mid-glide the page has moved under the finger.
+    expect(probes[0]).toEqual([203, 303]);
+    expect(probes[1]).toEqual([203, 295]);
   });
 
   it("paged: a perfectly still finger on a still surface stays native", () => {
@@ -280,5 +284,22 @@ describe("hold text selection fallback", () => {
     hold.onTouchStart(touchEvent());
     queue.flush();
     expect(selectionCalls).toEqual([]);
+  });
+
+  it("a selection the native gesture builds during the hold is kept", () => {
+    // Native long-press lands its one-character selection while our hold timer
+    // is still pending; the fallback must not replace it.
+    const { selectionCalls, queue, hold, setCollapsed } = setup({ scrollTop: 800, recentMotion: () => true, freeze: () => {} });
+    hold.onTouchStart(touchEvent());
+    setCollapsed(false); // the native gesture selected a character mid-hold
+    queue.flush();
+    expect(selectionCalls).toEqual([]);
+  });
+
+  it("a stale selection from an earlier press is replaced on re-press", () => {
+    const { selectionCalls, queue, hold } = setup({ scrollTop: 800, recentMotion: () => true, freeze: () => {}, selectionCollapsed: false });
+    hold.onTouchStart(touchEvent());
+    queue.flush();
+    expect(selectionCalls).toEqual(["removeAllRanges", "addRange"]);
   });
 });
