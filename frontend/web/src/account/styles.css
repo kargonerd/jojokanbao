@@ -106,7 +106,7 @@
 .book-login-dialog {
   width: 100vw;
   max-width: none;
-  height: 100dvh;
+  height: var(--app-viewport-height);
   max-height: none;
   margin: 0;
   border: 0;
@@ -1020,7 +1020,7 @@
 
   .book-dialog-stage {
     position: relative;
-    min-height: 100dvh;
+    min-height: var(--app-viewport-height);
     display: block;
     padding: 0;
   }
@@ -1031,7 +1031,7 @@
     left: 0;
     width: 180vw;
     min-height: 0;
-    height: min(34rem, calc(100dvh - 4rem));
+    height: min(34rem, calc(var(--app-viewport-height) - 4rem));
     aspect-ratio: auto;
     perspective: 3000px;
     perspective-origin: 50% 45%;

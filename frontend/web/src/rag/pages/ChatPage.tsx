@@ -351,7 +351,7 @@ export function ChatPage() {
           >
             {scopeLabel} <span aria-hidden="true" className="ml-1 inline-block transition-transform group-open:rotate-180">⌃</span>
           </summary>
-          <div className={`fixed inset-x-4 bottom-[calc(var(--app-bottom-navigation-height,0px)+1rem)] z-30 max-h-[calc(100dvh-var(--app-bottom-navigation-height,0px)-2rem)] overflow-y-auto border border-rule bg-paper shadow-[4px_4px_0_rgba(139,26,26,.14)] min-[721px]:absolute min-[721px]:inset-x-auto min-[721px]:left-0 min-[721px]:w-[min(24rem,calc(100vw-2rem))] ${prominent ? "min-[721px]:bottom-auto min-[721px]:top-[calc(100%+8px)] min-[721px]:max-h-[calc(50dvh-6rem)]" : "min-[721px]:bottom-[calc(100%+8px)]"}`}>
+          <div className={`fixed inset-x-4 bottom-[calc(var(--app-bottom-navigation-height,0px)+1rem)] z-30 max-h-[calc(var(--app-viewport-height)-var(--app-bottom-navigation-height,0px)-2rem)] overflow-y-auto border border-rule bg-paper shadow-[4px_4px_0_rgba(139,26,26,.14)] min-[721px]:absolute min-[721px]:inset-x-auto min-[721px]:left-0 min-[721px]:w-[min(24rem,calc(100vw-2rem))] ${prominent ? "min-[721px]:bottom-auto min-[721px]:top-[calc(100%+8px)] min-[721px]:max-h-[calc(var(--app-viewport-height)*.5-6rem)]" : "min-[721px]:bottom-[calc(100%+8px)]"}`}>
             <ScopeSelector onClose={() => scopeDetailsRef.current?.removeAttribute("open")} />
           </div>
         </details>

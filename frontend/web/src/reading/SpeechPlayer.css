@@ -56,7 +56,7 @@
 .speech-player__overlay svg { width: 24px; height: 24px; flex-shrink: 0; stroke-width: 1.5; }
 .speech-player__dialog {
   position: relative; isolation: isolate;
-  width: min(1040px, 100%); height: min(620px, calc(100dvh - 64px));
+  width: min(1040px, 100%); height: min(620px, calc(var(--app-viewport-height) - 64px));
   display: grid; grid-template-rows: 64px minmax(0, 1fr); overflow: hidden;
   background: var(--speech-paper); outline: none;
 }
@@ -185,7 +185,7 @@
 .speech-player__sheet-layer { position: fixed; z-index: 220; inset: 0; display: grid; place-items: center; padding: 24px; }
 .speech-player__sheet-backdrop { position: absolute; inset: 0; border: 0; background: rgb(20 24 21 / 42%); }
 .speech-player__sheet {
-  position: relative; width: min(520px, 100%); max-height: 85dvh; overflow-y: auto;
+  position: relative; width: min(520px, 100%); max-height: calc(var(--app-viewport-height) * .85); overflow-y: auto;
   overscroll-behavior: contain; background: var(--speech-paper); padding: 24px; outline: none;
 }
 .speech-player__sheet > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 22px; }
@@ -222,7 +222,7 @@
 }
 @media (max-width: 899px) {
   .speech-player__overlay { display: block; padding: 0; background: var(--speech-paper); }
-  .speech-player__dialog { width: 100%; height: 100dvh; grid-template-rows: calc(56px + env(safe-area-inset-top)) minmax(0, 1fr); }
+  .speech-player__dialog { width: 100%; height: var(--app-viewport-height); grid-template-rows: calc(56px + env(safe-area-inset-top)) minmax(0, 1fr); }
   .speech-player__header { grid-template-columns: 84px 1fr 84px; border: 0; padding: env(safe-area-inset-top) 12px 0; }
   .speech-player__mode { font-size: 16px; }
   .speech-player__chapter-count { font-size: 10px; }
@@ -241,14 +241,14 @@
   .speech-player__time { font-size: 10px; }
   .speech-player__transport { margin-top: 18px; }
   .speech-player__queue { display: none; }
-  .speech-player__queue.is-open { position: fixed; z-index: 7; inset: auto 0 0; width: 100%; display: grid; height: min(78dvh, 680px); padding-bottom: env(safe-area-inset-bottom); border: 0; background: var(--speech-paper); animation: speech-sheet-in 160ms ease-out; }
+  .speech-player__queue.is-open { position: fixed; z-index: 7; inset: auto 0 0; width: 100%; display: grid; height: min(calc(var(--app-viewport-height) * .78), 680px); padding-bottom: env(safe-area-inset-bottom); border: 0; background: var(--speech-paper); animation: speech-sheet-in 160ms ease-out; }
   .speech-player__queue-backdrop { display: block; position: fixed; z-index: 6; inset: 0; border: 0; background: rgb(20 24 21 / 42%); }
   .speech-player__queue > header { padding: 20px 24px; }
   .speech-player__queue-close { display: grid; width: 36px; height: 36px; place-items: center; border: 0; padding: 0; background: transparent; color: var(--speech-ink); }
   .speech-player__queue li button { padding: 16px 24px; }
   .speech-player__queue li button > strong { font-size: 14px; }
   .speech-player__sheet-layer { padding: 0; align-items: end; }
-  .speech-player__sheet { width: 100%; max-height: 84dvh; padding: 24px 24px calc(28px + env(safe-area-inset-bottom)); animation: speech-sheet-in 160ms ease-out; }
+  .speech-player__sheet { width: 100%; max-height: calc(var(--app-viewport-height) * .84); padding: 24px 24px calc(28px + env(safe-area-inset-bottom)); animation: speech-sheet-in 160ms ease-out; }
 }
 @media (max-width: 899px) and (max-height: 720px) {
   .speech-player__now { padding-top: 10px; padding-bottom: 20px; }
@@ -285,7 +285,7 @@
 .speech-mini .speech-mini__play { color: var(--speech-red); }
 .speech-mini__progress { position: absolute; top: -1px; left: 0; right: 0; height: 2px; background: var(--speech-rule); }
 .speech-mini__progress span { display: block; height: 100%; background: var(--speech-red); }
-body[data-speech-mini="reader"] .book-reader-root { height: calc(100dvh - 76px); }
+body[data-speech-mini="reader"] .book-reader-root { height: calc(var(--app-viewport-height) - 76px); }
 body[data-speech-mini="article"] { padding-bottom: 76px; }
 .speech-mini.is-docked { container: speech-mini / inline-size; }
 @media (min-width: 1024px) {
@@ -293,9 +293,11 @@ body[data-speech-mini="article"] { padding-bottom: 76px; }
   .speech-mini.is-docked { position: relative; inset: auto; width: 100%; }
   .speech-mini.is-docked .speech-mini__inner { max-width: none; gap: 8px; padding: 0 16px; }
 }
-@container speech-mini (max-width: 600px) {
+/* 旧内核不支持容器查询，用媒体查询 + 停靠态选择器表达同样的意图。 */
+@media (max-width: 600px) {
   .speech-mini__time { display: none; }
 }
+.speech-mini.is-docked .speech-mini__time { display: none; }
 @media (max-width: 1023px) {
   body[data-speech-mini="docked"] { padding-bottom: 76px; }
 }
@@ -309,7 +311,7 @@ body[data-speech-mini="article"] { padding-bottom: 76px; }
   .speech-mini__identity small { font-size: 10px; }
   .speech-mini__time { display: none; }
   .speech-mini.is-reader { bottom: calc(64px + env(safe-area-inset-bottom)); padding-bottom: 0; }
-  body[data-speech-mini="reader"] .book-reader-root { height: calc(100dvh - 64px); }
+  body[data-speech-mini="reader"] .book-reader-root { height: calc(var(--app-viewport-height) - 64px); }
   body[data-speech-mini="article"], body[data-speech-mini="docked"] { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
 }
 @keyframes speech-sheet-in { from { transform: translateY(24px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }

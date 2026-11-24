@@ -463,7 +463,7 @@ export function TimesHomePage() {
   }
 
   return (
-    <main className={`${showingMobileDetail ? "min-h-[calc(100dvh-58px)] overflow-visible" : "h-[calc(100dvh-58px)] overflow-hidden"} bg-[var(--app-canvas)] text-ink lg:grid lg:h-[calc(100vh-64px)] lg:min-h-0 lg:grid-cols-[220px_390px_minmax(0,1fr)] lg:overflow-hidden xl:grid-cols-[240px_450px_minmax(0,1fr)]`}>
+    <main className={`${showingMobileDetail ? "min-h-[calc(var(--app-viewport-height)-58px)] overflow-visible" : "h-[calc(var(--app-viewport-height)-58px)] overflow-hidden"} bg-[var(--app-canvas)] text-ink lg:grid lg:h-[calc(100vh-64px)] lg:min-h-0 lg:grid-cols-[220px_390px_minmax(0,1fr)] lg:overflow-hidden xl:grid-cols-[240px_450px_minmax(0,1fr)]`}>
       <aside aria-label="媒体来源" className="hidden min-h-0 flex-col border-r border-rule bg-[var(--app-canvas)] lg:flex">
         <div className="relative min-h-0 flex-1">
           <nav ref={sourceRail} onScroll={updateSourceRailOverflow} className="times-source-scroller h-full overflow-y-auto overscroll-contain px-3 py-4" aria-label="选择媒体">
@@ -631,7 +631,7 @@ export function TimesHomePage() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="times-source-picker-title"
-            className="absolute inset-x-0 bottom-0 flex max-h-[72dvh] flex-col border-t-2 border-red bg-paper shadow-[0_-8px_30px_rgba(32,32,32,0.18)]"
+            className="absolute inset-x-0 bottom-0 flex max-h-[calc(var(--app-viewport-height)*.72)] flex-col border-t-2 border-red bg-paper shadow-[0_-8px_30px_rgba(32,32,32,0.18)]"
           >
             <header className="flex shrink-0 items-center border-b border-rule px-5 py-4">
               <div className="min-w-0 flex-1">

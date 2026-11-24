@@ -88,7 +88,7 @@
 
 .book-mobile-sheet {
   bottom: calc(64px + env(safe-area-inset-bottom));
-  max-height: calc(100dvh - 112px - env(safe-area-inset-bottom));
+  max-height: calc(var(--app-viewport-height) - 112px - env(safe-area-inset-bottom));
   overflow-y: auto;
   animation: jojo-reader-sheet-in 180ms ease-out both;
 }
