@@ -960,7 +960,9 @@ a.jojo-citation:hover {
 }
 
 @media (max-width: 720px) {
-  .app-shell:has(> .app-mobile-navigation) {
+  /* 这里不能用 :has() 判断导航是否存在：鸿蒙设备常见的 Chromium 92 不支持 :has()，
+     变量会停在 0px，底部导航塌成一条边框，看上去像"底栏不见了"。 */
+  .app-shell {
     --app-bottom-navigation-height: calc(56px + env(safe-area-inset-bottom));
   }
   .search-entry {
@@ -1032,7 +1034,7 @@ a.jojo-citation:hover {
     display: grid;
     grid-auto-flow: column;
     grid-auto-columns: minmax(0, 1fr);
-    height: var(--app-bottom-navigation-height);
+    height: calc(56px + env(safe-area-inset-bottom));
     padding: 0 max(8px, env(safe-area-inset-left)) env(safe-area-inset-bottom) max(8px, env(safe-area-inset-right));
     border-top: 1px solid var(--app-line);
     background: rgba(255, 255, 255, .98);
