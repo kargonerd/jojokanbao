@@ -116,14 +116,14 @@
 .annotation-composer > p { margin: 9px 0 0; color: var(--color-red); font: 11px/1.5 sans-serif; }
 
 @media (max-width: 767px) {
-  .annotation-panel { --annotation-panel-height: min(78vh, 720px, var(--annotation-viewport-height, 100dvh)); inset: auto 0 auto; top: calc(var(--annotation-viewport-top, 0px) + var(--annotation-viewport-height, 100dvh) - var(--annotation-panel-height)); grid-template-rows: auto minmax(0, 1fr) auto; width: 100%; height: var(--annotation-panel-height); overflow: hidden; border-top: 1px solid var(--color-rule, #d2d0c9); border-left: 0; box-shadow: 0 -18px 44px rgba(32, 32, 32, .2); }
+  .annotation-panel { --annotation-panel-height: min(78vh, 720px, var(--annotation-viewport-height, var(--app-viewport-height))); inset: auto 0 auto; top: calc(var(--annotation-viewport-top, 0px) + var(--annotation-viewport-height, var(--app-viewport-height)) - var(--annotation-panel-height)); grid-template-rows: auto minmax(0, 1fr) auto; width: 100%; height: var(--annotation-panel-height); overflow: hidden; border-top: 1px solid var(--color-rule, #d2d0c9); border-left: 0; box-shadow: 0 -18px 44px rgba(32, 32, 32, .2); }
   .annotation-panel__body { display: block; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
   .annotation-panel__header { padding-top: 26px; }
   .annotation-panel__header::before { position: absolute; top: 9px; left: 50%; width: 36px; height: 2px; transform: translateX(-50%); background: var(--color-rule, #aaa); content: ""; }
   .annotation-highlight-summary { margin-top: 14px; }
   .annotation-highlight-summary blockquote { max-height: min(24vh, 160px); }
   .annotation-comments { overflow: visible; }
-  .annotation-composer { box-sizing: border-box; max-height: calc(var(--annotation-viewport-height, 100dvh) * .65); padding: 12px 18px max(14px, env(safe-area-inset-bottom)); overflow-y: auto; overscroll-behavior: contain; }
+  .annotation-composer { box-sizing: border-box; max-height: calc(var(--annotation-viewport-height, var(--app-viewport-height)) * .65); padding: 12px 18px max(14px, env(safe-area-inset-bottom)); overflow-y: auto; overscroll-behavior: contain; }
   .annotation-composer .annotation-composer__input,
   .annotation-report-form .annotation-report-form__details textarea { font-size: 16px; }
   .annotation-composer__toolbar { flex-wrap: wrap; align-items: center; gap: 10px 16px; }

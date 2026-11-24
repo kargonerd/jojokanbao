@@ -76,6 +76,18 @@ try {
     if (/@layer(?:\s+[-\w.]+)?\s*\{/.test(css)) {
       await fail(`legacy browser compatibility requires flattened cascade layers: ${stylesheet}`);
     }
+    if (/:has\(/.test(css)) {
+      await fail(`HarmonyOS devices still run Chromium 92, which drops :has() rules entirely: ${stylesheet}`);
+    }
+    if (/@container\b/.test(css)) {
+      await fail(`HarmonyOS devices still run Chromium 92, which ignores container queries: ${stylesheet}`);
+    }
+    for (const rule of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      const body = rule[2];
+      if (!/(?:^|[;\s])(?:min-|max-)?height\s*:[^;}]*[0-9.](?:dvh|svh|lvh)/.test(body)) continue;
+      if (/(?:^|[;\s])(?:min-|max-)?height\s*:[^;}]*[0-9.]vh(?![a-z])/.test(body)) continue;
+      await fail(`dynamic viewport heights need a vh fallback for Chromium 92 (rule ${rule[1].trim().slice(0, 60)}): ${stylesheet}`);
+    }
     if (!emittedReferences.includes(`assets/${stylesheet}`)) {
       await fail(`the emitted HTML and JavaScript do not reference the stylesheet: ${stylesheet}`);
     }

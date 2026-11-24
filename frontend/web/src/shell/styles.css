@@ -3,8 +3,14 @@
   --app-line: #ddd9d2;
   --app-gray: #706d69;
   --app-bottom-navigation-height: 0px;
+  /* 旧内核（鸿蒙上的 Chromium 92 等）不认 dvh，整条声明会被丢弃，用 vh 兜底。 */
+  --app-viewport-height: 100vh;
   /* 叠在网页之上的浏览器底栏高度，由 browserBottomInset.ts 实测写入。 */
   --app-browser-inset-bottom: 0px;
+}
+
+@supports (height: 100dvh) {
+  :root { --app-viewport-height: 100dvh; }
 }
 
 .app-shell {

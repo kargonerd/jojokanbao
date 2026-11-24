@@ -1530,7 +1530,7 @@ export function BookReader({
 
     {expandedImage && <div role="dialog" aria-modal="true" aria-label="图片预览" onClick={() => setExpandedImage(undefined)} className="fixed inset-0 z-[70] flex items-center justify-center bg-black/85 p-5 md:p-10">
       <button type="button" onClick={() => setExpandedImage(undefined)} className="flex h-full w-full cursor-zoom-out flex-col items-center justify-center gap-3 border-0 bg-transparent p-0 focus-visible:outline-2 focus-visible:outline-white" aria-label="关闭图片预览">
-        <img src={expandedImage.src} alt={expandedImage.alt || "放大图片"} className="max-h-[80dvh] max-w-full cursor-zoom-out object-contain" />
+        <img src={expandedImage.src} alt={expandedImage.alt || "放大图片"} className="max-h-[calc(var(--app-viewport-height)*.8)] max-w-full cursor-zoom-out object-contain" />
         {expandedImage.alt && expandedImage.alt !== "正文图片" && <span className="font-sans text-xs text-white/75">{expandedImage.alt}</span>}
       </button>
     </div>}

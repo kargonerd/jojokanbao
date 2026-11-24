@@ -154,8 +154,8 @@
 }
 @media (max-width: 700px) and (max-height: 760px) {
   .commemoration-masthead { min-height: 60px; }
-  .commemoration-stage { min-height: clamp(402px, calc(100dvh - 164px), 500px); margin: 12px auto; }
-  .commemoration-paper, .commemoration-paper-stack, .commemoration-renewal { height: clamp(402px, calc(100dvh - 164px), 500px); }
+  .commemoration-stage { min-height: clamp(402px, calc(var(--app-viewport-height) - 164px), 500px); margin: 12px auto; }
+  .commemoration-paper, .commemoration-paper-stack, .commemoration-renewal { height: clamp(402px, calc(var(--app-viewport-height) - 164px), 500px); }
   .commemoration-paper-body { gap: 12px; }
   .commemoration-fifty { font-size: 88px; }
   .commemoration-year-range { margin-top: 10px; gap: 8px; font-size: 12px; }

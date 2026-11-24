@@ -66,7 +66,7 @@ export function TimesExplanationPanel({ anchor, turns, onClose, onRetry, onAsk, 
         if (event.shiftKey && (document.activeElement === first || document.activeElement === panel.current)) { event.preventDefault(); end?.focus(); }
         else if (!event.shiftKey && document.activeElement === end) { event.preventDefault(); first?.focus(); }
       }}
-      className="fixed right-0 top-0 z-[80] flex h-[100dvh] w-full max-w-[440px] flex-col border-l border-rule bg-paper text-ink shadow-[-18px_0_44px_rgba(32,32,32,.18)] outline-none">
+      className="fixed right-0 top-0 z-[80] flex h-[var(--app-viewport-height)] w-full max-w-[440px] flex-col border-l border-rule bg-paper text-ink shadow-[-18px_0_44px_rgba(32,32,32,.18)] outline-none">
       <header className="flex shrink-0 items-center justify-between border-b-[3px] border-double border-rule px-6 py-5">
         <div className="border-l-[3px] border-red pl-3"><h2 className="text-2xl font-black text-red">AI 解释</h2></div>
         <button type="button" onClick={onClose} aria-label="关闭" className="border-0 bg-transparent text-3xl text-ink">×</button>

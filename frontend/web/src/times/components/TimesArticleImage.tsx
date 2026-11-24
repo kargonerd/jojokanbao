@@ -26,7 +26,7 @@ function ImagePreview({ src, alt, caption, onClose }: { src: string; alt: string
     dialog?.showModal();
     return () => { dialog?.close(); focused?.focus(); };
   }, []);
-  return createPortal(<dialog ref={ref} aria-label="图片预览" onCancel={onClose} className="fixed inset-0 m-0 h-dvh max-h-none w-screen max-w-none border-0 bg-black/90 p-4 text-white backdrop:bg-black/60">
+  return createPortal(<dialog ref={ref} aria-label="图片预览" onCancel={onClose} className="fixed inset-0 m-0 h-[var(--app-viewport-height)] max-h-none w-screen max-w-none border-0 bg-black/90 p-4 text-white backdrop:bg-black/60">
     <div className="flex h-full flex-col gap-4">
       <div className="flex shrink-0 justify-end gap-6 font-sans text-sm">
         <button type="button" onClick={() => setZoomed((value) => !value)} className="min-h-11 border border-white/60 px-4">{zoomed ? "适应屏幕" : "继续放大"}</button>
