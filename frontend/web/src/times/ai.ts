@@ -2,6 +2,7 @@ import type { JojoAssetDescriptor } from "@jojo/content";
 import { readerExplanationRequest, type ExplanationRequest } from "@jojo/ui/reader-explanation";
 import type { TextAnchor } from "../annotations/types";
 import { agentAskUrl } from "../api/agentGateway";
+import { randomId } from "../lib/randomId";
 import { timesApi, type TimesNewsItem } from "./api";
 
 const AGENT_URL = agentAskUrl("/ask/times");
@@ -168,7 +169,7 @@ export function explainTimesSelection(
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
         Accept: "text/event-stream",
-        "Makers-Conversation-Id": request.conversationId || `times_${crypto.randomUUID().replaceAll("-", "").slice(0, 24)}`,
+        "Makers-Conversation-Id": request.conversationId || `times_${randomId()}`,
       },
       body: JSON.stringify({
         ...readerExplanationRequest(promptFor(news, anchor, prepared.assets), request),

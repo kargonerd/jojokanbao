@@ -408,7 +408,8 @@ export function PdfPage({
       textLayerTask.current = null;
       textLayerSelectionCleanup.current?.();
       textLayerSelectionCleanup.current = null;
-      textLayerContainer?.replaceChildren();
+      // replaceChildren 需要 Chrome 86；用 textContent 清空以兼容更旧的 Android WebView。
+      if (textLayerContainer) textLayerContainer.textContent = "";
       return;
     }
 
@@ -426,7 +427,7 @@ export function PdfPage({
         textLayerTask.current?.cancel();
         textLayerSelectionCleanup.current?.();
         textLayerSelectionCleanup.current = null;
-        textLayerContainer.replaceChildren();
+        textLayerContainer.textContent = "";
         // PDF.js positions spans as percentages but sizes their fonts and layer
         // dimensions through these page-level variables. Without the viewport
         // scale, selectable text collapses into the wrong columns even though
@@ -453,7 +454,7 @@ export function PdfPage({
         setTextLayerVersion((version) => version + 1);
       } catch (error) {
         if (disposed || (error as { name?: string })?.name === "AbortException") return;
-        textLayerContainer.replaceChildren();
+        textLayerContainer.textContent = "";
         if (searchTarget) callbacksRef.current.onSearchResult?.({ status: "unavailable", matches: 0 }, null);
       }
     };
@@ -465,7 +466,7 @@ export function PdfPage({
       textLayerTask.current = null;
       textLayerSelectionCleanup.current?.();
       textLayerSelectionCleanup.current = null;
-      textLayerContainer.replaceChildren();
+      textLayerContainer.textContent = "";
       textLayerContainer.style.removeProperty("--total-scale-factor");
       textLayerContainer.style.removeProperty("--scale-round-x");
       textLayerContainer.style.removeProperty("--scale-round-y");

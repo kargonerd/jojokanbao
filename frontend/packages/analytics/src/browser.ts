@@ -1,6 +1,7 @@
 import { analytics, analyticsHost, screenForPath, type AnalyticsContext } from "./index";
 import { sanitizePostHogEvent } from "./sanitize";
 import { browserAnalyticsEnabled, subscribeBrowserAnalytics } from "./preferences";
+import { randomUUID } from "./random-uuid";
 export { browserAnalyticsEnabled, setBrowserAnalyticsEnabled, subscribeBrowserAnalytics } from "./preferences";
 
 let started = false;
@@ -40,7 +41,7 @@ export async function initializeBrowserAnalytics(options: {
     });
     let installationId = localStorage.getItem("jojo.analytics.installation.v1");
     if (!installationId) {
-      installationId = crypto.randomUUID();
+      installationId = randomUUID();
       localStorage.setItem("jojo.analytics.installation.v1", installationId);
     }
     let sdkEnabled: boolean | undefined;
