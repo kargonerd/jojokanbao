@@ -38,7 +38,7 @@ describe("人民日报 configuration", () => {
   it("loads page outlines only for years that contain edition-level bookmarks", () => {
     const available = PUBLICATIONS.rmrb!.pageOutlineAvailable!;
     expect(available("19460515")).toBe(true);
-    expect(available("19480101")).toBe(false);
+    expect(available("19480101")).toBe(true);
     expect(available("19490101")).toBe(true);
     expect(available("20071231")).toBe(true);
     expect(available("20080101")).toBe(false);

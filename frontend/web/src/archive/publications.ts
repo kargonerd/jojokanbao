@@ -35,7 +35,7 @@ function genSeqTextDefault(seq: number): string {
 
 function hasRmrbPageOutline(id: string): boolean {
   const year = Number(id.slice(0, 4));
-  return (year >= 1946 && year <= 1947)
+  return (year >= 1946 && year <= 1948)
     || (year >= 1949 && year <= 2007)
     || (year >= 2011 && year <= 2012);
 }
