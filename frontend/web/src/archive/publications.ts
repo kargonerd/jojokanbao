@@ -35,9 +35,12 @@ function genSeqTextDefault(seq: number): string {
 
 function hasRmrbPageOutline(id: string): boolean {
   const year = Number(id.slice(0, 4));
+  // Daily sync writes precise outlines from 2024-12-01, the earliest layout
+  // page paper.people.com.cn still serves. Older issues rely on native bookmarks.
   return (year >= 1946 && year <= 1948)
     || (year >= 1949 && year <= 2007)
-    || (year >= 2011 && year <= 2012);
+    || (year >= 2011 && year <= 2012)
+    || id >= "20241201";
 }
 
 export const PUBLICATIONS: Record<PublicationName, PublicationConfig> = {
