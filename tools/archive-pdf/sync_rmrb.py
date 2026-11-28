@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 from pathlib import Path
@@ -9,7 +10,8 @@ import subprocess
 import sys
 
 import requests
-from PyPDF2 import PdfMerger
+from pypdf import PdfWriter
+from pypdf.generic import Fit
 from delivery import DATASET, INDEX, Delivery, HuggingFace, issue_keys, prepare_issue, publish_issue
 
 
@@ -53,14 +55,83 @@ def get_text(session, url):
     return response.text
 
 
-def new_layout_urls(session, day):
+@dataclass(frozen=True)
+class PageSource:
+    """One printed page plus the article rectangles the publisher exposes."""
+
+    url: str
+    label: str
+    image_width: int | None
+    image_height: int | None
+    # (title, (min_x, min_y, max_x, max_y)) in layout-image pixels, reading order.
+    articles: tuple[tuple[str, tuple[float, float, float, float]], ...]
+
+
+NEWS_LIST = re.compile(r'<ul class="news-list">(.*?)</ul>', re.S)
+ARTICLE_LINK = re.compile(r'<a[^>]*href="([^"]*)"[^>]*>(.*?)</a>', re.S)
+CONTENT_ID = re.compile(r"content_\d+")
+AREA_TAG = re.compile(r"<Area\b[^>]*>", re.I)
+
+
+def plain_text(value):
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", value)).strip()
+
+
+def parse_page_source(html, url, page):
+    label_match = re.search(r"第\s*0?\d+\s*版[：:]\s*([^<\r\n]+)", html)
+    label = plain_text(label_match.group(1)) if label_match else ""
+    image = re.search(r'<img[^>]*width="(\d+)"[^>]*height="(\d+)"', html)
+    image_width, image_height = (int(image.group(1)), int(image.group(2))) if image else (None, None)
+
+    titles = {}
+    order = []
+    block = NEWS_LIST.search(html)
+    if block:
+        for link in ARTICLE_LINK.finditer(block.group(1)):
+            content = CONTENT_ID.search(link.group(1))
+            title = plain_text(link.group(2))
+            if content and title and content.group(0) not in titles:
+                titles[content.group(0)] = title
+                order.append(content.group(0))
+
+    boxes = {}
+    for tag in AREA_TAG.findall(html):
+        coords = re.search(r'coords="([^"]+)"', tag, re.I)
+        href = re.search(r'href="([^"]*)"', tag, re.I)
+        if not coords or not href:
+            continue
+        content = CONTENT_ID.search(href.group(1))
+        try:
+            values = [float(value) for value in coords.group(1).split(",") if value.strip()]
+        except ValueError:
+            continue
+        if content and len(values) >= 4:
+            boxes.setdefault(content.group(0), []).append(values)
+
+    articles = []
+    for content in order:
+        values = (boxes.get(content) or [None])[0]
+        if values is None:
+            continue
+        xs = values[0::2]
+        ys = values[1::2]
+        if xs and ys:
+            articles.append((titles[content], (min(xs), min(ys), max(xs), max(ys))))
+    return PageSource(
+        url=url, label=label or f"第{page:02d}版",
+        image_width=image_width, image_height=image_height,
+        articles=tuple(articles),
+    )
+
+
+def new_layout_pages(session, day):
     dated_path = day.strftime("%Y%m/%d")
     cover_url = f"http://paper.people.com.cn/rmrb/pc/layout/{dated_path}/node_01.html"
     print(f"[3/8] Fetching page list from {cover_url}...", flush=True)
     text = get_text(session, cover_url)
     page_count = len(re.findall("pageLink", text))
     print(f"[3/8] Found {page_count} pages.", flush=True)
-    urls = []
+    sources = []
 
     for page in range(1, page_count + 1):
         page_url = f"http://paper.people.com.cn/rmrb/pc/layout/{dated_path}/node_{page:02d}.html"
@@ -68,15 +139,19 @@ def new_layout_urls(session, day):
         matches = re.findall(r"attachement.*?\.pdf", page_text)
         if matches:
             pdf_url = "http://paper.people.com.cn/rmrb/pc/" + matches[0]
-            urls.append(pdf_url)
-            print(f"[3/8] Page {page:02d}: {pdf_url}", flush=True)
+            sources.append(parse_page_source(page_text, pdf_url, page))
+            print(f"[3/8] Page {page:02d}: {pdf_url} ({len(sources[-1].articles)} articles)", flush=True)
         else:
             raise RuntimeError(f"Page {page:02d} has no PDF; refusing to publish an incomplete issue")
-    return urls
+    return sources
+
+
+def get_page_sources(session, day):
+    return new_layout_pages(session, day)
 
 
 def get_page_urls(session, day):
-    return new_layout_urls(session, day)
+    return [source.url for source in new_layout_pages(session, day)]
 
 
 def download_pdf(session, url, output):
@@ -94,19 +169,44 @@ def download_pdf(session, url, output):
     raise RuntimeError(f"Failed to download {url}")
 
 
+def bookmark_rect(bbox, image_width, image_height, page_width, page_height):
+    """Convert an image-map box into the bottom-left PDF rectangle FitR expects."""
+    min_x, min_y, max_x, max_y = bbox
+    left = min_x / image_width * page_width
+    right = max_x / image_width * page_width
+    top = page_height - min_y / image_height * page_height
+    bottom = page_height - max_y / image_height * page_height
+    left, right = max(0.0, min(left, right)), min(page_width, max(left, right))
+    bottom, top = max(0.0, min(bottom, top)), min(page_height, max(bottom, top))
+    if right <= left or top <= bottom:
+        return None
+    return (left, bottom, right, top)
+
+
 def merge_pdfs(parts, output):
     print(f"[5/8] Merging {len(parts)} PDFs...", flush=True)
-    merger = PdfMerger(strict=False)
-    try:
-        for part in parts:
-            if part.stat().st_size < 10:
-                print(f"[5/8] Skip unsupported page: {part.name}", flush=True)
-                continue
-            merger.append(str(part))
-        merger.write(str(output))
-        print(f"[5/8] Merged to {output.name} ({output.stat().st_size} bytes)", flush=True)
-    finally:
-        merger.close()
+    writer = PdfWriter()
+    for part, source in parts:
+        if part.stat().st_size < 10:
+            print(f"[5/8] Skip unsupported page: {part.name}", flush=True)
+            continue
+        page_index = len(writer.pages)
+        writer.append(str(part))
+        page = writer.pages[page_index]
+        page_width = float(page.mediabox.width)
+        page_height = float(page.mediabox.height)
+        parent = writer.add_outline_item(title=source.label, page_number=page_index, fit=Fit.fit())
+        if source.image_width and source.image_height and page.rotation % 360 == 0:
+            for title, bbox in source.articles:
+                rect = bookmark_rect(bbox, source.image_width, source.image_height, page_width, page_height)
+                if rect:
+                    writer.add_outline_item(
+                        title=title, page_number=page_index, parent=parent,
+                        fit=Fit.fit_rectangle(*rect),
+                    )
+    with output.open("wb") as stream:
+        writer.write(stream)
+    print(f"[5/8] Merged to {output.name} ({output.stat().st_size} bytes)", flush=True)
 
 
 def linearize_pdf(source, output):
@@ -151,14 +251,14 @@ def obtain_pdf(day, day_dir, canonical, delivery, *, reuse_legacy=False, refresh
     parts_dir = day_dir / "parts"
     parts_dir.mkdir(parents=True, exist_ok=True)
     with requests.Session() as session:
-        urls = get_page_urls(session, day)
-        if not urls:
+        sources = get_page_sources(session, day)
+        if not sources:
             raise RuntimeError(f"No RMRB pages found for {day}")
         parts = []
-        for index, url in enumerate(urls, start=1):
+        for index, source in enumerate(sources, start=1):
             part = parts_dir / f"{index:02d}.pdf"
-            download_pdf(session, url, part)
-            parts.append(part)
+            download_pdf(session, source.url, part)
+            parts.append((part, source))
     merged = day_dir / "merged.pdf"
     merged.unlink(missing_ok=True)
     merge_pdfs(parts, merged)

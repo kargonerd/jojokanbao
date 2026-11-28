@@ -46,7 +46,9 @@ describe("人民日报 configuration", () => {
     expect(available("20110326")).toBe(true);
     expect(available("20120101")).toBe(true);
     expect(available("20140111")).toBe(false);
-    expect(available("20260718")).toBe(false);
+    expect(available("20241130")).toBe(false);
+    expect(available("20241201")).toBe(true);
+    expect(available("20260718")).toBe(true);
   });
 });
 
